@@ -24,14 +24,14 @@ repositories {
 dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
     compileOnly("org.jetbrains:annotations:23.0.0")
-    compileOnly("io.github.revxrsal:lamp.common:4.0.0-rc.16")
-    compileOnly("io.github.revxrsal:lamp.brigadier:4.0.0-rc.16")
-    compileOnly("io.github.revxrsal:lamp.bukkit:4.0.0-rc.16")
-    implementation("dev.triumphteam:triumph-gui:3.1.13") {
+    implementation("io.github.revxrsal:lamp.common:4.0.0-rc.17")
+    implementation("io.github.revxrsal:lamp.bukkit:4.0.0-rc.17")
+    implementation("io.github.revxrsal:lamp.brigadier:4.0.0-rc.17")
+    implementation("com.github.lidanthedev:triumph-gui:3.1.14") {
         exclude(group = "com.google.code.gson", module = "gson")
-        exclude(group = "net.kyori")
     }
-    implementation("com.github.cryptomorin:XSeries:13.5.1")
+    implementation("com.github.cryptomorin:XSeries:13.7.0")
+    compileOnly("com.github.lidanthedev:CaveCrawlers:v2.0.0")
 }
 
 val targetJavaVersion = 21

@@ -1,7 +1,7 @@
-package me.lidan.paperPluginModernTemplate;
+package me.lidan.dungeonCrawlers;
 
 import dev.triumphteam.gui.guis.BaseGui;
-import me.lidan.paperPluginModernTemplate.commands.PaperTemplateCommand;
+import me.lidan.dungeonCrawlers.commands.DungeonCrawlersCommand;
 import org.bukkit.Bukkit;
 import org.bukkit.event.Listener;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -14,7 +14,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 
-public final class PaperPluginModernTemplate extends JavaPlugin {
+public final class DungeonCrawlers extends JavaPlugin {
     private Lamp.Builder<BukkitCommandActor> commandHandlerBuilder;
 
     @Override
@@ -51,7 +51,7 @@ public final class PaperPluginModernTemplate extends JavaPlugin {
     private void registerCommands() {
         // Register commands
         Lamp<BukkitCommandActor> commandHandler = commandHandlerBuilder.build();
-        commandHandler.register(new PaperTemplateCommand());
+        commandHandler.register(new DungeonCrawlersCommand());
     }
 
     private void registerEvents() {
@@ -116,7 +116,7 @@ public final class PaperPluginModernTemplate extends JavaPlugin {
         }
     }
 
-    public static PaperPluginModernTemplate getInstance() {
-        return JavaPlugin.getPlugin(PaperPluginModernTemplate.class);
+    public static DungeonCrawlers getInstance() {
+        return JavaPlugin.getPlugin(DungeonCrawlers.class);
     }
 }

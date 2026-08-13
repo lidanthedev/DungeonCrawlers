@@ -1,6 +1,6 @@
-name: PaperPluginModernTemplate
+name: DungeonCrawlers
 version: '1.0'
-main: me.lidan.paperPluginModernTemplate.PaperPluginModernTemplate
+main: me.lidan.dungeonCrawlers.DungeonCrawlers
 api-version: '1.20'
 authors: [ LidanTheDev ]
 libraries:
