@@ -1,0 +1,2 @@
+# Leave blank to use the first loaded world's spawn when Essentials spawn is unavailable.
+fallback-spawn-world: ""

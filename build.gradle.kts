@@ -18,20 +18,32 @@ repositories {
         name = "sonatype"
     }
     maven("https://mvn.lumine.io/repository/maven-public/")
+    maven("https://maven.enginehub.org/repo/")
+    maven("https://repo.essentialsx.net/releases/")
+    maven("https://repo.alessiodp.com/releases/")
     maven("https://jitpack.io")
 }
 
 dependencies {
-    compileOnly("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
-    compileOnly("org.jetbrains:annotations:23.0.0")
-    implementation("io.github.revxrsal:lamp.common:4.0.0-rc.17")
-    implementation("io.github.revxrsal:lamp.bukkit:4.0.0-rc.17")
-    implementation("io.github.revxrsal:lamp.brigadier:4.0.0-rc.17")
-    implementation("com.github.lidanthedev:triumph-gui:3.1.14") {
+    compileOnly(libs.paper.api)
+    compileOnly(libs.cave.crawlers)
+    compileOnly(libs.worldedit.bukkit)
+    compileOnly(libs.mythic.mobs)
+    compileOnly(libs.vault.api)
+    compileOnly(libs.essentials)
+
+    compileOnly(libs.lamp.common)
+    compileOnly(libs.lamp.bukkit)
+    compileOnly(libs.lamp.brigadier)
+    implementation(libs.triumph.gui) {
         exclude(group = "com.google.code.gson", module = "gson")
     }
-    implementation("com.github.cryptomorin:XSeries:13.7.0")
-    compileOnly("com.github.lidanthedev:CaveCrawlers:v2.0.0")
+    implementation(libs.xseries)
+
+    testImplementation(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter)
+    testImplementation(libs.mockito.core)
+    testImplementation(libs.paper.api)
 }
 
 val targetJavaVersion = 21
@@ -58,9 +70,13 @@ tasks.withType<JavaCompile>().configureEach {
     }
 }
 
+tasks.test {
+    useJUnitPlatform()
+}
+
 tasks.shadowJar {
     archiveClassifier.set("")
-    val packageName = project.name.decapitalize()
+    val packageName = project.name.replaceFirstChar { it.lowercase() }
     relocate("dev.triumphteam.gui", "me.lidan.${packageName}.gui")
     relocate("com.cryptomorin.xseries", "me.lidan.${packageName}.xseries")
 }
@@ -71,6 +87,26 @@ tasks.jar {
 
 tasks.build {
     dependsOn(tasks.named("shadowJar"))
+    dependsOn(tasks.named("verifyNoExternalPluginShading"))
+}
+
+val verifyNoExternalPluginShading by tasks.registering {
+    dependsOn(tasks.shadowJar)
+    doLast {
+        val forbiddenPrefixes = listOf(
+            "me/lidan/cavecrawlers/",
+            "io/lumine/mythic/",
+            "com/sk89q/worldedit/",
+            "net/milkbowl/vault/",
+            "net/ess3/",
+            "net/essentialsx/"
+        )
+        zipTree(tasks.shadowJar.get().archiveFile).matching {
+            forbiddenPrefixes.forEach { include("$it**") }
+        }.files.takeIf { it.isNotEmpty() }?.let { shaded ->
+            throw GradleException("External plugin API classes were shaded: ${shaded.take(10)}")
+        }
+    }
 }
 
 tasks.processResources {

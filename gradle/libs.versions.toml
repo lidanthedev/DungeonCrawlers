@@ -1,0 +1,30 @@
+[versions]
+paper = "1.21.11-R0.1-SNAPSHOT"
+cave-crawlers = "v2.0.0"
+worldedit = "7.3.18"
+mythic-mobs = "5.11.2"
+vault = "1.7.1"
+essentials = "2.21.2"
+parties = "3.2.18"
+lamp = "4.0.0-rc.17"
+triumph-gui = "3.1.14"
+xseries = "13.7.0"
+junit = "5.11.4"
+mockito = "5.15.2"
+
+[libraries]
+paper-api = { module = "io.papermc.paper:paper-api", version.ref = "paper" }
+cave-crawlers = { module = "com.github.lidanthedev:CaveCrawlers", version.ref = "cave-crawlers" }
+worldedit-bukkit = { module = "com.sk89q.worldedit:worldedit-bukkit", version.ref = "worldedit" }
+mythic-mobs = { module = "io.lumine:Mythic-Dist", version.ref = "mythic-mobs" }
+vault-api = { module = "com.github.MilkBowl:VaultAPI", version.ref = "vault" }
+essentials = { module = "net.essentialsx:EssentialsX", version.ref = "essentials" }
+parties-api = { module = "com.alessiodp.parties:parties-api", version.ref = "parties" }
+lamp-common = { module = "io.github.revxrsal:lamp.common", version.ref = "lamp" }
+lamp-bukkit = { module = "io.github.revxrsal:lamp.bukkit", version.ref = "lamp" }
+lamp-brigadier = { module = "io.github.revxrsal:lamp.brigadier", version.ref = "lamp" }
+triumph-gui = { module = "com.github.lidanthedev:triumph-gui", version.ref = "triumph-gui" }
+xseries = { module = "com.github.cryptomorin:XSeries", version.ref = "xseries" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+mockito-core = { module = "org.mockito:mockito-core", version.ref = "mockito" }

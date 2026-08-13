@@ -1,0 +1,18 @@
+schema-version: 1
+blessings:
+  crypt_strength:
+    display-name: "<red>Crypt Strength"
+    icon: BLAZE_POWDER
+    stacking: levels
+    max-level: 5
+    per-level:
+      stat-add: { STRENGTH: 10 }
+      stat-multiply: {}
+  crypt_vitality:
+    display-name: "<green>Crypt Vitality"
+    icon: GLISTERING_MELON_SLICE
+    stacking: levels
+    max-level: 5
+    per-level:
+      stat-add: { HEALTH: 25 }
+      stat-multiply: {}

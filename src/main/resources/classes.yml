@@ -1,0 +1,28 @@
+schema-version: 1
+classes:
+  berserker:
+    display-name: "<red>Berserker"
+    icon: IRON_SWORD
+    stat-add: { STRENGTH: 50 }
+    stat-multiply: {}
+  mage:
+    display-name: "<aqua>Mage"
+    icon: BLAZE_ROD
+    stat-add: { INTELLIGENCE: 100 }
+    stat-multiply: {}
+  tank:
+    display-name: "<green>Tank"
+    icon: SHIELD
+    stat-add: { DEFENSE: 75, HEALTH: 100 }
+    stat-multiply: {}
+  healer:
+    display-name: "<light_purple>Healer"
+    icon: GOLDEN_APPLE
+    stat-add: { HEALTH: 50 }
+    stat-multiply: {}
+  archer:
+    display-name: "<yellow>Archer"
+    icon: BOW
+    stat-add: { CRIT_DAMAGE: 50 }
+    stat-multiply: {}
+
