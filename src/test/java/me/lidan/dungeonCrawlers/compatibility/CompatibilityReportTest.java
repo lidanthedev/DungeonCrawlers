@@ -31,6 +31,24 @@ class CompatibilityReportTest {
     }
 
     @Test
+    void verifiedFallbackAllowsHumanGate() {
+        CompatibilityReport report = new CompatibilityReport(Instant.EPOCH, List.of(
+                new ProbeResult("optional", ProbeStatus.FALLBACK_PASS, "verified fallback")
+        ));
+
+        assertTrue(report.passesHumanGate());
+    }
+
+    @Test
+    void absentIntegrationWithoutFallbackBlocksHumanGate() {
+        CompatibilityReport report = new CompatibilityReport(Instant.EPOCH, List.of(
+                new ProbeResult("optional", ProbeStatus.ABSENT, "no fallback")
+        ));
+
+        assertFalse(report.passesHumanGate());
+    }
+
+    @Test
     void reportDefensivelyCopiesResults() {
         var mutable = new java.util.ArrayList<ProbeResult>();
         mutable.add(new ProbeResult("one", ProbeStatus.PASS, "ok"));
@@ -41,4 +59,3 @@ class CompatibilityReportTest {
         assertTrue(report.results().size() == 1);
     }
 }
-

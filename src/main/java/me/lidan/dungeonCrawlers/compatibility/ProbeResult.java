@@ -10,7 +10,6 @@ public record ProbeResult(String id, ProbeStatus status, String detail) {
     }
 
     public boolean blocksGate() {
-        return status != ProbeStatus.PASS;
+        return status != ProbeStatus.PASS && status != ProbeStatus.FALLBACK_PASS;
     }
 }
-

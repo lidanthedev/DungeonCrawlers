@@ -21,6 +21,7 @@ import net.kyori.adventure.text.Component;
 import net.milkbowl.vault.economy.Economy;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
@@ -34,6 +35,7 @@ import revxrsal.commands.bukkit.annotation.CommandPermission;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.UUID;
 
 @Command("dungeon")
 public final class DungeonCrawlersCommand {
@@ -119,16 +121,53 @@ public final class DungeonCrawlersCommand {
             player.sendMessage("[FAIL] no Vault economy provider");
             return;
         }
+        String configuredAccount = plugin.getConfig().getString("compatibility.economy-test-account-uuid", "").trim();
+        UUID accountId;
+        try {
+            accountId = UUID.fromString(configuredAccount);
+        } catch (IllegalArgumentException exception) {
+            player.sendMessage("[FAIL] compatibility.economy-test-account-uuid must be a valid UUID");
+            return;
+        }
+        if (accountId.equals(player.getUniqueId())) {
+            player.sendMessage("[FAIL] the disposable economy test account must not be the command sender");
+            return;
+        }
+        OfflinePlayer testAccount = plugin.getServer().getOfflinePlayer(accountId);
+        if (!testAccount.hasPlayedBefore() && !testAccount.isOnline()) {
+            player.sendMessage("[FAIL] configured disposable economy test account has never joined this server");
+            return;
+        }
         EconomyGateway gateway = new VaultEconomyAdapter(registration.getProvider());
-        EconomyGateway.TransactionResult debit = gateway.withdraw(player, amount);
+        EconomyGateway.TransactionResult debit = gateway.withdraw(testAccount, amount);
         if (!debit.successful()) {
             player.sendMessage("[FAIL] checked withdraw via " + gateway.providerIdentity() + ": " + debit.detail());
             return;
         }
-        EconomyGateway.TransactionResult credit = gateway.deposit(player, amount);
-        player.sendMessage("[" + (credit.successful() ? "PASS" : "FAIL") + "] provider=" + gateway.providerIdentity()
+        EconomyGateway.TransactionResult credit = gateway.deposit(testAccount, debit.amount());
+        if (!credit.successful()) {
+            EconomyGateway.TransactionResult recovery = recoverEconomyProbe(gateway, testAccount, debit.amount());
+            player.sendMessage("[FAIL] provider=" + gateway.providerIdentity() + ", account=" + accountId
+                    + ", withdrawBalance=" + debit.balance() + ", depositDetail=" + credit.detail()
+                    + ", recovery=" + (recovery.successful() ? "restored" : "FAILED: " + recovery.detail()));
+            if (!recovery.successful()) {
+                plugin.getLogger().severe("Economy probe recovery failed for disposable account " + accountId
+                        + "; manually restore " + debit.amount() + " using provider " + gateway.providerIdentity());
+            }
+            return;
+        }
+        player.sendMessage("[PASS] provider=" + gateway.providerIdentity() + ", account=" + accountId
                 + ", withdrawBalance=" + debit.balance() + ", depositBalance=" + credit.balance()
                 + ", depositDetail=" + credit.detail());
+    }
+
+    private static EconomyGateway.TransactionResult recoverEconomyProbe(
+            EconomyGateway gateway, OfflinePlayer testAccount, double amount) {
+        EconomyGateway.TransactionResult recovery = gateway.deposit(testAccount, amount);
+        for (int attempt = 1; attempt < 3 && !recovery.successful(); attempt++) {
+            recovery = gateway.deposit(testAccount, amount);
+        }
+        return recovery;
     }
 
     @Subcommand("compatibility spawn")

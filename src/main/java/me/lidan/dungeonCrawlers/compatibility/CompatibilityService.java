@@ -4,6 +4,7 @@ import me.lidan.cavecrawlers.stats.ActionBarManager;
 import me.lidan.cavecrawlers.stats.StatsCalculateEvent;
 import me.lidan.cavecrawlers.utils.Range;
 import me.lidan.dungeonCrawlers.config.BootstrapSchemas;
+import me.lidan.dungeonCrawlers.integration.spawn.BukkitSpawnProvider;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.RegisteredListener;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -38,8 +39,10 @@ public final class CompatibilityService {
         requiredPlugin(results, "MythicMobs");
         requiredPlugin(results, "Vault");
         requiredPlugin(results, "ProtocolLib");
-        optionalPlugin(results, "Parties");
-        optionalPlugin(results, "Essentials");
+        optionalPlugin(results, "Parties", true);
+        boolean bukkitSpawnAvailable = new BukkitSpawnProvider(
+                plugin.getServer(), plugin.getConfig().getString("fallback-spawn-world", "")).spawn().isPresent();
+        optionalPlugin(results, "Essentials", bukkitSpawnAvailable);
 
         Range range = new Range(-2, 3);
         results.add(new ProbeResult("cavecrawlers.range", range.getMin() == -2 && range.getMax() == 3
@@ -47,7 +50,7 @@ public final class CompatibilityService {
                 + "; deterministic code must not call getRandom()"));
         results.add(new ProbeResult("cavecrawlers.actionbar", ActionBarManager.ACTION_BAR_COOLDOWN == 1000
                 ? ProbeStatus.PASS : ProbeStatus.FAIL, "cooldown-ms=" + ActionBarManager.ACTION_BAR_COOLDOWN));
-        results.add(new ProbeResult("stats.listeners", ProbeStatus.PASS, listenerInventory()));
+        results.add(listenerProbe(StatsCalculateEvent.getHandlerList().getRegisteredListeners()));
         results.add(new ProbeResult("stats.caps", ProbeStatus.MANUAL_REQUIRED,
                 "healthBalanceMax=" + V1_HEALTH_BALANCE_MAX + "; verify Paper MAX_HEALTH consumer with compatibility stats"));
         results.add(new ProbeResult("connectors.materials", ProbeStatus.PASS,
@@ -72,21 +75,30 @@ public final class CompatibilityService {
                 dependency == null ? "missing" : dependency.getPluginMeta().getVersion() + ", enabled=" + dependency.isEnabled()));
     }
 
-    private void optionalPlugin(List<ProbeResult> results, String name) {
+    private void optionalPlugin(List<ProbeResult> results, String name, boolean fallbackVerified) {
         Plugin dependency = plugin.getServer().getPluginManager().getPlugin(name);
-        results.add(new ProbeResult("plugin." + name.toLowerCase(), dependency == null ? ProbeStatus.ABSENT : ProbeStatus.PASS,
-                dependency == null ? "optional; solo/fallback path active" : dependency.getPluginMeta().getVersion()));
+        if (dependency == null) {
+            results.add(new ProbeResult("plugin." + name.toLowerCase(),
+                    fallbackVerified ? ProbeStatus.FALLBACK_PASS : ProbeStatus.ABSENT,
+                    fallbackVerified ? "optional dependency absent; verified fallback active"
+                            : "optional dependency absent; fallback unavailable"));
+            return;
+        }
+        results.add(new ProbeResult("plugin." + name.toLowerCase(),
+                dependency.isEnabled() ? ProbeStatus.PASS : ProbeStatus.FAIL,
+                dependency.isEnabled() ? dependency.getPluginMeta().getVersion() : "installed but disabled"));
     }
 
-    private String listenerInventory() {
-        RegisteredListener[] listeners = StatsCalculateEvent.getHandlerList().getRegisteredListeners();
+    static ProbeResult listenerProbe(RegisteredListener[] listeners) {
         if (listeners.length == 0) {
-            return "no StatsCalculateEvent listeners registered";
+            return new ProbeResult("stats.listeners", ProbeStatus.FAIL,
+                    "no StatsCalculateEvent listeners registered");
         }
-        return Arrays.stream(listeners)
+        String inventory = Arrays.stream(listeners)
                 .map(listener -> listener.getPlugin().getName() + "@" + listener.getPriority())
                 .sorted()
                 .reduce((left, right) -> left + "," + right)
                 .orElse("none");
+        return new ProbeResult("stats.listeners", ProbeStatus.PASS, inventory);
     }
 }

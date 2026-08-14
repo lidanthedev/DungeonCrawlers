@@ -1,2 +1,6 @@
 # Leave blank to use the first loaded world's spawn when Essentials spawn is unavailable.
 fallback-spawn-world: ""
+
+# UUID of a disposable, funded account used only by the explicit economy probe.
+compatibility:
+  economy-test-account-uuid: ""

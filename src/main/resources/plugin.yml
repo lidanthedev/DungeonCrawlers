@@ -4,7 +4,7 @@ main: me.lidan.dungeonCrawlers.DungeonCrawlers
 api-version: '1.21'
 authors: [ LidanTheDev ]
 description: Dungeon gameplay addon for CaveCrawlers
-depend: [CaveCrawlers, FastAsyncWorldEdit, MythicMobs, Vault]
+depend: [CaveCrawlers, FastAsyncWorldEdit, MythicMobs, Vault, ProtocolLib]
 softdepend: [Parties, Essentials]
 libraries:
   - io.github.revxrsal:lamp.common:4.0.0-rc.17
