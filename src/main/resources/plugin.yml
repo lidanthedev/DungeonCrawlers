@@ -25,3 +25,5 @@ permissions:
     default: op
   dungeoncrawlers.admin.authoring:
     default: op
+  dungeoncrawlers.admin.generation:
+    default: op

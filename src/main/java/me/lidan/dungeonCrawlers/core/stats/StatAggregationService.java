@@ -1,6 +1,7 @@
 package me.lidan.dungeonCrawlers.core.stats;
 
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.BlessingDefinition;
+import me.lidan.dungeonCrawlers.config.registry.ConfigModels.BlessingStacking;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.ClassDefinition;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.StatModifiers;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.StatType;
@@ -21,7 +22,9 @@ public final class StatAggregationService {
         Map<String, BlessingDefinition> activeBlessings = new TreeMap<>();
         for (var active : orderedLevels.entrySet()) {
             BlessingDefinition blessing = definitions.get(active.getKey());
-            if (blessing == null || active.getValue() < 1 || active.getValue() > blessing.maxLevel()) {
+            int maximum = blessing != null && blessing.stacking() == BlessingStacking.REPLACE
+                    ? 1 : blessing == null ? 0 : blessing.maxLevel();
+            if (active.getValue() < 1 || active.getValue() > maximum) {
                 throw new IllegalArgumentException("invalid active blessing " + active.getKey());
             }
             activeBlessings.put(active.getKey(), blessing);

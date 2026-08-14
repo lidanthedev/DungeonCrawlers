@@ -20,7 +20,7 @@ import java.util.Map;
 import java.util.HashMap;
 
 public class BoostedConfigFactory {
-    public static final int CURRENT_SCHEMA_VERSION = 3;
+    public static final int CURRENT_SCHEMA_VERSION = 4;
     public static final String VERSION_ROUTE = "schema-version";
     private static final int PACK_SCHEMA_VERSION = 1;
 

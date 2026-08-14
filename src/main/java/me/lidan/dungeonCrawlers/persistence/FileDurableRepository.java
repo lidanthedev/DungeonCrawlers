@@ -20,6 +20,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Comparator;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -246,6 +247,46 @@ public final class FileDurableRepository implements DurableRepository {
         return result;
     }
 
+    @Override
+    public CompletableFuture<List<DurableRecord>> list(String namespace) {
+        DurableWrite validation = new DurableWrite(UUID.randomUUID(), UUID.randomUUID(), namespace,
+                "list-validation", "list-validation", 0, new byte[0]);
+        CompletableFuture<List<DurableRecord>> result = new CompletableFuture<>();
+        synchronized (submissionLock) {
+            if (closed.get() || !normalPermits.tryAcquire()) {
+                result.completeExceptionally(new RejectedExecutionException("repository queue is saturated or closed"));
+                return result;
+            }
+            ListTask task = new ListTask(validation, namespace, result);
+            try {
+                worker.execute(task);
+            } catch (RejectedExecutionException exception) {
+                task.reject(exception);
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public CompletableFuture<Void> delete(String namespace, String recordId) {
+        DurableWrite validation = new DurableWrite(UUID.randomUUID(), UUID.randomUUID(), namespace, recordId,
+                "delete-validation", 0, new byte[0]);
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        synchronized (submissionLock) {
+            if (closed.get() || !normalPermits.tryAcquire()) {
+                result.completeExceptionally(new RejectedExecutionException("repository queue is saturated or closed"));
+                return result;
+            }
+            DeleteTask task = new DeleteTask(validation, result);
+            try {
+                worker.execute(task);
+            } catch (RejectedExecutionException exception) {
+                task.reject(exception);
+            }
+        }
+        return result;
+    }
+
     private void requireInsideRoot(Path path) {
         if (!path.startsWith(root)) throw new IllegalArgumentException("durable path leaves repository root");
     }
@@ -344,6 +385,8 @@ public final class FileDurableRepository implements DurableRepository {
         for (Runnable task : stopped) {
             if (task instanceof RepositoryTask repositoryTask) repositoryTask.reject(failure);
             else if (task instanceof ReadTask readTask) readTask.reject(failure);
+            else if (task instanceof ListTask listTask) listTask.reject(failure);
+            else if (task instanceof DeleteTask deleteTask) deleteTask.reject(failure);
         }
     }
 
@@ -401,6 +444,101 @@ public final class FileDurableRepository implements DurableRepository {
                     result.complete(Optional.of(new DurableRecord(namespace, recordId, stored.payload(),
                             checksum(stored.payload()), path)));
                 }
+            } catch (Throwable throwable) {
+                result.completeExceptionally(throwable);
+            } finally {
+                releasePermit();
+            }
+        }
+
+        private void reject(Throwable failure) {
+            result.completeExceptionally(failure);
+            releasePermit();
+        }
+
+        private void releasePermit() {
+            if (permitReleased.compareAndSet(false, true)) normalPermits.release();
+        }
+    }
+
+    private final class ListTask implements Runnable {
+        private final DurableWrite validation;
+        private final String namespace;
+        private final CompletableFuture<List<DurableRecord>> result;
+        private final AtomicBoolean permitReleased = new AtomicBoolean();
+
+        private ListTask(DurableWrite validation, String namespace, CompletableFuture<List<DurableRecord>> result) {
+            this.validation = validation;
+            this.namespace = namespace;
+            this.result = result;
+        }
+
+        @Override
+        public void run() {
+            try {
+                Path directory = root.resolve(validation.namespace()).normalize();
+                requireInsideRoot(directory);
+                if (!Files.isDirectory(directory)) {
+                    result.complete(List.of());
+                    return;
+                }
+                try (var paths = Files.list(directory)) {
+                    List<DurableRecord> records = paths.filter(Files::isRegularFile)
+                            .filter(path -> path.getFileName().toString().endsWith(".bin"))
+                            .sorted(Comparator.comparing(path -> path.getFileName().toString()))
+                            .map(path -> readListed(namespace, path)).toList();
+                    result.complete(List.copyOf(records));
+                }
+            } catch (Throwable throwable) {
+                result.completeExceptionally(throwable);
+            } finally {
+                releasePermit();
+            }
+        }
+
+        private void reject(Throwable failure) {
+            result.completeExceptionally(failure);
+            releasePermit();
+        }
+
+        private void releasePermit() {
+            if (permitReleased.compareAndSet(false, true)) normalPermits.release();
+        }
+    }
+
+    private DurableRecord readListed(String namespace, Path path) {
+        try {
+            StoredRecord stored = decode(Files.readAllBytes(path));
+            String fileName = path.getFileName().toString();
+            String recordId = fileName.substring(0, fileName.length() - ".bin".length());
+            return new DurableRecord(namespace, recordId, stored.payload(), checksum(stored.payload()), path);
+        } catch (IOException exception) {
+            throw new java.io.UncheckedIOException(exception);
+        }
+    }
+
+    private final class DeleteTask implements Runnable {
+        private final DurableWrite validation;
+        private final CompletableFuture<Void> result;
+        private final AtomicBoolean permitReleased = new AtomicBoolean();
+
+        private DeleteTask(DurableWrite validation, CompletableFuture<Void> result) {
+            this.validation = validation;
+            this.result = result;
+        }
+
+        @Override
+        public void run() {
+            try {
+                Path directory = root.resolve(validation.namespace()).normalize();
+                Path target = directory.resolve(validation.recordId() + ".bin").normalize();
+                requireInsideRoot(target);
+                synchronized (commitLock) {
+                    if (Files.deleteIfExists(target) && Files.isDirectory(directory)) {
+                        forceDirectory(directory, directorySyncPolicy);
+                    }
+                }
+                result.complete(null);
             } catch (Throwable throwable) {
                 result.completeExceptionally(throwable);
             } finally {

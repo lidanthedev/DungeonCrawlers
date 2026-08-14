@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 @Command("dungeon")
 public final class DungeonAuthoringCommand {
@@ -40,12 +41,20 @@ public final class DungeonAuthoringCommand {
     private final LayoutPlanner layoutPlanner = new LayoutPlanner();
     private final Map<UUID, List<String>> generationTraces = new ConcurrentHashMap<>();
     private final EmeraldPolicy emeraldPolicy;
+    private final Supplier<Set<String>> activeTemplates;
 
     public DungeonAuthoringCommand(BoostedCustomConfig mainConfig, ConfigRegistryService configRegistry,
                                    PlayerReservationService reservations, TemplateAuthoringService authoring) {
+        this(mainConfig, configRegistry, reservations, authoring, Set::of);
+    }
+
+    public DungeonAuthoringCommand(BoostedCustomConfig mainConfig, ConfigRegistryService configRegistry,
+                                   PlayerReservationService reservations, TemplateAuthoringService authoring,
+                                   Supplier<Set<String>> activeTemplates) {
         this.configRegistry = configRegistry;
         this.reservations = reservations;
         this.authoring = authoring;
+        this.activeTemplates = activeTemplates;
         this.emeraldPolicy = configuredEmeraldPolicy(mainConfig);
         this.templateCatalog = new TemplateCatalogLoader(authoring, worldEdit, templateValidator, emeraldPolicy);
     }
@@ -176,7 +185,7 @@ public final class DungeonAuthoringCommand {
     @Subcommand("room delete")
     @CommandPermission("dungeoncrawlers.admin.authoring")
     public void roomDelete(CommandSender sender, String id) {
-        TemplateAuthoringService.OperationResult result = authoring.delete(id, Set.of());
+        TemplateAuthoringService.OperationResult result = authoring.delete(id, activeTemplates.get());
         sender.sendMessage("[" + (result.successful() ? "PASS" : "FAIL") + "] " + result.detail());
         if (result.successful()) reportAuthoringReload(sender);
     }
