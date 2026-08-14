@@ -8,22 +8,23 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.ArrayDeque;
-import java.util.Queue;
 import java.util.UUID;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FileDurableRepositoryTest {
     @TempDir Path directory;
-    private final Queue<Runnable> runtimeCallbacks = new ArrayDeque<>();
+    private final BlockingQueue<Runnable> runtimeCallbacks = new LinkedBlockingQueue<>();
     private final Clock clock = Clock.fixed(Instant.parse("2026-01-01T00:00:00Z"), ZoneOffset.UTC);
 
     @Test
@@ -35,8 +36,8 @@ class FileDurableRepositoryTest {
             first.receipt().get(5, TimeUnit.SECONDS);
             second.receipt().get(5, TimeUnit.SECONDS);
             assertFalse(first.runtimeAck().isDone());
-            runtimeCallbacks.remove().run();
-            runtimeCallbacks.remove().run();
+            runNextRuntimeCallback();
+            runNextRuntimeCallback();
             assertTrue(second.runtimeAck().isDone());
         }
         try (FileDurableRepository restarted = repository(4, FileDurableRepository.FailureInjector.none())) {
@@ -148,6 +149,12 @@ class FileDurableRepositoryTest {
 
     private FileDurableRepository repository(int capacity, FileDurableRepository.FailureInjector injector) {
         return new FileDurableRepository(directory, capacity, runtimeCallbacks::add, clock, injector);
+    }
+
+    private void runNextRuntimeCallback() throws InterruptedException {
+        Runnable callback = runtimeCallbacks.poll(5, TimeUnit.SECONDS);
+        assertNotNull(callback, "runtime callback was not scheduled");
+        callback.run();
     }
 
     private static DurableWrite write(UUID instance, String value, long version) {
