@@ -5,6 +5,7 @@ import me.lidan.dungeonCrawlers.config.BoostedConfigFactory;
 import org.bukkit.Material;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -199,7 +200,11 @@ public final class ConfigLoader {
     private void crossValidate(Map<String, FloorDefinition> floors, Map<String, RoomDefinition> rooms,
                                Map<String, ClassDefinition> classes, Map<String, BlessingDefinition> blessings,
                                Parser p) {
+        Set<Integer> floorNumbers = new LinkedHashSet<>();
         for (FloorDefinition floor : floors.values()) {
+            if (!floorNumbers.add(floor.number())) {
+                p.error("duplicate floor number " + floor.number());
+            }
             requireRoomType(floor.id(), floor.templates().start(), RoomType.START, rooms, p);
             requireRoomType(floor.id(), floor.templates().portal(), RoomType.PORTAL, rooms, p);
             requireRoomType(floor.id(), floor.templates().boss(), RoomType.BOSS, rooms, p);
@@ -329,6 +334,19 @@ public final class ConfigLoader {
             return value == null ? fallback : integer(value, path, minimum, maximum);
         }
 
+        long optionalLong(Object value, String path, long fallback, long minimum, long maximum) {
+            if (value == null) return fallback;
+            try {
+                long parsed = value instanceof Number number
+                        ? new BigDecimal(number.toString()).longValueExact() : minimum - 1;
+                if (parsed < minimum || parsed > maximum) throw new ArithmeticException();
+                return parsed;
+            } catch (NumberFormatException | ArithmeticException exception) {
+                error(path + " must be an integer in " + minimum + ".." + maximum);
+                return fallback;
+            }
+        }
+
         double optionalDouble(Object value, String path, double fallback, double exclusiveMinimum, double maximum) {
             if (value == null) return fallback;
             if (!(value instanceof Number number) || !Double.isFinite(number.doubleValue())
@@ -416,7 +434,7 @@ public final class ConfigLoader {
                 String id = id(pair.getKey(), path);
                 Map<String, Object> entry = map(pair.getValue(), path + "." + pair.getKey(), true);
                 boolean enabled = optionalBoolean(entry.get("enabled"), path + "." + pair.getKey() + ".enabled", true);
-                int price = optionalInteger(entry.get("price"), path + "." + pair.getKey() + ".price", 0, 0, Integer.MAX_VALUE);
+                long price = optionalLong(entry.get("price"), path + "." + pair.getKey() + ".price", 0, 0, Long.MAX_VALUE);
                 int minScore = optionalInteger(entry.get("min-score"), path + "." + pair.getKey() + ".min-score", 0, 0, Integer.MAX_VALUE);
                 int rolls = optionalInteger(entry.get("rolls"), path + "." + pair.getKey() + ".rolls", 1, 1, 1_000);
                 boolean unique = optionalBoolean(entry.get("unique"), path + "." + pair.getKey() + ".unique", false);
@@ -459,7 +477,7 @@ public final class ConfigLoader {
             Map<String, Object> map = map(value, path, true);
             return new Limits(optionalInteger(map.get("max-party-size"), path + ".max-party-size", 5, 1, 100),
                     optionalInteger(map.get("max-template-dimension"), path + ".max-template-dimension", 512, 1, 10_000),
-                    optionalInteger(map.get("max-template-volume"), path + ".max-template-volume", 16_777_216, 1, Integer.MAX_VALUE),
+                    optionalLong(map.get("max-template-volume"), path + ".max-template-volume", 16_777_216, 1, Long.MAX_VALUE),
                     optionalInteger(map.get("max-loaded-chunks-per-instance"), path + ".max-loaded-chunks-per-instance", 256, 1, 100_000),
                     optionalInteger(map.get("mob-respawn-retries"), path + ".mob-respawn-retries", 2, 0, 100),
                     optionalInteger(map.get("repository-queue-capacity"), path + ".repository-queue-capacity", 1_000, 1, 1_000_000));

@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.IntFunction;
 
 public final class PlayerReservationService {
     private final Map<UUID, PlayerIndexEntry> players = new HashMap<>();
@@ -49,6 +50,11 @@ public final class PlayerReservationService {
 
     public synchronized int activeReservationCount() {
         return Math.toIntExact(players.values().stream().map(PlayerIndexEntry::instanceId).distinct().count());
+    }
+
+    public synchronized <T> T withAdmissionPaused(IntFunction<T> operation) {
+        Objects.requireNonNull(operation, "operation");
+        return operation.apply(activeReservationCount());
     }
 
     public synchronized Map<UUID, PlayerIndexEntry> snapshot() {

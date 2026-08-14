@@ -13,5 +13,8 @@ public record DurableWriteReceipt(UUID operationId, String idempotencyKey, long 
         Objects.requireNonNull(checksum, "checksum");
         Objects.requireNonNull(durablePath, "durablePath");
         Objects.requireNonNull(committedAt, "committedAt");
+        if (recordVersion < 0) throw new IllegalArgumentException("recordVersion must not be negative: " + recordVersion);
+        if (idempotencyKey.isEmpty()) throw new IllegalArgumentException("idempotencyKey must not be empty");
+        if (checksum.isEmpty()) throw new IllegalArgumentException("checksum must not be empty");
     }
 }

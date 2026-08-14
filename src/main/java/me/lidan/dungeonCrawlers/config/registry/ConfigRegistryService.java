@@ -119,16 +119,10 @@ public final class ConfigRegistryService {
         try (Stream<Path> stream = Files.list(backupRoot)) {
             backups = stream.filter(path -> Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))
                     .filter(path -> RELOAD_BACKUP.matcher(path.getFileName().toString()).matches())
-                    .sorted(Comparator.comparingLong(ConfigRegistryService::lastModified).reversed()
-                            .thenComparing(Path::toString, Comparator.reverseOrder()))
+                    .sorted(Comparator.comparing((Path path) -> path.getFileName().toString()).reversed())
                     .toList();
         }
         for (Path expired : backups.stream().skip(backupRetention).toList()) deleteBackup(backupRoot, expired);
-    }
-
-    private static long lastModified(Path path) {
-        try { return Files.getLastModifiedTime(path, LinkOption.NOFOLLOW_LINKS).toMillis(); }
-        catch (IOException exception) { return Long.MIN_VALUE; }
     }
 
     private static void deleteBackup(Path backupRoot, Path target) throws IOException {

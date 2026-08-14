@@ -21,6 +21,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigDecimal;
 
 public final class DungeonCrawlers extends JavaPlugin {
     private Lamp.Builder<BukkitCommandActor> commandHandlerBuilder;
@@ -59,8 +60,7 @@ public final class DungeonCrawlers extends JavaPlugin {
                     + BoostedConfigFactory.CURRENT_SCHEMA_VERSION);
         }
         EncounterRegistry encounters = new EncounterRegistry();
-        int backupRetention = mainConfig.getInt("backups.retention-count",
-                ConfigRegistryService.DEFAULT_BACKUP_RETENTION);
+        int backupRetention = configuredBackupRetention();
         configRegistry = new ConfigRegistryService(getDataFolder().toPath(), encounters, backupRetention);
         ConfigRegistryService.ReloadResult loaded = configRegistry.initialize();
         if (!loaded.swapped()) {
@@ -73,6 +73,20 @@ public final class DungeonCrawlers extends JavaPlugin {
         durableRepository = new FileDurableRepository(getDataFolder().toPath().resolve("runtime"), queueCapacity,
                 callback -> getServer().getScheduler().runTask(this, callback));
         getLogger().info("Loaded Phase 1 config hash " + loaded.snapshot().hash());
+    }
+
+    private int configuredBackupRetention() {
+        String route = "backups.retention-count";
+        if (!mainConfig.contains(route, true)) return ConfigRegistryService.DEFAULT_BACKUP_RETENTION;
+        Object value = mainConfig.get(route);
+        try {
+            int retention = value instanceof Number number
+                    ? new BigDecimal(number.toString()).intValueExact() : -1;
+            if (retention < 1 || retention > 1_000) throw new ArithmeticException();
+            return retention;
+        } catch (NumberFormatException | ArithmeticException exception) {
+            throw new IllegalStateException("config.yml backups.retention-count must be an integer in 1..1000");
+        }
     }
 
     private void registerSerializer() {

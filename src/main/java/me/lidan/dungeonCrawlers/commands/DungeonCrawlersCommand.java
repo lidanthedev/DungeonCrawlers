@@ -95,10 +95,9 @@ public final class DungeonCrawlersCommand {
     @Subcommand("reload")
     @CommandPermission("dungeoncrawlers.admin.reload")
     public void reload(CommandSender sender) {
-        int active = reservations.activeReservationCount();
         sender.sendMessage("Reloading DungeonCrawlers configuration...");
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-            ConfigRegistryService.ReloadResult result = configRegistry.reload(active);
+            ConfigRegistryService.ReloadResult result = reservations.withAdmissionPaused(configRegistry::reload);
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 result.warnings().forEach(warning -> sender.sendMessage("[WARN] " + warning));
                 result.errors().forEach(error -> sender.sendMessage("[FAIL] " + error));
@@ -157,7 +156,7 @@ public final class DungeonCrawlersCommand {
             sender.sendMessage("[PASS] skill=" + result.skill() + ", time=" + result.time()
                     + ", exploration=" + result.exploration() + ", bonus=" + result.bonus()
                     + ", total=" + result.total() + ", rank=" + result.rank());
-        } catch (IllegalArgumentException exception) {
+        } catch (IllegalArgumentException | ArithmeticException exception) {
             sender.sendMessage("[FAIL] " + exception.getMessage());
         }
     }

@@ -18,15 +18,20 @@ public final class StatAggregationService {
         Objects.requireNonNull(definitions, "definitions");
         Objects.requireNonNull(activeLevels, "activeLevels");
         TreeMap<String, Integer> orderedLevels = new TreeMap<>(activeLevels);
+        Map<String, BlessingDefinition> activeBlessings = new TreeMap<>();
+        for (var active : orderedLevels.entrySet()) {
+            BlessingDefinition blessing = definitions.get(active.getKey());
+            if (blessing == null || active.getValue() < 1 || active.getValue() > blessing.maxLevel()) {
+                throw new IllegalArgumentException("invalid active blessing " + active.getKey());
+            }
+            activeBlessings.put(active.getKey(), blessing);
+        }
         EnumMap<StatType, Double> result = new EnumMap<>(StatType.class);
         for (StatType stat : StatType.values()) {
             double add = selectedClass == null ? 0 : selectedClass.stats().add().getOrDefault(stat, 0.0);
             double factor = selectedClass == null ? 1 : selectedClass.stats().multiply().getOrDefault(stat, 1.0);
             for (var active : orderedLevels.entrySet()) {
-                BlessingDefinition blessing = definitions.get(active.getKey());
-                if (blessing == null || active.getValue() < 1 || active.getValue() > blessing.maxLevel()) {
-                    throw new IllegalArgumentException("invalid active blessing " + active.getKey());
-                }
+                BlessingDefinition blessing = activeBlessings.get(active.getKey());
                 StatModifiers perLevel = blessing.perLevel();
                 add += perLevel.add().getOrDefault(stat, 0.0) * active.getValue();
                 factor *= Math.pow(perLevel.multiply().getOrDefault(stat, 1.0), active.getValue());

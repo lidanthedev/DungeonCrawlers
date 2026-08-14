@@ -79,12 +79,45 @@ class FileDurableRepositoryTest {
         };
         try (FileDurableRepository repository = repository(1, blocker)) {
             assertTrue(repository.reserveTerminalLane(terminalInstance));
-            repository.submit(write(UUID.randomUUID(), "normal", 1));
+            DurableSubmission normal = repository.submit(write(UUID.randomUUID(), "normal", 1));
             assertTrue(entered.await(5, TimeUnit.SECONDS));
             DurableSubmission terminal = repository.submitTerminal(write(terminalInstance, "terminal", 2));
             assertTrue(terminal.accepted());
-            release.countDown();
             terminal.receipt().get(5, TimeUnit.SECONDS);
+            release.countDown();
+            assertThrows(ExecutionException.class, () -> normal.receipt().get(5, TimeUnit.SECONDS));
+            assertArrayEquals("terminal".getBytes(StandardCharsets.UTF_8),
+                    repository.read("instances", "record").get(5, TimeUnit.SECONDS).orElseThrow().payload());
+        }
+    }
+
+    @Test
+    void closeSettlesRunningAndQueuedWriteFutures() throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        var blocker = (FileDurableRepository.FailureInjector) (stage, write) -> {
+            if (stage == FileDurableRepository.FailureStage.WRITE) {
+                entered.countDown();
+                release.await();
+            }
+        };
+        FileDurableRepository repository = new FileDurableRepository(directory, 2, Runnable::run, clock, blocker);
+        try {
+            DurableSubmission first = repository.submit(write(UUID.randomUUID(), "first", 1));
+            assertTrue(entered.await(5, TimeUnit.SECONDS));
+            DurableSubmission second = repository.submit(write(UUID.randomUUID(), "second", 2));
+            assertTrue(first.accepted());
+            assertTrue(second.accepted());
+
+            repository.close();
+
+            for (DurableSubmission submission : java.util.List.of(first, second)) {
+                assertThrows(ExecutionException.class, () -> submission.receipt().get(1, TimeUnit.SECONDS));
+                assertThrows(ExecutionException.class, () -> submission.runtimeAck().get(1, TimeUnit.SECONDS));
+            }
+        } finally {
+            release.countDown();
+            repository.close();
         }
     }
 

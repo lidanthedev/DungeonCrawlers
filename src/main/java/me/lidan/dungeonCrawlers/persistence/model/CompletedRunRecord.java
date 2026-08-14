@@ -26,6 +26,11 @@ public record CompletedRunRecord(UUID instanceId, String floorId, long seed, Str
                 Map.Entry::getKey, entry -> List.copyOf(entry.getValue())));
         claimGroups = Map.copyOf(claimGroups); playerSnapshotReferences = Map.copyOf(playerSnapshotReferences);
         worldBounds = List.copyOf(worldBounds);
+        participants.forEach((playerId, participant) -> {
+            if (!playerId.equals(participant.playerId())) {
+                throw new IllegalArgumentException("participant key does not match embedded player id: " + playerId);
+            }
+        });
         if (!participants.keySet().containsAll(entitledPlayers) || !offers.keySet().equals(entitledPlayers)
                 || !claimGroups.keySet().equals(entitledPlayers)) {
             throw new IllegalArgumentException("entitlements, offers, and claim groups must match participants");
@@ -35,7 +40,10 @@ public record CompletedRunRecord(UUID instanceId, String floorId, long seed, Str
     public enum RecoveryStatus { LIVE, RECOVERY_REQUIRED, CONVERTING, RECOVERED, CLEANED }
 
     public record ParticipantResult(UUID playerId, int deaths, boolean activeAtCompletion) {
-        public ParticipantResult { Objects.requireNonNull(playerId); if (deaths < 0) throw new IllegalArgumentException(); }
+        public ParticipantResult {
+            Objects.requireNonNull(playerId);
+            if (deaths < 0) throw new IllegalArgumentException("deaths must not be negative: " + deaths);
+        }
     }
 
     public record JournalBounds(String world, int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {

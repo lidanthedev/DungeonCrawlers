@@ -105,6 +105,34 @@ class ConfigLoaderTest {
         assertNotEquals(before, loader.load(directory).snapshot().hash());
     }
 
+    @Test
+    void longRewardPriceAndTemplateVolumeAreAccepted() throws Exception {
+        copyDefaults();
+        Path floor = directory.resolve("floors/floor_1.yml");
+        Files.writeString(floor, Files.readString(floor)
+                .replace("price: 0", "price: 3000000000")
+                .replace("max-template-volume: 16777216", "max-template-volume: 3000000000"));
+
+        ConfigLoadResult result = loader().load(directory);
+
+        assertTrue(result.successful(), result.errors().toString());
+        assertEquals(3_000_000_000L, result.snapshot().floors().get("floor_1").rewards().get("wooden").price());
+        assertEquals(3_000_000_000L, result.snapshot().floors().get("floor_1").limits().maxTemplateVolume());
+    }
+
+    @Test
+    void duplicateFloorNumbersAreRejected() throws Exception {
+        copyDefaults();
+        String duplicate = Files.readString(directory.resolve("floors/floor_1.yml"))
+                .replace("id: floor_1", "id: floor_2");
+        Files.writeString(directory.resolve("floors/floor_2.yml"), duplicate);
+
+        ConfigLoadResult result = loader().load(directory);
+
+        assertFalse(result.successful());
+        assertTrue(result.errors().contains("duplicate floor number 1"), result.errors().toString());
+    }
+
     private void copyDefaults() throws IOException {
         Path resources = Path.of("src/main/resources");
         for (String file : new String[]{"classes.yml", "blessings.yml", "rooms.yml"}) {

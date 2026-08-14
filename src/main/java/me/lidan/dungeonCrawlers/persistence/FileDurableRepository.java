@@ -16,6 +16,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -35,6 +36,7 @@ public final class FileDurableRepository implements DurableRepository {
     private final int normalCapacity;
     private final Semaphore normalPermits;
     private final ThreadPoolExecutor worker;
+    private final ThreadPoolExecutor terminalWorker;
     private final Executor runtimeExecutor;
     private final Clock clock;
     private final FailureInjector failures;
@@ -42,6 +44,7 @@ public final class FileDurableRepository implements DurableRepository {
     private final Set<UUID> terminalInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final AtomicBoolean closed = new AtomicBoolean();
     private final Object submissionLock = new Object();
+    private final Object commitLock = new Object();
 
     public FileDurableRepository(Path root, int normalCapacity, Executor runtimeExecutor) {
         this(root, normalCapacity, runtimeExecutor, Clock.systemUTC(), FailureInjector.none());
@@ -56,8 +59,13 @@ public final class FileDurableRepository implements DurableRepository {
         this.runtimeExecutor = Objects.requireNonNull(runtimeExecutor, "runtimeExecutor");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.failures = Objects.requireNonNull(failures, "failures");
-        this.worker = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(), runnable -> {
-            Thread thread = new Thread(runnable, "dungeoncrawlers-durable-repository");
+        this.worker = newWorker("dungeoncrawlers-durable-repository");
+        this.terminalWorker = newWorker("dungeoncrawlers-terminal-repository");
+    }
+
+    private static ThreadPoolExecutor newWorker(String name) {
+        return new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(), runnable -> {
+            Thread thread = new Thread(runnable, name);
             thread.setDaemon(true);
             return thread;
         });
@@ -66,15 +74,19 @@ public final class FileDurableRepository implements DurableRepository {
     @Override
     public boolean reserveTerminalLane(UUID instanceId) {
         Objects.requireNonNull(instanceId, "instanceId");
-        return !closed.get() && terminalReservations.add(instanceId);
+        synchronized (submissionLock) {
+            return !closed.get() && terminalReservations.add(instanceId);
+        }
     }
 
     @Override
     public void releaseTerminalLane(UUID instanceId) {
-        if (terminalInFlight.contains(instanceId)) {
-            throw new IllegalStateException("terminal write is still in flight");
+        synchronized (submissionLock) {
+            if (terminalInFlight.contains(instanceId)) {
+                throw new IllegalStateException("terminal write is still in flight");
+            }
+            terminalReservations.remove(instanceId);
         }
-        terminalReservations.remove(instanceId);
     }
 
     @Override
@@ -108,12 +120,13 @@ public final class FileDurableRepository implements DurableRepository {
             } else if (!normalPermits.tryAcquire()) {
                 return rejected(receipt, runtimeAck, "repository queue is saturated");
             }
+            RepositoryTask task = new RepositoryTask(write, terminal, receipt, runtimeAck);
             try {
-                worker.execute(() -> executeWrite(write, terminal, receipt, runtimeAck));
+                (terminal ? terminalWorker : worker).execute(task);
                 return new DurableSubmission(true, receipt, runtimeAck, terminal ? "terminal write accepted" : "write accepted");
             } catch (RejectedExecutionException exception) {
-                releaseCapacity(write, terminal);
-                return rejected(receipt, runtimeAck, "repository rejected operation");
+                task.reject(new RejectedExecutionException("repository rejected operation", exception));
+                return new DurableSubmission(false, receipt, runtimeAck, "repository rejected operation");
             }
         }
     }
@@ -145,18 +158,8 @@ public final class FileDurableRepository implements DurableRepository {
         Files.createDirectories(directory);
         byte[] payload = write.payload();
         String checksum = checksum(payload);
-        if (Files.isRegularFile(target)) {
-            StoredRecord existing = decode(Files.readAllBytes(target));
-            if (existing.idempotencyKey().equals(write.idempotencyKey())) {
-                if (existing.recordVersion() == write.recordVersion()
-                        && MessageDigest.isEqual(existing.payload(), payload)) {
-                    return new DurableWriteReceipt(write.operationId(), write.idempotencyKey(), write.recordVersion(),
-                            checksum, target, clock.instant());
-                }
-                throw new IOException("idempotency key conflicts with committed record");
-            }
-            if (write.recordVersion() <= existing.recordVersion()) throw new IOException("stale record version");
-        }
+        DurableWriteReceipt existingReceipt = validateExisting(write, target, payload, checksum);
+        if (existingReceipt != null) return existingReceipt;
         byte[] encoded = encode(write);
         Path temporary = directory.resolve(write.recordId() + "." + write.operationId() + ".tmp");
         try {
@@ -169,17 +172,37 @@ public final class FileDurableRepository implements DurableRepository {
                 channel.force(true);
             }
             failures.before(FailureStage.MOVE, write);
-            try {
-                Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException exception) {
-                throw new IOException("atomic move is not supported for " + target, exception);
+            synchronized (commitLock) {
+                existingReceipt = validateExisting(write, target, payload, checksum);
+                if (existingReceipt != null) return existingReceipt;
+                try {
+                    Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                } catch (AtomicMoveNotSupportedException exception) {
+                    throw new IOException("atomic move is not supported for " + target, exception);
+                }
+                forceDirectory(directory);
+                return new DurableWriteReceipt(write.operationId(), write.idempotencyKey(), write.recordVersion(),
+                        checksum, target, clock.instant());
             }
-            forceDirectory(directory);
-            return new DurableWriteReceipt(write.operationId(), write.idempotencyKey(), write.recordVersion(),
-                    checksum, target, clock.instant());
         } finally {
             Files.deleteIfExists(temporary);
         }
+    }
+
+    private DurableWriteReceipt validateExisting(DurableWrite write, Path target, byte[] payload, String checksum)
+            throws IOException {
+        if (!Files.isRegularFile(target)) return null;
+        StoredRecord existing = decode(Files.readAllBytes(target));
+        if (existing.idempotencyKey().equals(write.idempotencyKey())) {
+            if (existing.recordVersion() == write.recordVersion()
+                    && MessageDigest.isEqual(existing.payload(), payload)) {
+                return new DurableWriteReceipt(write.operationId(), write.idempotencyKey(), write.recordVersion(),
+                        checksum, target, clock.instant());
+            }
+            throw new IOException("idempotency key conflicts with committed record");
+        }
+        if (write.recordVersion() <= existing.recordVersion()) throw new IOException("stale record version");
+        return null;
     }
 
     @Override
@@ -192,22 +215,12 @@ public final class FileDurableRepository implements DurableRepository {
                 result.completeExceptionally(new RejectedExecutionException("repository queue is saturated or closed"));
                 return result;
             }
-            worker.execute(() -> {
-                try {
-                    Path path = root.resolve(validation.namespace()).resolve(validation.recordId() + ".bin").normalize();
-                    requireInsideRoot(path);
-                    if (!Files.isRegularFile(path)) result.complete(Optional.empty());
-                    else {
-                        StoredRecord stored = decode(Files.readAllBytes(path));
-                        result.complete(Optional.of(new DurableRecord(namespace, recordId, stored.payload(),
-                                checksum(stored.payload()), path)));
-                    }
-                } catch (Throwable throwable) {
-                    result.completeExceptionally(throwable);
-                } finally {
-                    normalPermits.release();
-                }
-            });
+            ReadTask task = new ReadTask(validation, namespace, recordId, result);
+            try {
+                worker.execute(task);
+            } catch (RejectedExecutionException exception) {
+                task.reject(exception);
+            }
         }
         return result;
     }
@@ -268,25 +281,116 @@ public final class FileDurableRepository implements DurableRepository {
     }
 
     private void releaseCapacity(DurableWrite write, boolean terminal) {
-        if (terminal) terminalInFlight.remove(write.instanceId());
-        else normalPermits.release();
+        if (terminal) {
+            synchronized (submissionLock) {
+                terminalInFlight.remove(write.instanceId());
+            }
+        } else normalPermits.release();
     }
 
     @Override
     public RepositoryDiagnostics diagnostics() {
         return new RepositoryDiagnostics(normalCapacity, normalCapacity - normalPermits.availablePermits(),
-                worker.getQueue().size(), terminalReservations.size(), terminalInFlight.size(), closed.get());
+                worker.getQueue().size() + terminalWorker.getQueue().size(), terminalReservations.size(),
+                terminalInFlight.size(), closed.get());
     }
 
     @Override
     public void close() {
-        if (!closed.compareAndSet(false, true)) return;
-        worker.shutdown();
+        synchronized (submissionLock) {
+            if (!closed.compareAndSet(false, true)) return;
+            worker.shutdown();
+            terminalWorker.shutdown();
+        }
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        settleStoppedTasks(worker, deadline);
+        settleStoppedTasks(terminalWorker, deadline);
+    }
+
+    private void settleStoppedTasks(ThreadPoolExecutor executor, long deadline) {
+        List<Runnable> stopped = List.of();
         try {
-            if (!worker.awaitTermination(5, TimeUnit.SECONDS)) worker.shutdownNow();
+            long remaining = Math.max(0, deadline - System.nanoTime());
+            if (!executor.awaitTermination(remaining, TimeUnit.NANOSECONDS)) stopped = executor.shutdownNow();
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            worker.shutdownNow();
+            stopped = executor.shutdownNow();
+        }
+        RejectedExecutionException failure = new RejectedExecutionException("repository closed before operation ran");
+        for (Runnable task : stopped) {
+            if (task instanceof RepositoryTask repositoryTask) repositoryTask.reject(failure);
+            else if (task instanceof ReadTask readTask) readTask.reject(failure);
+        }
+    }
+
+    private final class RepositoryTask implements Runnable {
+        private final DurableWrite write;
+        private final boolean terminal;
+        private final CompletableFuture<DurableWriteReceipt> receipt;
+        private final CompletableFuture<DurableWriteReceipt> runtimeAck;
+        private final AtomicBoolean capacityReleased = new AtomicBoolean();
+
+        private RepositoryTask(DurableWrite write, boolean terminal,
+                               CompletableFuture<DurableWriteReceipt> receipt,
+                               CompletableFuture<DurableWriteReceipt> runtimeAck) {
+            this.write = write;
+            this.terminal = terminal;
+            this.receipt = receipt;
+            this.runtimeAck = runtimeAck;
+        }
+
+        @Override
+        public void run() {
+            executeWrite(write, terminal, receipt, runtimeAck);
+        }
+
+        private void reject(Throwable failure) {
+            receipt.completeExceptionally(failure);
+            runtimeAck.completeExceptionally(failure);
+            if (capacityReleased.compareAndSet(false, true)) releaseCapacity(write, terminal);
+        }
+    }
+
+    private final class ReadTask implements Runnable {
+        private final DurableWrite validation;
+        private final String namespace;
+        private final String recordId;
+        private final CompletableFuture<Optional<DurableRecord>> result;
+        private final AtomicBoolean permitReleased = new AtomicBoolean();
+
+        private ReadTask(DurableWrite validation, String namespace, String recordId,
+                         CompletableFuture<Optional<DurableRecord>> result) {
+            this.validation = validation;
+            this.namespace = namespace;
+            this.recordId = recordId;
+            this.result = result;
+        }
+
+        @Override
+        public void run() {
+            try {
+                Path path = root.resolve(validation.namespace()).resolve(validation.recordId() + ".bin").normalize();
+                requireInsideRoot(path);
+                if (!Files.isRegularFile(path)) result.complete(Optional.empty());
+                else {
+                    StoredRecord stored = decode(Files.readAllBytes(path));
+                    result.complete(Optional.of(new DurableRecord(namespace, recordId, stored.payload(),
+                            checksum(stored.payload()), path)));
+                }
+            } catch (Throwable throwable) {
+                result.completeExceptionally(throwable);
+            } finally {
+                releasePermit();
+            }
+        }
+
+        private void reject(Throwable failure) {
+            result.completeExceptionally(failure);
+            releasePermit();
+        }
+
+        private void releasePermit() {
+            if (permitReleased.compareAndSet(false, true)) normalPermits.release();
         }
     }
 

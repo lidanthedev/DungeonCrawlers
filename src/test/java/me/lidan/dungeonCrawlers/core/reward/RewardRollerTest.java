@@ -9,6 +9,8 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RewardRollerTest {
     @Test
@@ -27,8 +29,9 @@ class RewardRollerTest {
         first.forEach(item -> {
             RewardItem source = definition.items().stream().filter(candidate -> candidate.itemId().equals(item.itemId()))
                     .findFirst().orElseThrow();
-            org.junit.jupiter.api.Assertions.assertTrue(item.amount() >= source.minimumAmount());
-            org.junit.jupiter.api.Assertions.assertTrue(item.amount() <= source.maximumAmount());
+            assertTrue(item.amount() >= source.minimumAmount());
+            assertTrue(item.amount() <= source.maximumAmount());
         });
+        assertThrows(UnsupportedOperationException.class, () -> first.add(first.getFirst()));
     }
 }

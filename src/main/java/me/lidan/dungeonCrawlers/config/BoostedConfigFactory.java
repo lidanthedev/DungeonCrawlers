@@ -9,6 +9,7 @@ import me.lidan.cavecrawlers.utils.BoostedCustomConfig;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigDecimal;
 import java.nio.file.Path;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
@@ -71,7 +72,13 @@ public class BoostedConfigFactory {
 
     public static int schemaVersion(Section config) {
         Object value = config.get(VERSION_ROUTE);
-        if (value instanceof Number number) return number.intValue();
+        if (value instanceof Number number) {
+            try {
+                return new BigDecimal(number.toString()).intValueExact();
+            } catch (NumberFormatException | ArithmeticException ignored) {
+                return -1;
+            }
+        }
         if (value instanceof String string) {
             try {
                 return Integer.parseInt(string);

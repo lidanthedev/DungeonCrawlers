@@ -10,6 +10,8 @@ import java.nio.file.StandardCopyOption;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConfigRegistryServiceTest {
@@ -40,7 +42,7 @@ class ConfigRegistryServiceTest {
         Files.writeString(floor, Files.readString(floor).replace("Floor I", "First Floor"));
 
         assertTrue(service.reload(0).swapped());
-        assertFalse(originalHash.equals(service.snapshot().hash()));
+        assertNotEquals(originalHash, service.snapshot().hash());
         try (var backups = Files.list(directory.resolve("backups"))) {
             Path backup = backups.findFirst().orElseThrow();
             assertTrue(Files.readString(backup.resolve("floors/floor_1.yml")).contains("Floor I"));
@@ -68,6 +70,12 @@ class ConfigRegistryServiceTest {
                     "config-\\d{8}-\\d{6}-\\d{3}(?:-\\d+)?")).count());
         }
         assertEquals("legacy", Files.readString(migrationBackup));
+    }
+
+    @Test
+    void rejectsRetentionOutsideSupportedRange() {
+        assertThrows(IllegalArgumentException.class, () -> service(0));
+        assertThrows(IllegalArgumentException.class, () -> service(1_001));
     }
 
     private void copyDefaults() throws IOException {

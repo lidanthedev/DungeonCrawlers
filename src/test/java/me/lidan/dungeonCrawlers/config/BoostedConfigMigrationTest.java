@@ -14,6 +14,8 @@ import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class BoostedConfigMigrationTest {
     @TempDir Path directory;
@@ -53,6 +55,15 @@ class BoostedConfigMigrationTest {
                 () -> assertEquals(2, BoostedConfigFactory.schemaVersion(config), config.dump()),
                 () -> assertEquals(10, config.getInt("backups.retention-count"), config.dump()),
                 () -> assertEquals("custom_world", config.getString("fallback-spawn-world"), config.dump()));
+    }
+
+    @Test
+    void schemaVersionRejectsFractionalAndOutOfRangeNumbers() {
+        var config = mock(me.lidan.cavecrawlers.boostedyaml.block.implementation.Section.class);
+        when(config.get(BoostedConfigFactory.VERSION_ROUTE)).thenReturn(1.5, (long) Integer.MAX_VALUE + 1);
+
+        assertEquals(-1, BoostedConfigFactory.schemaVersion(config));
+        assertEquals(-1, BoostedConfigFactory.schemaVersion(config));
     }
 
     private static UpdaterSettings updater(BasicDefaultVersioning versioning) {

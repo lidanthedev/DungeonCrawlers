@@ -13,11 +13,11 @@ public final class BlessingLevels {
     public synchronized DiscoveryResult discover(BlessingDefinition blessing) {
         Objects.requireNonNull(blessing, "blessing");
         int previous = levels.getOrDefault(blessing.id(), 0);
-        int target = blessing.stacking() == BlessingStacking.REPLACE ? 1
-                : Math.min(blessing.maxLevel(), previous + 1);
+        int effectiveCap = blessing.stacking() == BlessingStacking.REPLACE ? 1 : blessing.maxLevel();
+        int target = Math.min(effectiveCap, previous + 1);
         levels.put(blessing.id(), target);
         return new DiscoveryResult(blessing.id(), previous, target, target != previous,
-                target == blessing.maxLevel());
+                target == effectiveCap);
     }
 
     public synchronized Map<String, Integer> snapshot() {

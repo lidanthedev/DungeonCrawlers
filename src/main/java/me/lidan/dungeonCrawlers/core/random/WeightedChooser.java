@@ -22,7 +22,8 @@ public final class WeightedChooser {
             }
         }
         double selected = random.nextDouble(total);
-        for (Weighted<T> entry : entries) {
+        for (int index = 0; index < entries.size() - 1; index++) {
+            Weighted<T> entry = entries.get(index);
             selected -= entry.weight();
             if (selected < 0) {
                 return entry.value();
