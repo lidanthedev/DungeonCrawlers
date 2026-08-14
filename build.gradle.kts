@@ -32,6 +32,7 @@ dependencies {
     compileOnly(libs.vault.api)
     compileOnly(libs.essentials)
     compileOnly(libs.parties.api)
+    compileOnly(libs.gson)
 
     compileOnly(libs.lamp.common)
     compileOnly(libs.lamp.bukkit)
@@ -45,7 +46,9 @@ dependencies {
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.mockito.core)
     testImplementation(libs.paper.api)
+    testImplementation(libs.cave.crawlers)
     testImplementation(libs.parties.api)
+    testImplementation(libs.gson)
 }
 
 val targetJavaVersion = 21
@@ -102,7 +105,8 @@ val verifyNoExternalPluginShading by tasks.registering {
             "net/milkbowl/vault/",
             "net/ess3/",
             "net/essentialsx/",
-            "com/alessiodp/parties/"
+            "com/alessiodp/parties/",
+            "com/google/gson/"
         )
         zipTree(tasks.shadowJar.get().archiveFile).matching {
             forbiddenPrefixes.forEach { include("$it**") }

@@ -1,0 +1,43 @@
+schema-version: 1
+id: floor_1
+number: 1
+display-name: "<gold>Floor I"
+templates:
+  start: dungeon_start
+  portal: dungeon_portal
+  boss: crypt_guardian_arena
+  boss-offset: [0, 0, 3000]
+generation:
+  rooms: 8
+  minibosses: 1
+  final-miniboss: true
+  max-attempts-per-position: 64
+  collision-padding: 1
+mobs:
+  normal: [CryptZombie, CryptSkeleton, CryptSpider]
+  miniboss: [LostAdventurer, AngryArchaeologist]
+boss:
+  mob: CryptGuardian
+  encounter: basic
+classes:
+  allowed: [berserker, mage, tank, healer, archer]
+blessings:
+  - { id: crypt_strength, weight: 70 }
+  - { id: crypt_vitality, weight: 30 }
+rewards:
+  wooden:
+    enabled: true
+    price: 0
+    min-score: 0
+    rolls: 1
+    unique: false
+    items:
+      - { item: undead_essence, weight: 70, amount: "3-8" }
+      - { item: crypt_fragment, weight: 30 }
+limits:
+  max-party-size: 5
+  max-template-dimension: 512
+  max-template-volume: 16777216
+  max-loaded-chunks-per-instance: 256
+  mob-respawn-retries: 2
+  repository-queue-capacity: 1000

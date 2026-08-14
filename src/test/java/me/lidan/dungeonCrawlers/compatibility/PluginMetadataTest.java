@@ -10,6 +10,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PluginMetadataTest {
     @Test
@@ -21,6 +22,10 @@ class PluginMetadataTest {
         assertEquals(List.of("CaveCrawlers", "FastAsyncWorldEdit", "MythicMobs", "Vault", "ProtocolLib"),
                 yaml.getStringList("depend"));
         assertEquals(List.of("Parties", "Essentials"), yaml.getStringList("softdepend"));
+        assertTrue(yaml.isConfigurationSection("permissions.dungeoncrawlers.admin.config"));
+        assertTrue(yaml.isConfigurationSection("permissions.dungeoncrawlers.admin.reload"));
+        assertTrue(yaml.isConfigurationSection("permissions.dungeoncrawlers.admin.simulate"));
+        assertTrue(yaml.isConfigurationSection("permissions.dungeoncrawlers.admin.diagnostics"));
         assertEquals("1.21", yaml.getString("api-version"));
         assertFalse(yaml.getStringList("libraries").stream().anyMatch(value -> value.contains("CaveCrawlers")));
     }

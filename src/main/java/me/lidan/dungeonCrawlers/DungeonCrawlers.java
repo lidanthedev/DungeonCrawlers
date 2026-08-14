@@ -3,6 +3,13 @@ package me.lidan.dungeonCrawlers;
 import dev.triumphteam.gui.guis.BaseGui;
 import me.lidan.dungeonCrawlers.commands.DungeonCrawlersCommand;
 import me.lidan.dungeonCrawlers.compatibility.CompatibilityService;
+import me.lidan.dungeonCrawlers.config.registry.ConfigRegistryService;
+import me.lidan.dungeonCrawlers.config.registry.EncounterRegistry;
+import me.lidan.dungeonCrawlers.config.BoostedConfigFactory;
+import me.lidan.cavecrawlers.utils.BoostedCustomConfig;
+import me.lidan.dungeonCrawlers.core.reservation.PlayerReservationService;
+import me.lidan.dungeonCrawlers.persistence.DurableRepository;
+import me.lidan.dungeonCrawlers.persistence.FileDurableRepository;
 import org.bukkit.Bukkit;
 import org.bukkit.event.Listener;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -14,9 +21,14 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigDecimal;
 
 public final class DungeonCrawlers extends JavaPlugin {
     private Lamp.Builder<BukkitCommandActor> commandHandlerBuilder;
+    private ConfigRegistryService configRegistry;
+    private PlayerReservationService reservations;
+    private DurableRepository durableRepository;
+    private BoostedCustomConfig mainConfig;
 
     @Override
     public void onEnable() {
@@ -25,12 +37,56 @@ public final class DungeonCrawlers extends JavaPlugin {
         registerSerializer();
 
         saveDefaultResources();
+        initializePhaseOneServices();
         registerCommandResolvers();
         registerCommandCompletions();
         registerCommands();
         registerEvents();
 
         startTasks();
+    }
+
+    private void initializePhaseOneServices() {
+        try {
+            mainConfig = new BoostedConfigFactory().openMainConfig(
+                    new File(getDataFolder(), "config.yml").toPath(),
+                    getDataFolder().toPath().resolve("backups/config-migrations"));
+        } catch (IOException exception) {
+            throw new IllegalStateException("Cannot load config.yml", exception);
+        }
+        if (!mainConfig.contains(BoostedConfigFactory.VERSION_ROUTE, true)
+                || BoostedConfigFactory.schemaVersion(mainConfig) != BoostedConfigFactory.CURRENT_SCHEMA_VERSION) {
+            throw new IllegalStateException("config.yml schema-version must be "
+                    + BoostedConfigFactory.CURRENT_SCHEMA_VERSION);
+        }
+        EncounterRegistry encounters = new EncounterRegistry();
+        int backupRetention = configuredBackupRetention();
+        configRegistry = new ConfigRegistryService(getDataFolder().toPath(), encounters, backupRetention);
+        ConfigRegistryService.ReloadResult loaded = configRegistry.initialize();
+        if (!loaded.swapped()) {
+            throw new IllegalStateException("Invalid DungeonCrawlers configuration: " + loaded.errors());
+        }
+        loaded.warnings().forEach(getLogger()::warning);
+        reservations = new PlayerReservationService();
+        int queueCapacity = loaded.snapshot().floors().values().stream()
+                .mapToInt(floor -> floor.limits().repositoryQueueCapacity()).max().orElse(1_000);
+        durableRepository = new FileDurableRepository(getDataFolder().toPath().resolve("runtime"), queueCapacity,
+                callback -> getServer().getScheduler().runTask(this, callback));
+        getLogger().info("Loaded Phase 1 config hash " + loaded.snapshot().hash());
+    }
+
+    private int configuredBackupRetention() {
+        String route = "backups.retention-count";
+        if (!mainConfig.contains(route, true)) return ConfigRegistryService.DEFAULT_BACKUP_RETENTION;
+        Object value = mainConfig.get(route);
+        try {
+            int retention = value instanceof Number number
+                    ? new BigDecimal(number.toString()).intValueExact() : -1;
+            if (retention < 1 || retention > 1_000) throw new ArithmeticException();
+            return retention;
+        } catch (NumberFormatException | ArithmeticException exception) {
+            throw new IllegalStateException("config.yml backups.retention-count must be an integer in 1..1000");
+        }
     }
 
     private void registerSerializer() {
@@ -40,7 +96,9 @@ public final class DungeonCrawlers extends JavaPlugin {
     private void saveDefaultResources() {
         saveResource("classes.yml", false);
         saveResource("blessings.yml", false);
-        saveDefaultConfig();
+        saveResource("rooms.yml", false);
+        saveResource("floors/floor_1.yml", false);
+        saveResource("config.yml", false);
     }
 
     private void registerCommandResolvers() {
@@ -54,7 +112,9 @@ public final class DungeonCrawlers extends JavaPlugin {
     private void registerCommands() {
         // Register commands
         Lamp<BukkitCommandActor> commandHandler = commandHandlerBuilder.build();
-        commandHandler.register(new DungeonCrawlersCommand(this, new CompatibilityService(this)));
+        commandHandler.register(new DungeonCrawlersCommand(this,
+                new CompatibilityService(this, mainConfig, configRegistry), mainConfig, configRegistry,
+                reservations, durableRepository));
     }
 
     private void registerEvents() {
@@ -69,6 +129,7 @@ public final class DungeonCrawlers extends JavaPlugin {
     public void onDisable() {
         // Plugin shutdown logic
         getServer().getScheduler().cancelTasks(this);
+        if (durableRepository != null) durableRepository.close();
         closeAllGuis();
     }
 
