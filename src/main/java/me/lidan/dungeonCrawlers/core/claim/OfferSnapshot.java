@@ -31,6 +31,9 @@ public record OfferSnapshot(UUID offerId, OfferMode mode, OfferState state, Offe
         if ((sessionStartedAt == null) != (sessionExpiresAt == null)) {
             throw new IllegalArgumentException("session timestamps must be set together");
         }
+        if (sessionStartedAt != null && !sessionExpiresAt.isAfter(sessionStartedAt)) {
+            throw new IllegalArgumentException("session expiry must be after session start");
+        }
         if (state == OfferState.OWNED_DELIVERY_QUARANTINED
                 && quarantinePrior != OfferState.OWNED && quarantinePrior != OfferState.DELIVERY_PENDING) {
             throw new IllegalArgumentException("delivery quarantine requires an owned prior state");

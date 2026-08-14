@@ -30,6 +30,17 @@ class OfferStateMachineTest {
     }
 
     @Test
+    void sessionExpiryMustBeStrictlyAfterSessionStart() {
+        Instant started = COMPLETED.plusSeconds(10);
+        for (Instant expires : List.of(started, started.minusSeconds(1))) {
+            assertThrows(IllegalArgumentException.class, () -> new OfferSnapshot(UUID.randomUUID(),
+                    OfferMode.RECOVERED, OfferState.AVAILABLE, null, COMPLETED, COMPLETED,
+                    COMPLETED.plus(Duration.ofMinutes(5)), started, expires, COMPLETED, null,
+                    "VaultProvider", UUID.randomUUID(), 100, List.of()));
+        }
+    }
+
+    @Test
     void deadlinesAreExclusiveAndClockNeverMovesBackward() {
         OfferSnapshot available = offer(OfferState.AVAILABLE);
         assertTrue(available.isOpen(COMPLETED.plus(Duration.ofMinutes(5)).minusMillis(1)));

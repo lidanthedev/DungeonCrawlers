@@ -78,6 +78,13 @@ class ConfigRegistryServiceTest {
         assertThrows(IllegalArgumentException.class, () -> service(1_001));
     }
 
+    @Test
+    void reloadRejectsInvalidCountAndUninitializedRegistry() {
+        ConfigRegistryService service = service();
+        assertThrows(IllegalArgumentException.class, () -> service.reload(-1));
+        assertThrows(IllegalStateException.class, () -> service.reload(0));
+    }
+
     private void copyDefaults() throws IOException {
         Path resources = Path.of("src/main/resources");
         for (String file : new String[]{"classes.yml", "blessings.yml", "rooms.yml"}) {

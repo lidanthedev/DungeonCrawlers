@@ -56,8 +56,11 @@ public final class ConfigRegistryService {
     }
 
     public ReloadResult reload(int activeReservations) {
+        if (activeReservations < 0) throw new IllegalArgumentException("active reservations must not be negative");
+        ConfigSnapshot snapshot = current.get();
+        if (snapshot == null) throw new IllegalStateException("configuration is not initialized");
         if (activeReservations > 0) {
-            return new ReloadResult(false, current.get(),
+            return new ReloadResult(false, snapshot,
                     List.of("reload refused while " + activeReservations + " reservation(s) are active"), List.of());
         }
         return loadAndSwap(true);

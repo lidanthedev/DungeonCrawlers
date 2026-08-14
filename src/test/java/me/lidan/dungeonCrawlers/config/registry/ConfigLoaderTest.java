@@ -133,6 +133,38 @@ class ConfigLoaderTest {
         assertTrue(result.errors().contains("duplicate floor number 1"), result.errors().toString());
     }
 
+    @Test
+    void schemaAndBoundedIntegersRequireExactIntValues() throws Exception {
+        copyDefaults();
+        Path classes = directory.resolve("classes.yml");
+        Files.writeString(classes, Files.readString(classes).replace("schema-version: 1", "schema-version: 1.5"));
+        Path rooms = directory.resolve("rooms.yml");
+        Files.writeString(rooms, Files.readString(rooms).replace("schema-version: 1", "schema-version: 4294967297"));
+        ConfigLoadResult invalidSchema = loader().load(directory);
+        assertTrue(invalidSchema.errors().stream().anyMatch(error -> error.contains("classes.yml:schema-version must be 1")));
+        assertTrue(invalidSchema.errors().stream().anyMatch(error -> error.contains("rooms.yml:schema-version must be 1")));
+
+        copyDefaults();
+        Path floor = directory.resolve("floors/floor_1.yml");
+        Files.writeString(floor, Files.readString(floor).replace("number: 1", "number: 18446744073709551617"));
+        ConfigLoadResult invalidNumber = loader().load(directory);
+        assertTrue(invalidNumber.errors().stream().anyMatch(error -> error.contains("number must be an integer")));
+    }
+
+    @Test
+    void overflowingAmountRangeReturnsValidationError() throws Exception {
+        copyDefaults();
+        Path floor = directory.resolve("floors/floor_1.yml");
+        Files.writeString(floor, Files.readString(floor).replace("amount: \"3-8\"",
+                "amount: \"99999999999999999999-999999999999999999999\""));
+
+        ConfigLoadResult result = loader().load(directory);
+
+        assertFalse(result.successful());
+        assertTrue(result.errors().stream().anyMatch(error -> error.contains("amount must be a positive integer")),
+                result.errors().toString());
+    }
+
     private void copyDefaults() throws IOException {
         Path resources = Path.of("src/main/resources");
         for (String file : new String[]{"classes.yml", "blessings.yml", "rooms.yml"}) {

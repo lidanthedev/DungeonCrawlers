@@ -278,7 +278,8 @@ public final class ConfigLoader {
         }
 
         void schema(Map<String, Object> root, Path file) {
-            if (!(root.get("schema-version") instanceof Number number) || number.intValue() != 1) {
+            Integer version = exactInteger(root.get("schema-version"));
+            if (version == null || version != 1) {
                 error(file.getFileName() + ":schema-version must be 1");
             }
         }
@@ -323,11 +324,20 @@ public final class ConfigLoader {
         }
 
         int integer(Object value, String path, int minimum, int maximum) {
-            if (!(value instanceof Number number) || number.doubleValue() != Math.rint(number.doubleValue())
-                    || number.longValue() < minimum || number.longValue() > maximum) {
+            Integer parsed = exactInteger(value);
+            if (parsed == null || parsed < minimum || parsed > maximum) {
                 error(path + " must be an integer in " + minimum + ".." + maximum); return minimum - 1;
             }
-            return number.intValue();
+            return parsed;
+        }
+
+        Integer exactInteger(Object value) {
+            if (!(value instanceof Number number)) return null;
+            try {
+                return new BigDecimal(number.toString()).intValueExact();
+            } catch (NumberFormatException | ArithmeticException exception) {
+                return null;
+            }
         }
 
         int optionalInteger(Object value, String path, int fallback, int minimum, int maximum) {
@@ -467,8 +477,12 @@ public final class ConfigLoader {
             }
             if (value instanceof String text && text.matches("[1-9][0-9]*-[1-9][0-9]*")) {
                 String[] parts = text.split("-", 2);
-                int minimum = Integer.parseInt(parts[0]); int maximum = Integer.parseInt(parts[1]);
-                if (minimum <= maximum) return new int[]{minimum, maximum};
+                try {
+                    int minimum = Integer.parseInt(parts[0]); int maximum = Integer.parseInt(parts[1]);
+                    if (minimum <= maximum) return new int[]{minimum, maximum};
+                } catch (NumberFormatException ignored) {
+                    // Fall through to the normal validation error.
+                }
             }
             error(path + " must be a positive integer or min-max range"); return new int[]{1, 1};
         }

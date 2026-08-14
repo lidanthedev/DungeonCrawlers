@@ -229,10 +229,14 @@ public final class FileDurableRepository implements DurableRepository {
         if (!path.startsWith(root)) throw new IllegalArgumentException("durable path leaves repository root");
     }
 
-    private static void forceDirectory(Path directory) {
+    private static void forceDirectory(Path directory) throws IOException {
+        if ("\\".equals(directory.getFileSystem().getSeparator())) {
+            // The Windows provider rejects directory channels instead of exposing directory fsync.
+            return;
+        }
         try (FileChannel channel = FileChannel.open(directory, StandardOpenOption.READ)) {
             channel.force(true);
-        } catch (IOException | UnsupportedOperationException ignored) {
+        } catch (UnsupportedOperationException ignored) {
             // Directory fsync is not supported by every filesystem/JVM combination.
         }
     }
