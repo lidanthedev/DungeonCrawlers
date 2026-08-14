@@ -20,7 +20,7 @@ import java.util.Map;
 import java.util.HashMap;
 
 public class BoostedConfigFactory {
-    public static final int CURRENT_SCHEMA_VERSION = 2;
+    public static final int CURRENT_SCHEMA_VERSION = 3;
     public static final String VERSION_ROUTE = "schema-version";
     private static final int PACK_SCHEMA_VERSION = 1;
 
@@ -40,6 +40,10 @@ public class BoostedConfigFactory {
 
     public BoostedCustomConfig open(File file) throws IOException {
         return open(file.toPath());
+    }
+
+    public synchronized void release(Path path) {
+        documents.remove(path.toAbsolutePath().normalize());
     }
 
     public BoostedCustomConfig openMainConfig(Path path, Path backupDirectory) throws IOException {

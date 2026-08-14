@@ -1,4 +1,4 @@
-schema-version: 2
+schema-version: 3
 
 # Leave blank to use the first loaded world's spawn when Essentials spawn is unavailable.
 fallback-spawn-world: ""
@@ -10,3 +10,7 @@ backups:
 # UUID of a disposable, funded account used only by the explicit economy probe.
 compatibility:
   economy-test-account-uuid: ""
+
+# Whether Emerald player-spawn markers are replaced with air or retained in authored templates.
+authoring:
+  emerald-marker-policy: replace

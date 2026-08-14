@@ -2,6 +2,8 @@ package me.lidan.dungeonCrawlers;
 
 import dev.triumphteam.gui.guis.BaseGui;
 import me.lidan.dungeonCrawlers.commands.DungeonCrawlersCommand;
+import me.lidan.dungeonCrawlers.commands.DungeonAuthoringCommand;
+import me.lidan.dungeonCrawlers.authoring.TemplateAuthoringService;
 import me.lidan.dungeonCrawlers.compatibility.CompatibilityService;
 import me.lidan.dungeonCrawlers.config.registry.ConfigRegistryService;
 import me.lidan.dungeonCrawlers.config.registry.EncounterRegistry;
@@ -29,6 +31,8 @@ public final class DungeonCrawlers extends JavaPlugin {
     private PlayerReservationService reservations;
     private DurableRepository durableRepository;
     private BoostedCustomConfig mainConfig;
+    private BoostedConfigFactory configFactory;
+    private TemplateAuthoringService authoring;
 
     @Override
     public void onEnable() {
@@ -48,7 +52,8 @@ public final class DungeonCrawlers extends JavaPlugin {
 
     private void initializePhaseOneServices() {
         try {
-            mainConfig = new BoostedConfigFactory().openMainConfig(
+            configFactory = new BoostedConfigFactory();
+            mainConfig = configFactory.openMainConfig(
                     new File(getDataFolder(), "config.yml").toPath(),
                     getDataFolder().toPath().resolve("backups/config-migrations"));
         } catch (IOException exception) {
@@ -68,11 +73,13 @@ public final class DungeonCrawlers extends JavaPlugin {
         }
         loaded.warnings().forEach(getLogger()::warning);
         reservations = new PlayerReservationService();
+        authoring = new TemplateAuthoringService(getDataFolder().toPath(), configFactory,
+                configRegistry::snapshot, backupRetention);
         int queueCapacity = loaded.snapshot().floors().values().stream()
                 .mapToInt(floor -> floor.limits().repositoryQueueCapacity()).max().orElse(1_000);
         durableRepository = new FileDurableRepository(getDataFolder().toPath().resolve("runtime"), queueCapacity,
                 callback -> getServer().getScheduler().runTask(this, callback));
-        getLogger().info("Loaded Phase 1 config hash " + loaded.snapshot().hash());
+        getLogger().info("Loaded Phase 2 config hash " + loaded.snapshot().hash());
     }
 
     private int configuredBackupRetention() {
@@ -115,6 +122,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         commandHandler.register(new DungeonCrawlersCommand(this,
                 new CompatibilityService(this, mainConfig, configRegistry), mainConfig, configRegistry,
                 reservations, durableRepository));
+        commandHandler.register(new DungeonAuthoringCommand(mainConfig, configRegistry, reservations, authoring));
     }
 
     private void registerEvents() {

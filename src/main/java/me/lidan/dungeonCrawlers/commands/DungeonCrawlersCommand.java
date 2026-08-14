@@ -351,4 +351,5 @@ public final class DungeonCrawlersCommand {
             throw new IllegalStateException("SHA-256 unavailable", exception);
         }
     }
+
 }
