@@ -6,13 +6,14 @@ import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.PluginManager;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-class ReflectivePartiesAdapterTest {
+class PartyProvidersTest {
     @Test
     void absentPluginIsPositiveSolo() {
         Server server = mock(Server.class);
@@ -21,10 +22,10 @@ class ReflectivePartiesAdapterTest {
         when(plugins.getPlugin("Parties")).thenReturn(null);
         UUID player = UUID.randomUUID();
 
-        PartyProvider.PartyLookup result = new ReflectivePartiesAdapter(server).lookup(player);
+        PartyProvider.PartyLookup result = PartyProviders.forServer(server).lookup(player);
 
         assertEquals(PartyProvider.Status.SOLO, result.status());
-        assertEquals(java.util.List.of(player), result.onlineMembers());
+        assertEquals(List.of(player), result.onlineMembers());
     }
 
     @Test
@@ -36,7 +37,7 @@ class ReflectivePartiesAdapterTest {
         when(plugins.getPlugin("Parties")).thenReturn(parties);
         when(parties.isEnabled()).thenReturn(false);
 
-        PartyProvider.PartyLookup result = new ReflectivePartiesAdapter(server).lookup(UUID.randomUUID());
+        PartyProvider.PartyLookup result = PartyProviders.forServer(server).lookup(UUID.randomUUID());
 
         assertEquals(PartyProvider.Status.ERROR, result.status());
     }

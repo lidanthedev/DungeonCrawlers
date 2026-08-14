@@ -13,7 +13,7 @@ import me.lidan.dungeonCrawlers.integration.WorldEditGateway;
 import me.lidan.dungeonCrawlers.integration.cave.CaveActionBarAdapter;
 import me.lidan.dungeonCrawlers.integration.cave.CaveItemsAdapter;
 import me.lidan.dungeonCrawlers.integration.mythic.MythicMobsAdapter;
-import me.lidan.dungeonCrawlers.integration.parties.ReflectivePartiesAdapter;
+import me.lidan.dungeonCrawlers.integration.parties.PartyProviders;
 import me.lidan.dungeonCrawlers.integration.spawn.BukkitSpawnProvider;
 import me.lidan.dungeonCrawlers.integration.vault.VaultEconomyAdapter;
 import me.lidan.dungeonCrawlers.integration.worldedit.WorldEditAdapter;
@@ -49,7 +49,7 @@ public final class DungeonCrawlersCommand {
     public DungeonCrawlersCommand(JavaPlugin plugin, CompatibilityService compatibility) {
         this.plugin = plugin;
         this.compatibility = compatibility;
-        this.parties = new ReflectivePartiesAdapter(plugin.getServer());
+        this.parties = PartyProviders.forServer(plugin.getServer());
     }
 
     @Subcommand("compatibility")

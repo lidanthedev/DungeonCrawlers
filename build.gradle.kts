@@ -31,6 +31,7 @@ dependencies {
     compileOnly(libs.mythic.mobs)
     compileOnly(libs.vault.api)
     compileOnly(libs.essentials)
+    compileOnly(libs.parties.api)
 
     compileOnly(libs.lamp.common)
     compileOnly(libs.lamp.bukkit)
@@ -44,6 +45,7 @@ dependencies {
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.mockito.core)
     testImplementation(libs.paper.api)
+    testImplementation(libs.parties.api)
 }
 
 val targetJavaVersion = 21
@@ -99,7 +101,8 @@ val verifyNoExternalPluginShading by tasks.registering {
             "com/sk89q/worldedit/",
             "net/milkbowl/vault/",
             "net/ess3/",
-            "net/essentialsx/"
+            "net/essentialsx/",
+            "com/alessiodp/parties/"
         )
         zipTree(tasks.shadowJar.get().archiveFile).matching {
             forbiddenPrefixes.forEach { include("$it**") }
