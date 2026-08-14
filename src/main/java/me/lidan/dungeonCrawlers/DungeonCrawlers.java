@@ -2,6 +2,7 @@ package me.lidan.dungeonCrawlers;
 
 import dev.triumphteam.gui.guis.BaseGui;
 import me.lidan.dungeonCrawlers.commands.DungeonCrawlersCommand;
+import me.lidan.dungeonCrawlers.compatibility.CompatibilityService;
 import org.bukkit.Bukkit;
 import org.bukkit.event.Listener;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -37,7 +38,9 @@ public final class DungeonCrawlers extends JavaPlugin {
     }
 
     private void saveDefaultResources() {
-        // Save default resource files if needed
+        saveResource("classes.yml", false);
+        saveResource("blessings.yml", false);
+        saveDefaultConfig();
     }
 
     private void registerCommandResolvers() {
@@ -51,7 +54,7 @@ public final class DungeonCrawlers extends JavaPlugin {
     private void registerCommands() {
         // Register commands
         Lamp<BukkitCommandActor> commandHandler = commandHandlerBuilder.build();
-        commandHandler.register(new DungeonCrawlersCommand());
+        commandHandler.register(new DungeonCrawlersCommand(this, new CompatibilityService(this)));
     }
 
     private void registerEvents() {

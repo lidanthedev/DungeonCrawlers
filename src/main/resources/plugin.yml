@@ -1,9 +1,17 @@
 name: DungeonCrawlers
-version: '1.0'
+version: '${version}'
 main: me.lidan.dungeonCrawlers.DungeonCrawlers
-api-version: '1.20'
+api-version: '1.21'
 authors: [ LidanTheDev ]
+description: Dungeon gameplay addon for CaveCrawlers
+depend: [CaveCrawlers, FastAsyncWorldEdit, MythicMobs, Vault, ProtocolLib]
+softdepend: [Parties, Essentials]
 libraries:
-  - io.github.revxrsal:lamp.common:4.0.0-rc.16
-  - io.github.revxrsal:lamp.brigadier:4.0.0-rc.16
-  - io.github.revxrsal:lamp.bukkit:4.0.0-rc.16
+  - io.github.revxrsal:lamp.common:4.0.0-rc.17
+  - io.github.revxrsal:lamp.brigadier:4.0.0-rc.17
+  - io.github.revxrsal:lamp.bukkit:4.0.0-rc.17
+permissions:
+  dungeoncrawlers.use:
+    default: true
+  dungeoncrawlers.admin.compatibility:
+    default: op
