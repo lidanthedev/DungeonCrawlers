@@ -53,7 +53,14 @@ public final class CompletedRunRecordCodec {
         }
         JsonElement encodedRecord = envelope.get("record");
         if (encodedRecord == null) throw new JsonParseException("completed run record is missing");
-        CompletedRunRecord record = gson.fromJson(encodedRecord, CompletedRunRecord.class);
+        CompletedRunRecord record;
+        try {
+            record = gson.fromJson(encodedRecord, CompletedRunRecord.class);
+        } catch (JsonParseException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw new JsonParseException("invalid completed run record", exception);
+        }
         if (record == null) throw new JsonParseException("completed run record is null");
         return record;
     }

@@ -52,6 +52,12 @@ public final class PlayerReservationService {
         return Math.toIntExact(players.values().stream().map(PlayerIndexEntry::instanceId).distinct().count());
     }
 
+    /**
+     * Runs {@code operation} while this service's instance monitor is held. All other synchronized operations,
+     * including reserve, promote, release, lookup, and snapshot, block until the callback returns. Callbacks must
+     * not wait for threads that invoke this service and should avoid unbounded or long-running work; any bounded
+     * reload validation performed here directly extends the reservation-admission pause.
+     */
     public synchronized <T> T withAdmissionPaused(IntFunction<T> operation) {
         Objects.requireNonNull(operation, "operation");
         return operation.apply(activeReservationCount());

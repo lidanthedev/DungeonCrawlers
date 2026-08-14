@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -66,8 +67,19 @@ class ConfigRegistryServiceTest {
         }
 
         try (var backups = Files.list(directory.resolve("backups"))) {
-            assertEquals(2, backups.filter(path -> path.getFileName().toString().matches(
-                    "config-\\d{8}-\\d{6}-\\d{3}(?:-\\d+)?")).count());
+            var retained = backups.filter(path -> path.getFileName().toString().matches(
+                    "config-\\d{8}-\\d{6}-\\d{3}(?:-\\d+)?")).toList();
+            assertEquals(2, retained.size());
+            List<String> contents = retained.stream().map(path -> {
+                try {
+                    return Files.readString(path.resolve("floors/floor_1.yml"));
+                } catch (IOException exception) {
+                    throw new java.io.UncheckedIOException(exception);
+                }
+            }).toList();
+            assertTrue(contents.stream().anyMatch(content -> content.contains("Floor 1")));
+            assertTrue(contents.stream().anyMatch(content -> content.contains("Floor 2")));
+            assertFalse(contents.stream().anyMatch(content -> content.contains("Floor I")));
         }
         assertEquals("legacy", Files.readString(migrationBackup));
     }

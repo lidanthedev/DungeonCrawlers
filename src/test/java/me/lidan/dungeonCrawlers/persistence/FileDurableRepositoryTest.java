@@ -6,6 +6,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.UUID;
@@ -16,6 +17,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -101,7 +103,8 @@ class FileDurableRepositoryTest {
                 release.await();
             }
         };
-        FileDurableRepository repository = new FileDurableRepository(directory, 2, Runnable::run, clock, blocker);
+        FileDurableRepository repository = new FileDurableRepository(directory, 2, Runnable::run, clock, blocker,
+                FileDurableRepository.DirectorySyncPolicy.BEST_EFFORT, Duration.ofMillis(50));
         try {
             DurableSubmission first = repository.submit(write(UUID.randomUUID(), "first", 1));
             assertTrue(entered.await(5, TimeUnit.SECONDS));
@@ -119,6 +122,15 @@ class FileDurableRepositoryTest {
             release.countDown();
             repository.close();
         }
+    }
+
+    @Test
+    void directorySyncPolicyControlsProviderFailures() {
+        Path missing = directory.resolve("missing-directory");
+        assertThrows(java.io.IOException.class, () -> FileDurableRepository.forceDirectory(missing,
+                FileDurableRepository.DirectorySyncPolicy.REQUIRED));
+        assertDoesNotThrow(() -> FileDurableRepository.forceDirectory(missing,
+                FileDurableRepository.DirectorySyncPolicy.BEST_EFFORT));
     }
 
     @Test

@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BlessingLevelsTest {
@@ -18,6 +19,7 @@ class BlessingLevelsTest {
 
         BlessingLevels.DiscoveryResult result = new BlessingLevels().discover(blessing);
 
+        assertEquals(1, result.currentLevel());
         assertTrue(result.atCap());
     }
 }

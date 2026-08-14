@@ -15,6 +15,7 @@ import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
@@ -32,6 +33,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class FileDurableRepository implements DurableRepository {
     private static final int FILE_MAGIC = 0x44435231;
+    private static final Duration DEFAULT_SHUTDOWN_GRACE = Duration.ofSeconds(5);
     private final Path root;
     private final int normalCapacity;
     private final Semaphore normalPermits;
@@ -40,6 +42,8 @@ public final class FileDurableRepository implements DurableRepository {
     private final Executor runtimeExecutor;
     private final Clock clock;
     private final FailureInjector failures;
+    private final DirectorySyncPolicy directorySyncPolicy;
+    private final long shutdownGraceNanos;
     private final Set<UUID> terminalReservations = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final Set<UUID> terminalInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final AtomicBoolean closed = new AtomicBoolean();
@@ -52,6 +56,13 @@ public final class FileDurableRepository implements DurableRepository {
 
     FileDurableRepository(Path root, int normalCapacity, Executor runtimeExecutor, Clock clock,
                           FailureInjector failures) {
+        this(root, normalCapacity, runtimeExecutor, clock, failures, defaultDirectorySyncPolicy(root),
+                DEFAULT_SHUTDOWN_GRACE);
+    }
+
+    FileDurableRepository(Path root, int normalCapacity, Executor runtimeExecutor, Clock clock,
+                          FailureInjector failures, DirectorySyncPolicy directorySyncPolicy,
+                          Duration shutdownGrace) {
         this.root = Objects.requireNonNull(root, "root").toAbsolutePath().normalize();
         if (normalCapacity < 1) throw new IllegalArgumentException("normal capacity must be positive");
         this.normalCapacity = normalCapacity;
@@ -59,8 +70,18 @@ public final class FileDurableRepository implements DurableRepository {
         this.runtimeExecutor = Objects.requireNonNull(runtimeExecutor, "runtimeExecutor");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.failures = Objects.requireNonNull(failures, "failures");
+        this.directorySyncPolicy = Objects.requireNonNull(directorySyncPolicy, "directorySyncPolicy");
+        this.shutdownGraceNanos = Objects.requireNonNull(shutdownGrace, "shutdownGrace").toNanos();
+        if (shutdownGraceNanos <= 0) throw new IllegalArgumentException("shutdown grace must be positive");
         this.worker = newWorker("dungeoncrawlers-durable-repository");
         this.terminalWorker = newWorker("dungeoncrawlers-terminal-repository");
+    }
+
+    private static DirectorySyncPolicy defaultDirectorySyncPolicy(Path root) {
+        // The Linux deployment filesystem must confirm the parent-directory update.
+        // Java's Windows provider cannot open directory channels, so it is best-effort there.
+        return "\\".equals(Objects.requireNonNull(root, "root").getFileSystem().getSeparator())
+                ? DirectorySyncPolicy.BEST_EFFORT : DirectorySyncPolicy.REQUIRED;
     }
 
     private static ThreadPoolExecutor newWorker(String name) {
@@ -180,7 +201,7 @@ public final class FileDurableRepository implements DurableRepository {
                 } catch (AtomicMoveNotSupportedException exception) {
                     throw new IOException("atomic move is not supported for " + target, exception);
                 }
-                forceDirectory(directory);
+                forceDirectory(directory, directorySyncPolicy);
                 return new DurableWriteReceipt(write.operationId(), write.idempotencyKey(), write.recordVersion(),
                         checksum, target, clock.instant());
             }
@@ -229,15 +250,15 @@ public final class FileDurableRepository implements DurableRepository {
         if (!path.startsWith(root)) throw new IllegalArgumentException("durable path leaves repository root");
     }
 
-    private static void forceDirectory(Path directory) throws IOException {
-        if ("\\".equals(directory.getFileSystem().getSeparator())) {
-            // The Windows provider rejects directory channels instead of exposing directory fsync.
-            return;
-        }
+    static void forceDirectory(Path directory, DirectorySyncPolicy policy) throws IOException {
+        Objects.requireNonNull(policy, "policy");
         try (FileChannel channel = FileChannel.open(directory, StandardOpenOption.READ)) {
             channel.force(true);
-        } catch (UnsupportedOperationException ignored) {
-            // Directory fsync is not supported by every filesystem/JVM combination.
+        } catch (IOException | UnsupportedOperationException exception) {
+            if (policy == DirectorySyncPolicy.REQUIRED) {
+                if (exception instanceof IOException ioException) throw ioException;
+                throw new IOException("directory synchronization is unsupported for " + directory, exception);
+            }
         }
     }
 
@@ -306,9 +327,8 @@ public final class FileDurableRepository implements DurableRepository {
             worker.shutdown();
             terminalWorker.shutdown();
         }
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        settleStoppedTasks(worker, deadline);
-        settleStoppedTasks(terminalWorker, deadline);
+        settleStoppedTasks(terminalWorker, System.nanoTime() + shutdownGraceNanos);
+        settleStoppedTasks(worker, System.nanoTime() + shutdownGraceNanos);
     }
 
     private void settleStoppedTasks(ThreadPoolExecutor executor, long deadline) {
@@ -399,6 +419,8 @@ public final class FileDurableRepository implements DurableRepository {
     }
 
     enum FailureStage { SUBMIT, WRITE, FORCE, MOVE, ACK }
+
+    enum DirectorySyncPolicy { REQUIRED, BEST_EFFORT }
 
     @FunctionalInterface
     interface FailureInjector {

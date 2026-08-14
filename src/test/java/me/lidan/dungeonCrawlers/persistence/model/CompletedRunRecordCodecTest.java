@@ -62,6 +62,8 @@ class CompletedRunRecordCodecTest {
         assertThrows(JsonParseException.class, () -> codec.decode("{}".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
         assertThrows(JsonParseException.class, () -> codec.decode(
                 "{\"schema-version\":2,\"record\":{}}".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        assertThrows(JsonParseException.class, () -> codec.decode(
+                "{\"schema-version\":1,\"record\":{}}".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
     }
 
     @Test

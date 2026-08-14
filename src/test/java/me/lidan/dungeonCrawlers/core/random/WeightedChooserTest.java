@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.SplittableRandom;
+import java.util.random.RandomGenerator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -33,8 +34,19 @@ class WeightedChooserTest {
     void lastEntryIsResidueFallbackAndSingleEntryIsStable() {
         assertEquals("only", WeightedChooser.choose(
                 List.of(new WeightedChooser.Weighted<>("only", 1)), new SplittableRandom(1)));
+        RandomGenerator residue = new RandomGenerator() {
+            @Override
+            public long nextLong() {
+                return 0;
+            }
+
+            @Override
+            public double nextDouble(double bound) {
+                return bound;
+            }
+        };
         assertEquals("last", WeightedChooser.choose(List.of(
                 new WeightedChooser.Weighted<>("first", 1),
-                new WeightedChooser.Weighted<>("last", 1_000)), new SplittableRandom(1)));
+                new WeightedChooser.Weighted<>("last", 1_000)), residue));
     }
 }
