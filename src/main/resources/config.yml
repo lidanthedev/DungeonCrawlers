@@ -14,3 +14,11 @@ compatibility:
 # Whether Emerald player-spawn markers are replaced with air or retained in authored templates.
 authoring:
   emerald-marker-policy: replace
+
+# Dedicated void-world and ten-thousand-block slot grid used by asynchronous generation.
+generation:
+  world: dungeon_instances
+  capacity: 4
+  slot-spacing: 10000
+  slot-margin: 500
+  base-y: 64

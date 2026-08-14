@@ -52,6 +52,9 @@ class BoostedConfigMigrationTest {
                         BoostedConfigFactory.schemaVersion(reopened), reopened.dump()),
                 () -> assertEquals(10, reopened.getInt("backups.retention-count"), reopened.dump()),
                 () -> assertEquals("replace", reopened.getString("authoring.emerald-marker-policy"), reopened.dump()),
+                () -> assertEquals("dungeon_instances", reopened.getString("generation.world"), reopened.dump()),
+                () -> assertEquals(4, reopened.getInt("generation.capacity"), reopened.dump()),
+                () -> assertEquals(10_000, reopened.getInt("generation.slot-spacing"), reopened.dump()),
                 () -> assertEquals("custom_world", reopened.getString("fallback-spawn-world"), reopened.dump()),
                 () -> assertTrue(Files.readString(configFile).contains(
                         "schema-version: " + BoostedConfigFactory.CURRENT_SCHEMA_VERSION)),

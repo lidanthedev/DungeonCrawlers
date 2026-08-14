@@ -192,6 +192,27 @@ class FileDurableRepositoryTest {
         }
     }
 
+    @Test
+    void listsAndDurablyDeletesNamespaceRecords() throws Exception {
+        UUID instance = UUID.randomUUID();
+        try (FileDurableRepository repository = repository(4, FileDurableRepository.FailureInjector.none())) {
+            repository.submit(new DurableWrite(UUID.randomUUID(), instance, "generation", "first",
+                    "first-key", 1, "one".getBytes(StandardCharsets.UTF_8))).receipt().get(5, TimeUnit.SECONDS);
+            repository.submit(new DurableWrite(UUID.randomUUID(), instance, "generation", "second",
+                    "second-key", 1, "two".getBytes(StandardCharsets.UTF_8))).receipt().get(5, TimeUnit.SECONDS);
+
+            var listed = repository.list("generation").get(5, TimeUnit.SECONDS);
+            assertEquals(java.util.List.of("first", "second"),
+                    listed.stream().map(DurableRecord::recordId).toList());
+
+            repository.delete("generation", "first").get(5, TimeUnit.SECONDS);
+            repository.delete("generation", "first").get(5, TimeUnit.SECONDS);
+
+            assertEquals(java.util.List.of("second"), repository.list("generation").get(5, TimeUnit.SECONDS)
+                    .stream().map(DurableRecord::recordId).toList());
+        }
+    }
+
     private FileDurableRepository repository(int capacity, FileDurableRepository.FailureInjector injector) {
         return new FileDurableRepository(directory, capacity, runtimeCallbacks::add, clock, injector);
     }

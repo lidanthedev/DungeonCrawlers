@@ -3,13 +3,24 @@ package me.lidan.dungeonCrawlers;
 import dev.triumphteam.gui.guis.BaseGui;
 import me.lidan.dungeonCrawlers.commands.DungeonCrawlersCommand;
 import me.lidan.dungeonCrawlers.commands.DungeonAuthoringCommand;
+import me.lidan.dungeonCrawlers.commands.DungeonGenerationCommand;
 import me.lidan.dungeonCrawlers.authoring.TemplateAuthoringService;
+import me.lidan.dungeonCrawlers.authoring.TemplateCatalogLoader;
 import me.lidan.dungeonCrawlers.compatibility.CompatibilityService;
 import me.lidan.dungeonCrawlers.config.registry.ConfigRegistryService;
 import me.lidan.dungeonCrawlers.config.registry.EncounterRegistry;
 import me.lidan.dungeonCrawlers.config.BoostedConfigFactory;
 import me.lidan.cavecrawlers.utils.BoostedCustomConfig;
 import me.lidan.dungeonCrawlers.core.reservation.PlayerReservationService;
+import me.lidan.dungeonCrawlers.core.generation.GenerationPreparationProvider;
+import me.lidan.dungeonCrawlers.core.generation.GenerationService;
+import me.lidan.dungeonCrawlers.core.generation.SlotAllocator;
+import me.lidan.dungeonCrawlers.core.layout.LayoutPlanner;
+import me.lidan.dungeonCrawlers.core.template.TemplateModels.EmeraldPolicy;
+import me.lidan.dungeonCrawlers.core.template.TemplateValidator;
+import me.lidan.dungeonCrawlers.integration.parties.PartyProviders;
+import me.lidan.dungeonCrawlers.integration.worldedit.FaweGenerationAdapter;
+import me.lidan.dungeonCrawlers.integration.worldedit.WorldEditAdapter;
 import me.lidan.dungeonCrawlers.persistence.DurableRepository;
 import me.lidan.dungeonCrawlers.persistence.FileDurableRepository;
 import org.bukkit.Bukkit;
@@ -24,6 +35,10 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public final class DungeonCrawlers extends JavaPlugin {
     private Lamp.Builder<BukkitCommandActor> commandHandlerBuilder;
@@ -33,6 +48,8 @@ public final class DungeonCrawlers extends JavaPlugin {
     private BoostedCustomConfig mainConfig;
     private BoostedConfigFactory configFactory;
     private TemplateAuthoringService authoring;
+    private GenerationService generation;
+    private ExecutorService generationExecutor;
 
     @Override
     public void onEnable() {
@@ -79,7 +96,41 @@ public final class DungeonCrawlers extends JavaPlugin {
                 .mapToInt(floor -> floor.limits().repositoryQueueCapacity()).max().orElse(1_000);
         durableRepository = new FileDurableRepository(getDataFolder().toPath().resolve("runtime"), queueCapacity,
                 callback -> getServer().getScheduler().runTask(this, callback));
-        getLogger().info("Loaded Phase 2 config hash " + loaded.snapshot().hash());
+        initializePhaseThreeServices();
+        getLogger().info("Loaded Phase 3 config hash " + loaded.snapshot().hash());
+    }
+
+    private void initializePhaseThreeServices() {
+        String worldName = mainConfig.getString("generation.world", "dungeon_instances").trim();
+        int capacity = configuredInteger("generation.capacity", 4, 1, 256);
+        int spacing = configuredInteger("generation.slot-spacing", 10_000, 10_000, 10_000);
+        int margin = configuredInteger("generation.slot-margin", 500, 1, 4_999);
+        int baseY = configuredInteger("generation.base-y", 64, -2_048, 2_048);
+        generationExecutor = Executors.newFixedThreadPool(Math.max(2,
+                Math.min(8, Runtime.getRuntime().availableProcessors())), runnable -> {
+            Thread thread = new Thread(runnable, "dungeoncrawlers-generation");
+            thread.setDaemon(true);
+            return thread;
+        });
+        FaweGenerationAdapter generationWorld = new FaweGenerationAdapter(this, generationExecutor);
+        var worldCheck = generationWorld.ensureDedicatedVoidWorld(worldName);
+        if (!worldCheck.successful()) throw new IllegalStateException(worldCheck.detail());
+        SlotAllocator slots = new SlotAllocator(new SlotAllocator.Settings(capacity, spacing, margin, baseY,
+                worldCheck.minimumY(), worldCheck.maximumY()));
+        EmeraldPolicy emeraldPolicy;
+        try {
+            emeraldPolicy = EmeraldPolicy.valueOf(mainConfig
+                    .getString("authoring.emerald-marker-policy", "replace").trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalStateException("config.yml authoring.emerald-marker-policy must be replace or retain");
+        }
+        TemplateCatalogLoader catalog = new TemplateCatalogLoader(authoring, new WorldEditAdapter(),
+                new TemplateValidator(), emeraldPolicy);
+        generation = new GenerationService(reservations, slots, durableRepository, generationWorld,
+                new GenerationPreparationProvider(catalog, authoring, new LayoutPlanner()), generationExecutor,
+                callback -> getServer().getScheduler().runTask(this, callback), getServer()::isPrimaryThread,
+                getLogger()::info, Clock.systemUTC(), worldName);
+        generation.recover();
     }
 
     private int configuredBackupRetention() {
@@ -93,6 +144,19 @@ public final class DungeonCrawlers extends JavaPlugin {
             return retention;
         } catch (NumberFormatException | ArithmeticException exception) {
             throw new IllegalStateException("config.yml backups.retention-count must be an integer in 1..1000");
+        }
+    }
+
+    private int configuredInteger(String route, int defaultValue, int minimum, int maximum) {
+        if (!mainConfig.contains(route, true)) return defaultValue;
+        Object value = mainConfig.get(route);
+        try {
+            int parsed = value instanceof Number number ? new BigDecimal(number.toString()).intValueExact() : -1;
+            if (parsed < minimum || parsed > maximum) throw new ArithmeticException();
+            return parsed;
+        } catch (NumberFormatException | ArithmeticException exception) {
+            throw new IllegalStateException("config.yml " + route + " must be an integer in "
+                    + minimum + ".." + maximum);
         }
     }
 
@@ -122,7 +186,10 @@ public final class DungeonCrawlers extends JavaPlugin {
         commandHandler.register(new DungeonCrawlersCommand(this,
                 new CompatibilityService(this, mainConfig, configRegistry), mainConfig, configRegistry,
                 reservations, durableRepository));
-        commandHandler.register(new DungeonAuthoringCommand(mainConfig, configRegistry, reservations, authoring));
+        commandHandler.register(new DungeonAuthoringCommand(mainConfig, configRegistry, reservations, authoring,
+                generation::activeTemplateIds));
+        commandHandler.register(new DungeonGenerationCommand(configRegistry,
+                PartyProviders.forServer(getServer()), generation));
     }
 
     private void registerEvents() {
@@ -136,8 +203,10 @@ public final class DungeonCrawlers extends JavaPlugin {
     @Override
     public void onDisable() {
         // Plugin shutdown logic
+        if (generation != null) generation.freezeForDisable();
         getServer().getScheduler().cancelTasks(this);
         if (durableRepository != null) durableRepository.close();
+        if (generationExecutor != null) generationExecutor.shutdownNow();
         closeAllGuis();
     }
 

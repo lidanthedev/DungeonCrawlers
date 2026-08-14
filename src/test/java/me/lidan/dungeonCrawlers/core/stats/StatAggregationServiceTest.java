@@ -8,6 +8,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class StatAggregationServiceTest {
@@ -42,6 +43,15 @@ class StatAggregationServiceTest {
         assertEquals(2048, result.get(StatType.HEALTH));
         assertEquals(0, result.get(StatType.SPEED));
         assertEquals(0, result.get(StatType.CRIT_CHANCE));
+    }
+
+    @Test
+    void replaceBlessingRejectsImpossibleLevelAboveOne() {
+        BlessingDefinition replace = blessing("replace", BlessingStacking.REPLACE, 5,
+                new StatModifiers(Map.of(StatType.STRENGTH, 1.0), Map.of()));
+
+        assertThrows(IllegalArgumentException.class, () -> new StatAggregationService().aggregate(Map.of(), null,
+                Map.of(replace.id(), replace), Map.of(replace.id(), 2)));
     }
 
     private static BlessingDefinition blessing(String id, BlessingStacking stacking, int max,
