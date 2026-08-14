@@ -73,7 +73,7 @@ class ConfigLoaderTest {
                 .replace("id: crypt_strength", "id: missing_blessing"));
         Path rooms = directory.resolve("rooms.yml");
         Files.writeString(rooms, Files.readString(rooms)
-                .replace("dungeon_start:\n    type: start", "dungeon_start:\n    type: portal"));
+                .replaceAll("dungeon_start:\\R    type: start", "dungeon_start:\n    type: portal"));
 
         ConfigLoadResult result = loader().load(directory);
 

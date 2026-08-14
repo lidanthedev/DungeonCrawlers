@@ -48,6 +48,7 @@ dependencies {
     testImplementation(libs.paper.api)
     testImplementation(libs.cave.crawlers)
     testImplementation(libs.parties.api)
+    testImplementation(libs.worldedit.bukkit)
     testImplementation(libs.gson)
 }
 

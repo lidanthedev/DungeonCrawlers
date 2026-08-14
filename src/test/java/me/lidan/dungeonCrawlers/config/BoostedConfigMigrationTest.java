@@ -48,12 +48,16 @@ class BoostedConfigMigrationTest {
         }
 
         assertAll(
-                () -> assertEquals(2, BoostedConfigFactory.schemaVersion(reopened), reopened.dump()),
+                () -> assertEquals(BoostedConfigFactory.CURRENT_SCHEMA_VERSION,
+                        BoostedConfigFactory.schemaVersion(reopened), reopened.dump()),
                 () -> assertEquals(10, reopened.getInt("backups.retention-count"), reopened.dump()),
+                () -> assertEquals("replace", reopened.getString("authoring.emerald-marker-policy"), reopened.dump()),
                 () -> assertEquals("custom_world", reopened.getString("fallback-spawn-world"), reopened.dump()),
-                () -> assertTrue(Files.readString(configFile).contains("schema-version: 2")),
+                () -> assertTrue(Files.readString(configFile).contains(
+                        "schema-version: " + BoostedConfigFactory.CURRENT_SCHEMA_VERSION)),
                 () -> assertFalse(Files.exists(backups.resolve("config-schema-v0.yml"))),
-                () -> assertEquals(2, BoostedConfigFactory.schemaVersion(config)));
+                () -> assertEquals(BoostedConfigFactory.CURRENT_SCHEMA_VERSION,
+                        BoostedConfigFactory.schemaVersion(config)));
     }
 
     @Test
@@ -74,9 +78,11 @@ class BoostedConfigMigrationTest {
 
         assertAll(
                 () -> assertEquals(original, Files.readString(backups.resolve("config-schema-v0.yml"))),
-                () -> assertEquals(2, BoostedConfigFactory.schemaVersion(migrated), migrated.dump()),
+                () -> assertEquals(BoostedConfigFactory.CURRENT_SCHEMA_VERSION,
+                        BoostedConfigFactory.schemaVersion(migrated), migrated.dump()),
                 () -> assertEquals("legacy_world", migrated.getString("fallback-spawn-world"), migrated.dump()),
-                () -> assertTrue(Files.readString(configFile).contains("schema-version: 2")));
+                () -> assertTrue(Files.readString(configFile).contains(
+                        "schema-version: " + BoostedConfigFactory.CURRENT_SCHEMA_VERSION)));
     }
 
     @Test
