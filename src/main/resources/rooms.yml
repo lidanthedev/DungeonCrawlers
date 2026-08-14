@@ -1,0 +1,17 @@
+schema-version: 1
+rooms:
+  dungeon_start:
+    type: start
+  dungeon_portal:
+    type: portal
+  crypt_guardian_arena:
+    type: boss
+  crypt_hallway:
+    type: normal
+    encounters: [normal]
+    min-floor: 1
+    weight: 10
+  spider_den:
+    type: normal
+    encounters: [normal, miniboss]
+    weight: 6

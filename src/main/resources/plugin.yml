@@ -15,3 +15,11 @@ permissions:
     default: true
   dungeoncrawlers.admin.compatibility:
     default: op
+  dungeoncrawlers.admin.config:
+    default: op
+  dungeoncrawlers.admin.reload:
+    default: op
+  dungeoncrawlers.admin.simulate:
+    default: op
+  dungeoncrawlers.admin.diagnostics:
+    default: op

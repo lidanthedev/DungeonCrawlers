@@ -1,5 +1,11 @@
+schema-version: 2
+
 # Leave blank to use the first loaded world's spawn when Essentials spawn is unavailable.
 fallback-spawn-world: ""
+
+# Number of successful-reload config snapshots to retain. Migration backups are kept separately.
+backups:
+  retention-count: 10
 
 # UUID of a disposable, funded account used only by the explicit economy probe.
 compatibility:

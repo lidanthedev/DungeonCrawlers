@@ -1,0 +1,14 @@
+package me.lidan.dungeonCrawlers.core.claim;
+
+public enum OfferState {
+    AVAILABLE,
+    OFFER_BLOCKED_PROVIDER,
+    OFFER_PAYLOAD_QUARANTINED,
+    DEBIT_ATTEMPTED,
+    RECONCILIATION_REQUIRED,
+    OWNED,
+    OWNED_DELIVERY_QUARANTINED,
+    DELIVERY_PENDING,
+    DELIVERED,
+    EXPIRED
+}

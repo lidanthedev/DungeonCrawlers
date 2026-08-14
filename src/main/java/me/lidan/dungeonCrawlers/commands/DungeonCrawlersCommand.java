@@ -1,9 +1,17 @@
 package me.lidan.dungeonCrawlers.commands;
 
 import me.lidan.cavecrawlers.CaveCrawlers;
+import me.lidan.cavecrawlers.utils.BoostedCustomConfig;
 import me.lidan.dungeonCrawlers.compatibility.CompatibilityReport;
 import me.lidan.dungeonCrawlers.compatibility.CompatibilityService;
 import me.lidan.dungeonCrawlers.compatibility.ProbeResult;
+import me.lidan.dungeonCrawlers.config.registry.ConfigLoadResult;
+import me.lidan.dungeonCrawlers.config.registry.ConfigRegistryService;
+import me.lidan.dungeonCrawlers.core.party.PartySnapshot;
+import me.lidan.dungeonCrawlers.core.reservation.PlayerReservationService;
+import me.lidan.dungeonCrawlers.core.score.ScoreService;
+import me.lidan.dungeonCrawlers.core.state.InstanceState;
+import me.lidan.dungeonCrawlers.core.state.StateTransitionService;
 import me.lidan.dungeonCrawlers.integration.CaveItemsGateway;
 import me.lidan.dungeonCrawlers.integration.EconomyGateway;
 import me.lidan.dungeonCrawlers.integration.MythicMobGateway;
@@ -17,6 +25,7 @@ import me.lidan.dungeonCrawlers.integration.parties.PartyProviders;
 import me.lidan.dungeonCrawlers.integration.spawn.BukkitSpawnProvider;
 import me.lidan.dungeonCrawlers.integration.vault.VaultEconomyAdapter;
 import me.lidan.dungeonCrawlers.integration.worldedit.WorldEditAdapter;
+import me.lidan.dungeonCrawlers.persistence.DurableRepository;
 import net.kyori.adventure.text.Component;
 import net.milkbowl.vault.economy.Economy;
 import org.bukkit.attribute.Attribute;
@@ -36,6 +45,10 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.UUID;
+import java.time.Duration;
+import java.util.List;
+import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
 
 @Command("dungeon")
 public final class DungeonCrawlersCommand {
@@ -45,11 +58,135 @@ public final class DungeonCrawlersCommand {
     private final MythicMobGateway mythic = new MythicMobsAdapter();
     private final WorldEditGateway worldEdit = new WorldEditAdapter();
     private final PartyProvider parties;
+    private final ConfigRegistryService configRegistry;
+    private final PlayerReservationService reservations;
+    private final DurableRepository durableRepository;
+    private final BoostedCustomConfig mainConfig;
+    private final StateTransitionService transitions = new StateTransitionService();
+    private final ScoreService scores = new ScoreService();
 
-    public DungeonCrawlersCommand(JavaPlugin plugin, CompatibilityService compatibility) {
+    public DungeonCrawlersCommand(JavaPlugin plugin, CompatibilityService compatibility,
+                                  BoostedCustomConfig mainConfig,
+                                  ConfigRegistryService configRegistry, PlayerReservationService reservations,
+                                  DurableRepository durableRepository) {
         this.plugin = plugin;
         this.compatibility = compatibility;
+        this.mainConfig = mainConfig;
+        this.configRegistry = configRegistry;
+        this.reservations = reservations;
+        this.durableRepository = durableRepository;
         this.parties = PartyProviders.forServer(plugin.getServer());
+    }
+
+    @Subcommand("config validate")
+    @CommandPermission("dungeoncrawlers.admin.config")
+    public void configValidate(CommandSender sender) {
+        sender.sendMessage("Validating DungeonCrawlers configuration...");
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+            ConfigLoadResult result = configRegistry.validate();
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                result.warnings().forEach(warning -> sender.sendMessage("[WARN] " + warning));
+                result.errors().forEach(error -> sender.sendMessage("[FAIL] " + error));
+                if (result.successful()) sender.sendMessage("[PASS] hash=" + result.snapshot().hash());
+            });
+        });
+    }
+
+    @Subcommand("reload")
+    @CommandPermission("dungeoncrawlers.admin.reload")
+    public void reload(CommandSender sender) {
+        int active = reservations.activeReservationCount();
+        sender.sendMessage("Reloading DungeonCrawlers configuration...");
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+            ConfigRegistryService.ReloadResult result = configRegistry.reload(active);
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                result.warnings().forEach(warning -> sender.sendMessage("[WARN] " + warning));
+                result.errors().forEach(error -> sender.sendMessage("[FAIL] " + error));
+                if (result.swapped()) sender.sendMessage("[PASS] active hash=" + result.snapshot().hash());
+            });
+        });
+    }
+
+    @Subcommand("floor info")
+    @CommandPermission("dungeoncrawlers.admin.config")
+    public void floorInfo(CommandSender sender, String id) {
+        var value = configRegistry.snapshot().floors().get(id);
+        sender.sendMessage(value == null ? "[FAIL] unknown floor " + id : "[PASS] " + value);
+    }
+
+    @Subcommand("room info")
+    @CommandPermission("dungeoncrawlers.admin.config")
+    public void roomInfo(CommandSender sender, String id) {
+        var value = configRegistry.snapshot().rooms().get(id);
+        sender.sendMessage(value == null ? "[FAIL] unknown room " + id : "[PASS] " + value);
+    }
+
+    @Subcommand("class info")
+    @CommandPermission("dungeoncrawlers.admin.config")
+    public void classInfo(CommandSender sender, String id) {
+        var value = configRegistry.snapshot().classes().get(id);
+        sender.sendMessage(value == null ? "[FAIL] unknown class " + id : "[PASS] " + value);
+    }
+
+    @Subcommand("blessing info")
+    @CommandPermission("dungeoncrawlers.admin.config")
+    public void blessingInfo(CommandSender sender, String id) {
+        var value = configRegistry.snapshot().blessings().get(id);
+        sender.sendMessage(value == null ? "[FAIL] unknown blessing " + id : "[PASS] " + value);
+    }
+
+    @Subcommand("state simulate")
+    @CommandPermission("dungeoncrawlers.admin.simulate")
+    public void stateSimulate(CommandSender sender, String from, String to) {
+        try {
+            var result = transitions.transition(InstanceState.valueOf(from.toUpperCase(Locale.ROOT)),
+                    InstanceState.valueOf(to.toUpperCase(Locale.ROOT)));
+            sender.sendMessage("[" + (result.accepted() ? "PASS" : "FAIL") + "] " + result.detail());
+        } catch (IllegalArgumentException exception) {
+            sender.sendMessage("[FAIL] unknown state; valid=" + List.of(InstanceState.values()));
+        }
+    }
+
+    @Subcommand("score simulate")
+    @CommandPermission("dungeoncrawlers.admin.simulate")
+    public void scoreSimulate(CommandSender sender, boolean successful, int deaths, long elapsedMinutes,
+                              int foundSecrets, int totalSecrets) {
+        try {
+            var result = scores.calculate(new ScoreService.ScoreInput(successful, deaths,
+                    Duration.ofMinutes(elapsedMinutes), foundSecrets, totalSecrets), List.of());
+            sender.sendMessage("[PASS] skill=" + result.skill() + ", time=" + result.time()
+                    + ", exploration=" + result.exploration() + ", bonus=" + result.bonus()
+                    + ", total=" + result.total() + ", rank=" + result.rank());
+        } catch (IllegalArgumentException exception) {
+            sender.sendMessage("[FAIL] " + exception.getMessage());
+        }
+    }
+
+    @Subcommand("repository")
+    @CommandPermission("dungeoncrawlers.admin.diagnostics")
+    public void repository(CommandSender sender) {
+        sender.sendMessage("[PASS] " + durableRepository.diagnostics());
+    }
+
+    @Subcommand("reservation race")
+    @CommandPermission("dungeoncrawlers.admin.simulate")
+    public void reservationRace(CommandSender sender) {
+        sender.sendMessage("Running isolated reservation race...");
+        CompletableFuture.supplyAsync(() -> {
+            PlayerReservationService isolated = new PlayerReservationService();
+            UUID shared = UUID.randomUUID();
+            PartySnapshot first = new PartySnapshot(shared, List.of(shared, UUID.randomUUID()), false);
+            PartySnapshot second = new PartySnapshot(shared, List.of(shared, UUID.randomUUID()), false);
+            try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+                var a = executor.submit(() -> isolated.reserve(UUID.randomUUID(), first).successful());
+                var b = executor.submit(() -> isolated.reserve(UUID.randomUUID(), second).successful());
+                return (a.get() ? 1 : 0) + (b.get() ? 1 : 0);
+            } catch (Exception exception) {
+                throw new IllegalStateException(exception);
+            }
+        }).whenComplete((wins, error) -> plugin.getServer().getScheduler().runTask(plugin, () ->
+                sender.sendMessage(error == null && wins == 1 ? "[PASS] exactly one reservation won"
+                        : "[FAIL] reservation race: " + (error == null ? "wins=" + wins : error.getMessage()))));
     }
 
     @Subcommand("compatibility")
@@ -121,7 +258,7 @@ public final class DungeonCrawlersCommand {
             player.sendMessage("[FAIL] no Vault economy provider");
             return;
         }
-        String configuredAccount = plugin.getConfig().getString("compatibility.economy-test-account-uuid", "").trim();
+        String configuredAccount = mainConfig.getString("compatibility.economy-test-account-uuid", "").trim();
         UUID accountId;
         try {
             accountId = UUID.fromString(configuredAccount);
@@ -173,7 +310,7 @@ public final class DungeonCrawlersCommand {
     @Subcommand("compatibility spawn")
     @CommandPermission("dungeoncrawlers.admin.compatibility")
     public void spawn(CommandSender sender) {
-        SpawnProvider provider = new BukkitSpawnProvider(plugin.getServer(), plugin.getConfig().getString("fallback-spawn-world", ""));
+        SpawnProvider provider = new BukkitSpawnProvider(plugin.getServer(), mainConfig.getString("fallback-spawn-world", ""));
         sender.sendMessage(provider.spawn()
                 .map(location -> "[PASS] " + provider.source() + " -> " + location.getWorld().getName() + " " + location.toVector())
                 .orElse("[FAIL] configured Bukkit fallback world is not loaded"));

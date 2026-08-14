@@ -3,13 +3,13 @@ package me.lidan.dungeonCrawlers.compatibility;
 import me.lidan.cavecrawlers.stats.ActionBarManager;
 import me.lidan.cavecrawlers.stats.StatsCalculateEvent;
 import me.lidan.cavecrawlers.utils.Range;
-import me.lidan.dungeonCrawlers.config.BootstrapSchemas;
+import me.lidan.cavecrawlers.utils.BoostedCustomConfig;
+import me.lidan.dungeonCrawlers.config.registry.ConfigRegistryService;
 import me.lidan.dungeonCrawlers.integration.spawn.BukkitSpawnProvider;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.RegisteredListener;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.io.File;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -27,9 +27,14 @@ public final class CompatibilityService {
     public static final String[] FIXED_CONNECTOR_MATERIALS = {"AIR", "CAVE_AIR", "VOID_AIR"};
 
     private final JavaPlugin plugin;
+    private final BoostedCustomConfig mainConfig;
+    private final ConfigRegistryService configRegistry;
 
-    public CompatibilityService(JavaPlugin plugin) {
+    public CompatibilityService(JavaPlugin plugin, BoostedCustomConfig mainConfig,
+                                ConfigRegistryService configRegistry) {
         this.plugin = plugin;
+        this.mainConfig = mainConfig;
+        this.configRegistry = configRegistry;
     }
 
     public CompatibilityReport inspect() {
@@ -41,7 +46,7 @@ public final class CompatibilityService {
         requiredPlugin(results, "ProtocolLib");
         optionalPlugin(results, "Parties", true);
         boolean bukkitSpawnAvailable = new BukkitSpawnProvider(
-                plugin.getServer(), plugin.getConfig().getString("fallback-spawn-world", "")).spawn().isPresent();
+                plugin.getServer(), mainConfig.getString("fallback-spawn-world", "")).spawn().isPresent();
         optionalPlugin(results, "Essentials", bukkitSpawnAvailable);
 
         Range range = new Range(-2, 3);
@@ -56,11 +61,10 @@ public final class CompatibilityService {
         results.add(new ProbeResult("connectors.materials", ProbeStatus.PASS,
                 "fixed=" + Arrays.toString(FIXED_CONNECTOR_MATERIALS)));
 
-        List<String> schemaErrors = BootstrapSchemas.validate(
-                new File(plugin.getDataFolder(), "classes.yml"),
-                new File(plugin.getDataFolder(), "blessings.yml"));
-        results.add(new ProbeResult("schemas.built-in", schemaErrors.isEmpty() ? ProbeStatus.PASS : ProbeStatus.FAIL,
-                schemaErrors.isEmpty() ? "classes.yml and blessings.yml schema-version=1" : String.join("; ", schemaErrors)));
+        var snapshot = configRegistry.snapshot();
+        boolean schemasLoaded = !snapshot.classes().isEmpty() && !snapshot.blessings().isEmpty();
+        results.add(new ProbeResult("schemas.built-in", schemasLoaded ? ProbeStatus.PASS : ProbeStatus.FAIL,
+                schemasLoaded ? "immutable config hash=" + snapshot.hash() : "class or blessing registry is empty"));
         results.add(new ProbeResult("fawe.roundtrip-cancel", ProbeStatus.MANUAL_REQUIRED,
                 "run the recorded selection round-trip and slow-paste cancellation procedure on staging"));
         results.add(new ProbeResult("vault.mutation", ProbeStatus.MANUAL_REQUIRED,

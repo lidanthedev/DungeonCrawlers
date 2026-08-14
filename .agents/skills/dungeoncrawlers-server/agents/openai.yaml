@@ -1,0 +1,4 @@
+interface:
+  display_name: "DungeonCrawlers Server"
+  short_description: "Deploy and test the DungeonCrawlers server"
+  default_prompt: "Use $dungeoncrawlers-server to build, deploy, reload, and test DungeonCrawlers on its development server."
