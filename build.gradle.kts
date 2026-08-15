@@ -45,6 +45,7 @@ dependencies {
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.mockito.core)
+    testImplementation(libs.lamp.common)
     testImplementation(libs.paper.api)
     testImplementation(libs.cave.crawlers)
     testImplementation(libs.parties.api)

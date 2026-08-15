@@ -128,6 +128,23 @@ public final class GenerationService {
         return instance == null ? Optional.empty() : Optional.of(instance.snapshot());
     }
 
+    /** Returns the transformed EMERALD_BLOCK spawn and the yaw toward the START room exit. */
+    public Optional<PlayerSpawn> playerSpawn(UUID instanceId) {
+        requirePrimaryThread();
+        MutableInstance instance = instances.get(instanceId);
+        if (instance == null || instance.state != InstanceStatus.GENERATED || instance.prepared == null) {
+            return Optional.empty();
+        }
+        var placements = instance.prepared.plan().placements();
+        var start = placements.stream().filter(placement -> placement.index() == 0).findFirst();
+        if (start.isEmpty()) return Optional.empty();
+        Optional<Point> spawn = start.get().playerSpawns().stream().findFirst()
+                .or(() -> placements.stream().flatMap(placement -> placement.playerSpawns().stream()).findFirst());
+        if (spawn.isEmpty()) return Optional.empty();
+        float yaw = start.get().exit().map(exit -> yaw(exit.outward().vector())).orElse(0F);
+        return Optional.of(new PlayerSpawn(spawn.orElseThrow(), yaw));
+    }
+
     public List<InstanceSnapshot> instances() {
         requirePrimaryThread();
         return instances.values().stream().map(MutableInstance::snapshot)
@@ -143,6 +160,17 @@ public final class GenerationService {
                     else instance.prepared.plan().placements().forEach(placement -> active.add(placement.templateId()));
                 });
         return Set.copyOf(active);
+    }
+
+    public List<InstanceRegion> protectionRegions() {
+        requirePrimaryThread();
+        return instances.values().stream()
+                .filter(instance -> instance.state != InstanceStatus.DESTROYED
+                        && instance.journal != null && !instance.journal.plannedBounds().isEmpty())
+                .map(instance -> new InstanceRegion(worldName, instance.instanceId,
+                        enclosing(instance.journal.plannedBounds()),
+                        Set.copyOf(instance.request.party().onlineMembers())))
+                .toList();
     }
 
     public List<SlotLease> slots() {
@@ -438,6 +466,20 @@ public final class GenerationService {
                 bounds.maximum().x(), bounds.maximum().y(), bounds.maximum().z());
     }
 
+    private static Bounds enclosing(List<PlannedBounds> bounds) {
+        int minX = bounds.stream().mapToInt(PlannedBounds::minX).min().orElseThrow();
+        int minY = bounds.stream().mapToInt(PlannedBounds::minY).min().orElseThrow();
+        int minZ = bounds.stream().mapToInt(PlannedBounds::minZ).min().orElseThrow();
+        int maxX = bounds.stream().mapToInt(PlannedBounds::maxX).max().orElseThrow();
+        int maxY = bounds.stream().mapToInt(PlannedBounds::maxY).max().orElseThrow();
+        int maxZ = bounds.stream().mapToInt(PlannedBounds::maxZ).max().orElseThrow();
+        return new Bounds(new Point(minX, minY, minZ), new Point(maxX, maxY, maxZ));
+    }
+
+    private static float yaw(Point direction) {
+        return (float) Math.toDegrees(Math.atan2(-direction.x(), direction.z()));
+    }
+
     private boolean current(MutableInstance instance, long token) {
         return instances.get(instance.instanceId) == instance && instance.token == token && !instance.cancelled;
     }
@@ -511,8 +553,22 @@ public final class GenerationService {
     public record InstanceSnapshot(UUID instanceId, int slotId, InstanceStatus status, List<UUID> participants,
                                    long seed, String detail) { }
 
+    public record PlayerSpawn(Point point, float yaw) {
+        public PlayerSpawn {
+            Objects.requireNonNull(point);
+            if (!Float.isFinite(yaw)) throw new IllegalArgumentException("player spawn yaw must be finite");
+        }
+    }
+
     public record RecoveryStatus(boolean startsEnabled, boolean running, int discovered, int cleared,
                                  List<String> blockers) { }
+
+    public record InstanceRegion(String world, UUID instanceId, Bounds bounds, Set<UUID> participants) {
+        public InstanceRegion {
+            Objects.requireNonNull(world); Objects.requireNonNull(instanceId); Objects.requireNonNull(bounds);
+            participants = Set.copyOf(participants);
+        }
+    }
 
     private static final class MutableInstance {
         private final UUID instanceId;
