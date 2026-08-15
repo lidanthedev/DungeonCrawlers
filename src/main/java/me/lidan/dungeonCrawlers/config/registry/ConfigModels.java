@@ -1,5 +1,6 @@
 package me.lidan.dungeonCrawlers.config.registry;
 
+import me.lidan.cavecrawlers.stats.StatType;
 import org.bukkit.Material;
 
 import java.time.Instant;
@@ -10,23 +11,6 @@ import java.util.Set;
 
 public final class ConfigModels {
     private ConfigModels() {
-    }
-
-    public enum StatType {
-        HEALTH(1, Double.MAX_VALUE), DEFENSE(0, 1_000_000), STRENGTH(0, 1_000_000),
-        INTELLIGENCE(0, 1_000_000), CRIT_CHANCE(0, 100), CRIT_DAMAGE(0, 1_000_000),
-        SPEED(0, 500), ATTACK_SPEED(0, 100);
-
-        private final double minimum;
-        private final double maximum;
-
-        StatType(double minimum, double maximum) {
-            this.minimum = minimum;
-            this.maximum = maximum;
-        }
-
-        public double minimum() { return minimum; }
-        public double maximum() { return maximum; }
     }
 
     public record StatModifiers(Map<StatType, Double> add, Map<StatType, Double> multiply) {

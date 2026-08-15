@@ -1,12 +1,12 @@
 package me.lidan.dungeonCrawlers.core.stats;
 
+import me.lidan.cavecrawlers.stats.StatType;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.BlessingDefinition;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.BlessingStacking;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.ClassDefinition;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.StatModifiers;
-import me.lidan.dungeonCrawlers.config.registry.ConfigModels.StatType;
 
-import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
@@ -29,7 +29,7 @@ public final class StatAggregationService {
             }
             activeBlessings.put(active.getKey(), blessing);
         }
-        EnumMap<StatType, Double> result = new EnumMap<>(StatType.class);
+        Map<StatType, Double> result = new LinkedHashMap<>();
         for (StatType stat : StatType.values()) {
             double add = selectedClass == null ? 0 : selectedClass.stats().add().getOrDefault(stat, 0.0);
             double factor = selectedClass == null ? 1 : selectedClass.stats().multiply().getOrDefault(stat, 1.0);
@@ -40,14 +40,8 @@ public final class StatAggregationService {
                 factor *= Math.pow(perLevel.multiply().getOrDefault(stat, 1.0), active.getValue());
             }
             double raw = (incoming.getOrDefault(stat, 0.0) + add) * factor;
-            result.put(stat, finiteClamp(raw, stat.minimum(), stat.maximum()));
+            result.put(stat, raw);
         }
         return Map.copyOf(result);
-    }
-
-    private static double finiteClamp(double value, double minimum, double maximum) {
-        if (Double.isNaN(value) || value == Double.NEGATIVE_INFINITY) return minimum;
-        if (value == Double.POSITIVE_INFINITY) return maximum;
-        return Math.clamp(value, minimum, maximum);
     }
 }

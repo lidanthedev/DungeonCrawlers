@@ -14,7 +14,8 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEvent;
 
-import java.util.EnumMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 
 /** Main-thread boundary for preparation-door interaction and transient run stats. */
@@ -47,12 +48,12 @@ public final class BukkitDungeonRunListener implements Listener {
     public void onStatsCalculate(StatsCalculateEvent event) {
         ClassDefinition selected = phaseFive.selectedClass(event.getPlayer().getUniqueId()).orElse(null);
         if (selected == null) return;
-        EnumMap<me.lidan.dungeonCrawlers.config.registry.ConfigModels.StatType, Double> incoming =
-                new EnumMap<>(me.lidan.dungeonCrawlers.config.registry.ConfigModels.StatType.class);
-        for (var type : me.lidan.dungeonCrawlers.config.registry.ConfigModels.StatType.values()) {
-            incoming.put(type, event.getStats().get(StatType.valueOf(type.name())).getValue());
+        Map<StatType, Double> incoming = new LinkedHashMap<>();
+        for (StatType type : StatType.values()) {
+            var value = event.getStats().get(type);
+            if (value != null) incoming.put(type, value.getValue());
         }
         var aggregated = stats.aggregate(incoming, selected, java.util.Map.of(), java.util.Map.of());
-        aggregated.forEach((type, value) -> event.getStats().set(StatType.valueOf(type.name()), value));
+        aggregated.forEach((type, value) -> event.getStats().set(type, value));
     }
 }

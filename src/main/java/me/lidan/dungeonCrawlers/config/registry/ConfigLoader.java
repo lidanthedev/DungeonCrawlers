@@ -1,5 +1,6 @@
 package me.lidan.dungeonCrawlers.config.registry;
 
+import me.lidan.cavecrawlers.stats.StatType;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.*;
 import me.lidan.dungeonCrawlers.config.BoostedConfigFactory;
 import org.bukkit.Material;
@@ -400,29 +401,34 @@ public final class ConfigLoader {
         }
 
         StatModifiers stats(Map<String, Object> root, String path) {
-            return new StatModifiers(statField(root, "stat-add", path, false),
-                    statField(root, "stat-multiply", path, true));
+            return new StatModifiers(statField(root, "stat-add", path),
+                    statField(root, "stat-multiply", path));
         }
 
-        Map<StatType, Double> statField(Map<String, Object> root, String key, String path, boolean multiplier) {
+        Map<StatType, Double> statField(Map<String, Object> root, String key, String path) {
             if (!root.containsKey(key)) return Map.of();
-            return statMap(root.get(key), path + "." + key, multiplier);
+            return statMap(root.get(key), path + "." + key);
         }
 
-        Map<StatType, Double> statMap(Object value, String path, boolean multiplier) {
+        Map<StatType, Double> statMap(Object value, String path) {
             Map<String, Object> source = map(value, path, true);
             Map<StatType, Double> result = new LinkedHashMap<>();
             for (var pair : source.entrySet()) {
-                StatType stat = enumValue(StatType.class, pair.getKey(), path);
+                StatType stat = statType(pair.getKey(), path);
                 if (!(pair.getValue() instanceof Number number) || !Double.isFinite(number.doubleValue())) {
                     error(path + "." + pair.getKey() + " must be finite"); continue;
                 }
                 double amount = number.doubleValue();
-                if (multiplier && (amount < 0.01 || amount > 100)) error(path + "." + pair.getKey() + " must be in 0.01..100");
-                else if (!multiplier && (amount < -1_000_000 || amount > 1_000_000)) error(path + "." + pair.getKey() + " is outside supported range");
-                else if (stat != null) result.put(stat, amount);
+                if (stat != null) result.put(stat, amount);
             }
             return result;
+        }
+
+        StatType statType(String value, String path) {
+            if (value == null) return null;
+            StatType stat = StatType.valueOfOrNull(value.toUpperCase(Locale.ROOT));
+            if (stat == null) error(path + " has invalid value " + value);
+            return stat;
         }
 
         List<WeightedId> weightedIds(Object value, String path) {

@@ -16,13 +16,6 @@ import java.util.Arrays;
 import java.util.List;
 
 public final class CompatibilityService {
-    public static final double V1_DEFENSE_MAX = 1_000_000;
-    public static final double V1_STRENGTH_MAX = 1_000_000;
-    public static final double V1_INTELLIGENCE_MAX = 1_000_000;
-    public static final double V1_CRIT_DAMAGE_MAX = 1_000_000;
-    public static final double V1_CRIT_CHANCE_MAX = 100;
-    public static final double V1_SPEED_MAX = 500;
-    public static final double V1_ATTACK_SPEED_MAX = 100;
     public static final String[] FIXED_CONNECTOR_MATERIALS = {"AIR", "CAVE_AIR", "VOID_AIR"};
 
     private final JavaPlugin plugin;
@@ -55,8 +48,8 @@ public final class CompatibilityService {
         results.add(new ProbeResult("cavecrawlers.actionbar", ActionBarManager.ACTION_BAR_COOLDOWN == 1000
                 ? ProbeStatus.PASS : ProbeStatus.FAIL, "cooldown-ms=" + ActionBarManager.ACTION_BAR_COOLDOWN));
         results.add(listenerProbe(StatsCalculateEvent.getHandlerList().getRegisteredListeners()));
-        results.add(new ProbeResult("stats.caps", ProbeStatus.MANUAL_REQUIRED,
-                "healthBalanceMax=unbounded; verify Paper MAX_HEALTH consumer with compatibility stats"));
+        results.add(new ProbeResult("stats.integration", ProbeStatus.MANUAL_REQUIRED,
+                "DungeonCrawlers applies CaveCrawlers StatType values without stat caps; verify downstream consumers"));
         results.add(new ProbeResult("connectors.materials", ProbeStatus.PASS,
                 "fixed=" + Arrays.toString(FIXED_CONNECTOR_MATERIALS)));
 
