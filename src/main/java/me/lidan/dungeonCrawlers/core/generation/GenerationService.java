@@ -8,6 +8,7 @@ import me.lidan.dungeonCrawlers.core.layout.LayoutPlanner.Placement;
 import me.lidan.dungeonCrawlers.core.party.PartySnapshot;
 import me.lidan.dungeonCrawlers.core.reservation.PlayerReservationService;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Bounds;
+import me.lidan.dungeonCrawlers.core.template.TemplateModels.Facing;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
 import me.lidan.dungeonCrawlers.integration.GenerationWorldGateway;
 import me.lidan.dungeonCrawlers.persistence.DurableRepository;
@@ -50,6 +51,7 @@ public final class GenerationService {
     private final GenerationJournalCodec journalCodec = new GenerationJournalCodec();
     private final Object admissionLock = new Object();
     private final Map<UUID, MutableInstance> instances = new LinkedHashMap<>();
+    private final Map<UUID, List<Consumer<InstanceSnapshot>>> generatedListeners = new LinkedHashMap<>();
     private boolean startsEnabled;
     private boolean recoveryRunning;
     private int recoveryDiscovered;
@@ -112,6 +114,7 @@ public final class GenerationService {
         InstanceStatus previous = instance.state;
         instance.cancelled = true;
         instance.token++;
+        generatedListeners.remove(instanceId);
         instance.state = InstanceStatus.CANCELLING;
         instance.detail = "cancellation requested during " + previous;
         if (previous == InstanceStatus.GENERATED) return beginClear(instance, "cancel after generation");
@@ -143,6 +146,32 @@ public final class GenerationService {
         if (spawn.isEmpty()) return Optional.empty();
         float yaw = start.get().exit().map(exit -> yaw(exit.outward().vector())).orElse(0F);
         return Optional.of(new PlayerSpawn(spawn.orElseThrow(), yaw));
+    }
+
+    /** Returns the transformed START exit used as the player-facing preparation door. */
+    public Optional<StartDoor> startDoor(UUID instanceId) {
+        requirePrimaryThread();
+        MutableInstance instance = instances.get(instanceId);
+        if (instance == null || instance.state != InstanceStatus.GENERATED || instance.prepared == null) {
+            return Optional.empty();
+        }
+        return instance.prepared.plan().placements().stream()
+                .filter(placement -> placement.index() == 0)
+                .findFirst()
+                .flatMap(placement -> placement.exit())
+                .map(exit -> new StartDoor(exit.point(), exit.outward()));
+    }
+
+    /** Invokes a callback once generation reaches the GENERATED state. */
+    public boolean whenGenerated(UUID instanceId, Consumer<InstanceSnapshot> callback) {
+        requirePrimaryThread();
+        Objects.requireNonNull(instanceId, "instanceId");
+        Objects.requireNonNull(callback, "callback");
+        MutableInstance instance = instances.get(instanceId);
+        if (instance == null || instance.state == InstanceStatus.DESTROYED) return false;
+        if (instance.state == InstanceStatus.GENERATED) callback.accept(instance.snapshot());
+        else generatedListeners.computeIfAbsent(instanceId, ignored -> new ArrayList<>()).add(callback);
+        return true;
     }
 
     public List<InstanceSnapshot> instances() {
@@ -299,6 +328,7 @@ public final class GenerationService {
                     instance.inFlight = null;
                     diagnostics.accept("instance=" + instance.instanceId + " generated placements="
                             + instance.prepared.plan().placements().size());
+                    notifyGenerated(instance);
                 }
             }, runtimeExecutor);
             return;
@@ -370,6 +400,7 @@ public final class GenerationService {
                         instance.cleanupInFlight = false;
                         instance.state = InstanceStatus.DESTROYED;
                         instance.detail = "clear ACK, journal removed, reservation released, slot FREE";
+                        generatedListeners.remove(instance.instanceId);
                         diagnostics.accept("instance=" + instance.instanceId + " cleanup complete");
                     }, runtimeExecutor);
         }, runtimeExecutor);
@@ -387,6 +418,7 @@ public final class GenerationService {
         if (instance.state == InstanceStatus.DESTROYED) return;
         reservations.release(instance.instanceId);
         slots.releaseUnmodified(instance.slot.id(), instance.instanceId);
+        generatedListeners.remove(instance.instanceId);
         instance.state = InstanceStatus.DESTROYED;
         instance.detail = detail + "; no paste occurred";
         diagnostics.accept("instance=" + instance.instanceId + " " + instance.detail);
@@ -480,6 +512,19 @@ public final class GenerationService {
         return (float) Math.toDegrees(Math.atan2(-direction.x(), direction.z()));
     }
 
+    private void notifyGenerated(MutableInstance instance) {
+        List<Consumer<InstanceSnapshot>> listeners = generatedListeners.remove(instance.instanceId);
+        if (listeners == null) return;
+        InstanceSnapshot snapshot = instance.snapshot();
+        listeners.forEach(listener -> {
+            try { listener.accept(snapshot); }
+            catch (RuntimeException exception) {
+                diagnostics.accept("instance=" + instance.instanceId + " generated callback failed: "
+                        + message(exception));
+            }
+        });
+    }
+
     private boolean current(MutableInstance instance, long token) {
         return instances.get(instance.instanceId) == instance && instance.token == token && !instance.cancelled;
     }
@@ -557,6 +602,13 @@ public final class GenerationService {
         public PlayerSpawn {
             Objects.requireNonNull(point);
             if (!Float.isFinite(yaw)) throw new IllegalArgumentException("player spawn yaw must be finite");
+        }
+    }
+
+    public record StartDoor(Point center, Facing outward) {
+        public StartDoor {
+            Objects.requireNonNull(center);
+            Objects.requireNonNull(outward);
         }
     }
 

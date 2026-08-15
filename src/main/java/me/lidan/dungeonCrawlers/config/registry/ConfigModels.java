@@ -13,7 +13,7 @@ public final class ConfigModels {
     }
 
     public enum StatType {
-        HEALTH(1, 2048), DEFENSE(0, 1_000_000), STRENGTH(0, 1_000_000),
+        HEALTH(1, Double.MAX_VALUE), DEFENSE(0, 1_000_000), STRENGTH(0, 1_000_000),
         INTELLIGENCE(0, 1_000_000), CRIT_CHANCE(0, 100), CRIT_DAMAGE(0, 1_000_000),
         SPEED(0, 500), ATTACK_SPEED(0, 100);
 

@@ -26,6 +26,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 @Command("dungeon")
 public final class DungeonGenerationCommand {
@@ -38,10 +39,12 @@ public final class DungeonGenerationCommand {
     private final String generationWorldName;
     private final TeleportPermitService teleportPermits;
     private final Clock clock;
+    private final Consumer<UUID> preparationCancel;
 
     public DungeonGenerationCommand(ConfigRegistryService configRegistry, PartyProvider parties,
                                     GenerationService generation, Server server, String generationWorldName,
-                                    TeleportPermitService teleportPermits, Clock clock) {
+                                    TeleportPermitService teleportPermits, Clock clock,
+                                    Consumer<UUID> preparationCancel) {
         this.configRegistry = configRegistry;
         this.parties = parties;
         this.generation = generation;
@@ -49,30 +52,36 @@ public final class DungeonGenerationCommand {
         this.generationWorldName = generationWorldName;
         this.teleportPermits = teleportPermits;
         this.clock = clock;
+        this.preparationCancel = preparationCancel;
     }
 
     @Subcommand("instance generate-debug")
     @CommandPermission("dungeoncrawlers.admin.generation")
-    public void generateDebug(Player player, String floorId, long seed) {
+    public void generateDebug(Player player, @SuggestWith(FloorIdSuggestionProvider.class) String floorId, long seed) {
         generate(player, floorId, seed, 0);
     }
 
     @Subcommand("instance generate-debug-slow")
     @CommandPermission("dungeoncrawlers.admin.generation")
-    public void generateDebugSlow(Player player, String floorId, long seed, long delayMillis) {
+    public void generateDebugSlow(Player player, @SuggestWith(FloorIdSuggestionProvider.class) String floorId,
+                                  long seed, long delayMillis) {
         generate(player, floorId, seed, delayMillis);
     }
 
     @Subcommand("instance cancel")
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void cancel(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
-        report(sender, generation.cancel(uuid(instanceId)));
+        UUID id = uuid(instanceId);
+        preparationCancel.accept(id);
+        report(sender, generation.cancel(id));
     }
 
     @Subcommand("instance cleanup")
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void cleanup(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
-        report(sender, generation.cleanup(uuid(instanceId)));
+        UUID id = uuid(instanceId);
+        preparationCancel.accept(id);
+        report(sender, generation.cleanup(id));
     }
 
     @Subcommand("instance info")

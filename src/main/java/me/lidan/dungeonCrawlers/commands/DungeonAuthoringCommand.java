@@ -19,6 +19,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import revxrsal.commands.annotation.Command;
 import revxrsal.commands.annotation.Subcommand;
+import revxrsal.commands.annotation.SuggestWith;
 import revxrsal.commands.bukkit.annotation.CommandPermission;
 
 import java.nio.charset.StandardCharsets;
@@ -161,7 +162,7 @@ public final class DungeonAuthoringCommand {
 
     @Subcommand("room update")
     @CommandPermission("dungeoncrawlers.admin.authoring")
-    public void roomUpdate(Player player, String id) {
+    public void roomUpdate(Player player, @SuggestWith(RoomIdSuggestionProvider.class) String id) {
         var definition = configRegistry.snapshot().rooms().get(id);
         if (definition == null) {
             player.sendMessage("[FAIL] unknown room " + id);
@@ -184,7 +185,7 @@ public final class DungeonAuthoringCommand {
 
     @Subcommand("room delete")
     @CommandPermission("dungeoncrawlers.admin.authoring")
-    public void roomDelete(CommandSender sender, String id) {
+    public void roomDelete(CommandSender sender, @SuggestWith(RoomIdSuggestionProvider.class) String id) {
         TemplateAuthoringService.OperationResult result = authoring.delete(id, activeTemplates.get());
         sender.sendMessage("[" + (result.successful() ? "PASS" : "FAIL") + "] " + result.detail());
         if (result.successful()) reportAuthoringReload(sender);
@@ -192,7 +193,7 @@ public final class DungeonAuthoringCommand {
 
     @Subcommand("room paste")
     @CommandPermission("dungeoncrawlers.admin.authoring")
-    public void roomPaste(Player player, String id, String rotationValue) {
+    public void roomPaste(Player player, @SuggestWith(RoomIdSuggestionProvider.class) String id, String rotationValue) {
         try {
             Rotation rotation = parseRotation(rotationValue);
             byte[] schematic = authoring.schematic(id);
@@ -207,7 +208,10 @@ public final class DungeonAuthoringCommand {
 
     @Subcommand("connect-test")
     @CommandPermission("dungeoncrawlers.admin.authoring")
-    public void connectTest(Player player, String fromId, String toId, String fromRotation) {
+    public void connectTest(Player player,
+                            @SuggestWith(RoomIdSuggestionProvider.class) String fromId,
+                            @SuggestWith(RoomIdSuggestionProvider.class) String toId,
+                            String fromRotation) {
         TemplateCatalogLoader.LoadResult loaded = templateCatalog.load(configRegistry.snapshot());
         if (!loaded.successful()) {
             loaded.errors().forEach(error -> player.sendMessage("[FAIL] " + error));
@@ -239,7 +243,7 @@ public final class DungeonAuthoringCommand {
 
     @Subcommand("generation plan")
     @CommandPermission("dungeoncrawlers.admin.authoring")
-    public void generationPlan(Player player, String floorId, long seed) {
+    public void generationPlan(Player player, @SuggestWith(FloorIdSuggestionProvider.class) String floorId, long seed) {
         var snapshot = configRegistry.snapshot();
         var floor = snapshot.floors().get(floorId);
         if (floor == null) {

@@ -34,13 +34,13 @@ class StatAggregationServiceTest {
     }
 
     @Test
-    void nonFiniteAndExtremeResultsFailClosedToFixedCaps() {
+    void nonFiniteAndExtremeResultsFailClosedWithoutHealthBalanceCap() {
         StatAggregationService service = new StatAggregationService();
         Map<StatType, Double> result = service.aggregate(Map.of(
                 StatType.HEALTH, Double.POSITIVE_INFINITY,
                 StatType.SPEED, Double.NaN,
                 StatType.CRIT_CHANCE, -100.0), null, Map.of(), Map.of());
-        assertEquals(2048, result.get(StatType.HEALTH));
+        assertEquals(Double.MAX_VALUE, result.get(StatType.HEALTH));
         assertEquals(0, result.get(StatType.SPEED));
         assertEquals(0, result.get(StatType.CRIT_CHANCE));
     }

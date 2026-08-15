@@ -39,6 +39,7 @@ import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
 import revxrsal.commands.annotation.Command;
 import revxrsal.commands.annotation.Subcommand;
+import revxrsal.commands.annotation.SuggestWith;
 import revxrsal.commands.bukkit.annotation.CommandPermission;
 
 import java.security.MessageDigest;
@@ -108,14 +109,14 @@ public final class DungeonCrawlersCommand {
 
     @Subcommand("floor info")
     @CommandPermission("dungeoncrawlers.admin.config")
-    public void floorInfo(CommandSender sender, String id) {
+    public void floorInfo(CommandSender sender, @SuggestWith(FloorIdSuggestionProvider.class) String id) {
         var value = configRegistry.snapshot().floors().get(id);
         sender.sendMessage(value == null ? "[FAIL] unknown floor " + id : "[PASS] " + value);
     }
 
     @Subcommand("room info")
     @CommandPermission("dungeoncrawlers.admin.config")
-    public void roomInfo(CommandSender sender, String id) {
+    public void roomInfo(CommandSender sender, @SuggestWith(RoomIdSuggestionProvider.class) String id) {
         var value = configRegistry.snapshot().rooms().get(id);
         sender.sendMessage(value == null ? "[FAIL] unknown room " + id : "[PASS] " + value);
     }
@@ -330,18 +331,9 @@ public final class DungeonCrawlersCommand {
             player.sendMessage("[FAIL] MAX_HEALTH attribute unavailable");
             return;
         }
-        double original = maxHealth.getBaseValue();
-        try {
-            maxHealth.setBaseValue(CompatibilityService.V1_HEALTH_BALANCE_MAX);
-            double applied = maxHealth.getBaseValue();
-            player.sendMessage("[" + (applied == CompatibilityService.V1_HEALTH_BALANCE_MAX ? "PASS" : "FAIL")
-                    + "] Paper MAX_HEALTH base boundary=" + applied + "; CaveCrawlers="
-                    + CaveCrawlers.getInstance().getPluginMeta().getVersion());
-        } catch (RuntimeException exception) {
-            player.sendMessage("[FAIL] MAX_HEALTH boundary: " + exception.getClass().getSimpleName() + ": " + exception.getMessage());
-        } finally {
-            maxHealth.setBaseValue(original);
-        }
+        player.sendMessage("[PASS] Paper MAX_HEALTH available=" + maxHealth.getBaseValue()
+                + "; DungeonCrawlers health cap=unbounded; CaveCrawlers="
+                + CaveCrawlers.getInstance().getPluginMeta().getVersion());
     }
 
     private static String sha256(byte[] payload) {

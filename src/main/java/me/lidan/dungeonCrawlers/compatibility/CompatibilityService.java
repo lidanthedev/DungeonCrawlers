@@ -16,7 +16,6 @@ import java.util.Arrays;
 import java.util.List;
 
 public final class CompatibilityService {
-    public static final double V1_HEALTH_BALANCE_MAX = 2048;
     public static final double V1_DEFENSE_MAX = 1_000_000;
     public static final double V1_STRENGTH_MAX = 1_000_000;
     public static final double V1_INTELLIGENCE_MAX = 1_000_000;
@@ -57,7 +56,7 @@ public final class CompatibilityService {
                 ? ProbeStatus.PASS : ProbeStatus.FAIL, "cooldown-ms=" + ActionBarManager.ACTION_BAR_COOLDOWN));
         results.add(listenerProbe(StatsCalculateEvent.getHandlerList().getRegisteredListeners()));
         results.add(new ProbeResult("stats.caps", ProbeStatus.MANUAL_REQUIRED,
-                "healthBalanceMax=" + V1_HEALTH_BALANCE_MAX + "; verify Paper MAX_HEALTH consumer with compatibility stats"));
+                "healthBalanceMax=unbounded; verify Paper MAX_HEALTH consumer with compatibility stats"));
         results.add(new ProbeResult("connectors.materials", ProbeStatus.PASS,
                 "fixed=" + Arrays.toString(FIXED_CONNECTOR_MATERIALS)));
 
