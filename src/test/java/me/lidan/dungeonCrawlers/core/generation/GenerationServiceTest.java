@@ -32,6 +32,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -102,6 +103,22 @@ class GenerationServiceTest {
         assertEquals(1, fixture.repository.deleteCalls);
         assertTrue(fixture.reservations.lookup(player).isEmpty());
         assertEquals(SlotAllocator.SlotState.FREE, fixture.slots.lookup(0).orElseThrow().state());
+    }
+
+    @Test
+    void generationListenerReceivesTerminalCancellationSnapshot() {
+        Fixture fixture = fixture(1);
+        fixture.repository.autoAck = false;
+        UUID player = UUID.randomUUID();
+        var started = fixture.start(player);
+        AtomicReference<GenerationService.InstanceSnapshot> callback = new AtomicReference<>();
+
+        assertTrue(fixture.service.whenGenerated(started.instanceId(), callback::set));
+        fixture.service.cancel(started.instanceId());
+        fixture.repository.ack.complete(fixture.repository.receipt);
+
+        assertEquals(GenerationService.InstanceStatus.DESTROYED, callback.get().status());
+        assertTrue(callback.get().detail().contains("slot FREE"));
     }
 
     @Test

@@ -13,7 +13,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Captures/restores the non-inventory player state used by dungeon recovery. */
+/** Captures/restores location and basic attributes only; inventory and potion effects are untouched. */
 public final class BukkitPlayerRecovery {
     private BukkitPlayerRecovery() { }
 

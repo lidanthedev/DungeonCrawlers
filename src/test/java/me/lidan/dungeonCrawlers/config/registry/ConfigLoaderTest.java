@@ -39,7 +39,7 @@ class ConfigLoaderTest {
         Path classes = directory.resolve("classes.yml");
         String content = Files.readString(classes)
                 .replace("icon: IRON_SWORD", "icon: NOT_A_MATERIAL")
-                .replace("stat-add: { STRENGTH: 50 }", "stat-add: { MANA: 50 }")
+                .replace("stat-add: { STRENGTH: 50 }", "stat-add: { NOT_A_STAT: 50 }")
                 .replaceFirst("stat-multiply: \\{\\}", "stat-multiply: nope");
         Files.writeString(classes, content);
 
@@ -47,7 +47,7 @@ class ConfigLoaderTest {
 
         assertFalse(result.successful());
         assertTrue(result.errors().stream().anyMatch(error -> error.contains("invalid material")));
-        assertTrue(result.errors().stream().anyMatch(error -> error.contains("invalid value MANA")));
+        assertTrue(result.errors().stream().anyMatch(error -> error.contains("invalid value NOT_A_STAT")));
         assertTrue(result.errors().stream().anyMatch(error -> error.contains("stat-multiply must be a map")));
     }
 

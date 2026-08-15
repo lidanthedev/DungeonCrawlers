@@ -4,7 +4,7 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Durable player state needed to restore a run without touching inventory or experience. */
+/** Durable location and basic player state; inventory, experience, and potion effects are never captured. */
 public record PlayerRecoverySnapshot(UUID playerId, UUID instanceId, String world, double x, double y, double z,
                                      float yaw, float pitch, String gameMode, double health, int foodLevel,
                                      float saturation, float exhaustion, int fireTicks, int remainingAir,

@@ -4,7 +4,11 @@ import dev.triumphteam.gui.guis.BaseGui;
 import me.lidan.dungeonCrawlers.commands.DungeonCrawlersCommand;
 import me.lidan.dungeonCrawlers.commands.DungeonAuthoringCommand;
 import me.lidan.dungeonCrawlers.commands.DungeonGenerationCommand;
+import me.lidan.dungeonCrawlers.commands.DungeonPhaseFiveCommand;
+import me.lidan.dungeonCrawlers.commands.ClassIdSuggestionProvider;
+import me.lidan.dungeonCrawlers.commands.FloorIdSuggestionProvider;
 import me.lidan.dungeonCrawlers.commands.InstanceIdSuggestionProvider;
+import me.lidan.dungeonCrawlers.commands.RoomIdSuggestionProvider;
 import me.lidan.dungeonCrawlers.authoring.TemplateAuthoringService;
 import me.lidan.dungeonCrawlers.authoring.TemplateCatalogLoader;
 import me.lidan.dungeonCrawlers.compatibility.CompatibilityService;
@@ -23,12 +27,17 @@ import me.lidan.dungeonCrawlers.core.protection.TeleportPermitService;
 import me.lidan.dungeonCrawlers.core.protection.WorldProtectionService;
 import me.lidan.dungeonCrawlers.core.snapshot.PlayerSnapshotService;
 import me.lidan.dungeonCrawlers.core.update.CentralUpdateService;
+import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
+import me.lidan.dungeonCrawlers.core.state.StateTransitionService;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.EmeraldPolicy;
 import me.lidan.dungeonCrawlers.core.template.TemplateValidator;
 import me.lidan.dungeonCrawlers.commands.DungeonPhaseFourCommand;
 import me.lidan.dungeonCrawlers.integration.BukkitChunkTicketService;
 import me.lidan.dungeonCrawlers.integration.BukkitEntityIdentity;
 import me.lidan.dungeonCrawlers.integration.BukkitWorldProtectionListener;
+import me.lidan.dungeonCrawlers.integration.BukkitDungeonRunListener;
+import me.lidan.dungeonCrawlers.integration.BukkitDungeonActionBar;
+import me.lidan.dungeonCrawlers.integration.cave.CaveActionBarAdapter;
 import me.lidan.dungeonCrawlers.integration.parties.PartyProviders;
 import me.lidan.dungeonCrawlers.integration.worldedit.FaweGenerationAdapter;
 import me.lidan.dungeonCrawlers.integration.worldedit.WorldEditAdapter;
@@ -71,6 +80,8 @@ public final class DungeonCrawlers extends JavaPlugin {
     private TeleportPermitService teleportPermits;
     private BukkitEntityIdentity entityIdentity;
     private BukkitChunkTicketService chunkTickets;
+    private RunPreparationService runPreparation;
+    private DungeonPhaseFiveCommand phaseFiveCommand;
 
     @Override
     public void onEnable() {
@@ -164,6 +175,9 @@ public final class DungeonCrawlers extends JavaPlugin {
     private void initializePhaseFourServices(String worldName) {
         centralUpdates = new CentralUpdateService(phaseClock(), getLogger()::info);
         doors = new DoorService();
+        runPreparation = new RunPreparationService(doors, centralUpdates, new StateTransitionService(), phaseClock(),
+                instanceId -> getLogger().info("instance=" + instanceId + " first room activated"),
+                getLogger()::warning, generation::cancel);
         playerSnapshots = new PlayerSnapshotService(durableRepository);
         protectionPolicy = new WorldProtectionService();
         teleportPermits = new TeleportPermitService();
@@ -233,6 +247,21 @@ public final class DungeonCrawlers extends JavaPlugin {
                     .map(java.util.UUID::toString)
                     .toList());
         });
+        commandHandlerBuilder.suggestionProviders().addProviderForAnnotation(SuggestWith.class, annotation -> {
+            if (annotation.value() != ClassIdSuggestionProvider.class) return null;
+            return new ClassIdSuggestionProvider<BukkitCommandActor>(() -> configRegistry.snapshot().classes().keySet());
+        });
+        commandHandlerBuilder.suggestionProviders().addProviderForAnnotation(SuggestWith.class, annotation -> {
+            if (annotation.value() != FloorIdSuggestionProvider.class) return null;
+            return new FloorIdSuggestionProvider<BukkitCommandActor>(() -> configRegistry.snapshot().floors().keySet());
+        });
+        commandHandlerBuilder.suggestionProviders().addProviderForAnnotation(SuggestWith.class, annotation -> {
+            if (annotation.value() != RoomIdSuggestionProvider.class) return null;
+            return new RoomIdSuggestionProvider<BukkitCommandActor>(() -> configRegistry.snapshot().rooms().keySet());
+        });
+        phaseFiveCommand = new DungeonPhaseFiveCommand(configRegistry, PartyProviders.forServer(getServer()),
+                generation, runPreparation, playerSnapshots, teleportPermits, getServer(), this, phaseClock(),
+                generationWorldName, new BukkitDungeonActionBar(new CaveActionBarAdapter()));
         Lamp<BukkitCommandActor> commandHandler = commandHandlerBuilder.build();
         commandHandler.register(new DungeonCrawlersCommand(this,
                 new CompatibilityService(this, mainConfig, configRegistry), mainConfig, configRegistry,
@@ -242,7 +271,8 @@ public final class DungeonCrawlers extends JavaPlugin {
         commandHandler.register(new DungeonGenerationCommand(configRegistry,
                 PartyProviders.forServer(getServer()), generation, getServer(),
                 generationWorldName,
-                teleportPermits, phaseClock()));
+                teleportPermits, phaseClock(), phaseFiveCommand::cancelFromAdmin));
+        commandHandler.register(phaseFiveCommand);
         commandHandler.register(new DungeonPhaseFourCommand(centralUpdates, doors, protectionPolicy,
                 teleportPermits, playerSnapshots, getServer(), this, phaseClock(),
                 generationWorldName,
@@ -253,6 +283,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         registerEvent(new BukkitWorldProtectionListener(protectionPolicy,
                 () -> generation.protectionRegions().stream().map(WorldProtectionService.InstanceRegion::from).toList(),
                 teleportPermits, phaseClock()));
+        registerEvent(new BukkitDungeonRunListener(phaseFiveCommand, runPreparation, generationWorldName));
     }
 
     private void startTasks() {

@@ -1,5 +1,6 @@
 package me.lidan.dungeonCrawlers.core.stats;
 
+import me.lidan.cavecrawlers.stats.StatType;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.*;
 import org.bukkit.Material;
 import org.junit.jupiter.api.Test;
@@ -34,15 +35,15 @@ class StatAggregationServiceTest {
     }
 
     @Test
-    void nonFiniteAndExtremeResultsFailClosedToFixedCaps() {
+    void aggregationDoesNotClampConfiguredStats() {
         StatAggregationService service = new StatAggregationService();
         Map<StatType, Double> result = service.aggregate(Map.of(
                 StatType.HEALTH, Double.POSITIVE_INFINITY,
                 StatType.SPEED, Double.NaN,
                 StatType.CRIT_CHANCE, -100.0), null, Map.of(), Map.of());
-        assertEquals(2048, result.get(StatType.HEALTH));
-        assertEquals(0, result.get(StatType.SPEED));
-        assertEquals(0, result.get(StatType.CRIT_CHANCE));
+        assertEquals(Double.POSITIVE_INFINITY, result.get(StatType.HEALTH));
+        assertTrue(Double.isNaN(result.get(StatType.SPEED)));
+        assertEquals(-100, result.get(StatType.CRIT_CHANCE));
     }
 
     @Test
