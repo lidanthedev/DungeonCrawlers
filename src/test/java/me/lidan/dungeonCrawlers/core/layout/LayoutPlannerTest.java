@@ -15,6 +15,7 @@ import me.lidan.dungeonCrawlers.core.template.TemplateModels.Connector;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.ConnectorKind;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Facing;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
+import me.lidan.dungeonCrawlers.core.template.TemplateModels.Rotation;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Secret;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.SecretKind;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Template;
@@ -110,6 +111,21 @@ class LayoutPlannerTest {
                 .plan().orElseThrow();
 
         assertEquals(new Point(111, 68, 195), plan.placements().get(1).origin());
+    }
+
+    @Test
+    void markerBlocksExcludeChestPayloadButRemoveRewardMarker() {
+        Point rewardMarker = new Point(4, 1, 4);
+        Point chest = new Point(5, 1, 4);
+        var placement = new LayoutPlanner.Placement(0, "room", RoomType.BOSS, null, Rotation.NONE,
+                new Point(0, 0, 0), new Bounds(new Point(0, 0, 0), new Point(8, 8, 8)), Optional.empty(),
+                Optional.empty(), Set.of(), Set.of(), List.of(), List.of(), List.of(), Optional.empty(),
+                Optional.of(rewardMarker), Set.of(), List.of(new LayoutPlanner.PlacedSecret(
+                        new me.lidan.dungeonCrawlers.core.template.TemplateModels.SecretId(INSTANCE, 0, chest),
+                        chest, SecretKind.STANDARD)));
+
+        assertTrue(placement.markerBlocks().contains(rewardMarker));
+        assertFalse(placement.markerBlocks().contains(chest));
     }
 
     @Test

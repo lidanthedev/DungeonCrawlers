@@ -32,7 +32,7 @@ public final class BukkitDungeonRunListener implements Listener {
         this.generationWorldName = Objects.requireNonNull(generationWorldName, "generationWorldName");
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onPreparationDoor(PlayerInteractEvent event) {
         if (event.getHand() == EquipmentSlot.OFF_HAND) return;
         if (event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getClickedBlock() == null

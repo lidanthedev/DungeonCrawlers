@@ -21,6 +21,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
@@ -53,13 +54,15 @@ public final class LayoutPlanner {
 
         List<Placement> placements = new ArrayList<>();
         List<Connection> connections = new ArrayList<>();
+        PlacementIndex collisionIndex = new PlacementIndex();
         CatalogEntry start = request.catalog().get(request.floor().templates().start());
         Placement startPlacement = placement(request.instanceId(), 0, start.template(), Rotation.NONE,
                 request.slotOrigin(), null);
         String startError = validatePlacement(startPlacement, placements, request.slotBounds(),
-                request.floor().generation().collisionPadding(), Set.of(), -1);
+                request.floor().generation().collisionPadding(), Set.of(), -1, collisionIndex);
         if (startError != null) return failed(trace, "START " + start.template().id() + ": " + startError);
         placements.add(startPlacement);
+        collisionIndex.add(startPlacement);
         trace.add("place[0] START " + start.template().id() + " origin=" + startPlacement.origin());
 
         String previousCombatId = null;
@@ -84,7 +87,7 @@ public final class LayoutPlanner {
                 } else {
                     lastFailure = validatePlacement(connected, placements, request.slotBounds(),
                             request.floor().generation().collisionPadding(), interfaceBounds.bounds(),
-                            interfaceBounds.fromIndex());
+                            interfaceBounds.fromIndex(), collisionIndex);
                 }
                 trace.add("try[" + position + ":" + attempt + "] " + candidate.template().id()
                         + (lastFailure == null ? " accepted" : " rejected=" + lastFailure));
@@ -96,6 +99,7 @@ public final class LayoutPlanner {
             }
             if (chosen == null) return failed(trace, "position " + position + " exhausted attempts: " + lastFailure);
             placements.add(chosen);
+            collisionIndex.add(chosen);
             previousCombatId = chosen.templateId();
             generatedIndex++;
         }
@@ -106,10 +110,11 @@ public final class LayoutPlanner {
         Connection portalConnection = connection(placements.getLast(), portalPlacement);
         String portalError = portalConnection.valid() ? validatePlacement(portalPlacement, placements,
                 request.slotBounds(), request.floor().generation().collisionPadding(), portalConnection.bounds(),
-                portalConnection.fromIndex())
+                portalConnection.fromIndex(), collisionIndex)
                 : portalConnection.detail();
         if (portalError != null) return failed(trace, "PORTAL " + portal.template().id() + ": " + portalError);
         placements.add(portalPlacement);
+        collisionIndex.add(portalPlacement);
         connections.add(portalConnection);
         trace.add("place[" + generatedIndex + "] PORTAL " + portal.template().id()
                 + " origin=" + portalPlacement.origin());
@@ -121,9 +126,10 @@ public final class LayoutPlanner {
         Placement bossPlacement = placement(request.instanceId(), generatedIndex, boss.template(), Rotation.NONE,
                 bossOrigin, null);
         String bossError = validatePlacement(bossPlacement, placements, request.slotBounds(),
-                request.floor().generation().collisionPadding(), Set.of(), -1);
+                request.floor().generation().collisionPadding(), Set.of(), -1, collisionIndex);
         if (bossError != null) return failed(trace, "BOSS " + boss.template().id() + ": " + bossError);
         placements.add(bossPlacement);
+        collisionIndex.add(bossPlacement);
         trace.add("place[" + generatedIndex + "] BOSS " + boss.template().id() + " origin=" + bossOrigin);
 
         LayoutPlan plan = new LayoutPlan(ALGORITHM_VERSION, request.instanceId(), request.seed(), request.configHash(),
@@ -286,36 +292,78 @@ public final class LayoutPlanner {
     }
 
     private static String validatePlacement(Placement candidate, List<Placement> existing, Bounds slot,
-                                            int padding, Set<Point> allowedInterface, int connectedPlacementIndex) {
+                                            int padding, Set<Point> allowedInterface, int connectedPlacementIndex,
+                                            PlacementIndex collisionIndex) {
         if (!slot.contains(candidate.bounds().minimum()) || !slot.contains(candidate.bounds().maximum())) {
             return "bounds leave slot: " + candidate.bounds();
         }
         if (!candidate.reservedConnectorCells().stream().allMatch(slot::contains)) {
             return "connector clearance leaves slot";
         }
+        boolean detailedCollisionData = !candidate.solidBlocks().isEmpty()
+                && existing.stream().allMatch(placement -> !placement.solidBlocks().isEmpty());
         Set<Point> candidateOccupied = union(candidate.solidBlocks(), candidate.reservedConnectorCells());
         for (Placement placed : existing) {
             if (candidate.bounds().intersects(placed.bounds())) {
                 return "bounds collision with placement " + placed.index();
             }
             int effectivePadding = placed.index() == connectedPlacementIndex ? 0 : padding;
-            if (!candidate.bounds().expand(effectivePadding + 1)
-                    .intersects(placed.bounds().expand(effectivePadding + 1))) continue;
-            Set<Point> placedOccupied = union(placed.solidBlocks(), placed.reservedConnectorCells());
-            for (Point point : candidateOccupied) {
-                for (int x = -effectivePadding; x <= effectivePadding; x++) {
-                    for (int y = -effectivePadding; y <= effectivePadding; y++) {
-                        for (int z = -effectivePadding; z <= effectivePadding; z++) {
-                            Point other = point.add(new Point(x, y, z));
-                            if (!placedOccupied.contains(other)) continue;
+            if (!detailedCollisionData) {
+                if (effectivePadding > 0 && candidate.bounds().expand(effectivePadding + 1)
+                        .intersects(placed.bounds().expand(effectivePadding + 1))) {
+                    return "bounds collision with placement " + placed.index()
+                            + " within collision padding";
+                }
+            }
+        }
+        if (detailedCollisionData) {
+            int collidingIndex = hasIndexedCollision(candidateOccupied, padding, connectedPlacementIndex,
+                    allowedInterface, collisionIndex);
+            if (collidingIndex >= 0) {
+                Placement placed = existing.stream().filter(value -> value.index() == collidingIndex)
+                        .findFirst().orElseThrow();
+                int effectivePadding = collidingIndex == connectedPlacementIndex ? 0 : padding;
+                if (candidate.bounds().expand(effectivePadding + 1)
+                        .intersects(placed.bounds().expand(effectivePadding + 1))) {
+                    return "collision with placement " + collidingIndex;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static int hasIndexedCollision(Set<Point> candidateOccupied, int padding, int connectedPlacementIndex,
+                                           Set<Point> allowedInterface, PlacementIndex collisionIndex) {
+        for (Point point : candidateOccupied) {
+            for (int x = -padding; x <= padding; x++) {
+                for (int y = -padding; y <= padding; y++) {
+                    for (int z = -padding; z <= padding; z++) {
+                        Point other = point.add(new Point(x, y, z));
+                        for (int existingIndex : collisionIndex.occupants(other)) {
+                            int effectivePadding = existingIndex == connectedPlacementIndex ? 0 : padding;
+                            if (Math.abs(x) > effectivePadding || Math.abs(y) > effectivePadding
+                                    || Math.abs(z) > effectivePadding) continue;
                             if (allowedInterface.contains(point) && allowedInterface.contains(other)) continue;
-                            return "collision with placement " + placed.index() + " near " + point;
+                            return existingIndex;
                         }
                     }
                 }
             }
         }
-        return null;
+        return -1;
+    }
+
+    private static final class PlacementIndex {
+        private final Map<Point, Set<Integer>> occupied = new HashMap<>();
+
+        private void add(Placement placement) {
+            Set<Point> points = union(placement.solidBlocks(), placement.reservedConnectorCells());
+            for (Point point : points) occupied.computeIfAbsent(point, ignored -> new HashSet<>()).add(placement.index());
+        }
+
+        private Set<Integer> occupants(Point point) {
+            return occupied.getOrDefault(point, Set.of());
+        }
     }
 
     private static PlanResult failed(List<String> trace, String error) {
@@ -361,6 +409,19 @@ public final class LayoutPlanner {
             minibossMobs = List.copyOf(minibossMobs); playerSpawns = List.copyOf(playerSpawns);
             Objects.requireNonNull(bossSpawn); Objects.requireNonNull(rewardChest);
             portalBlocks = Set.copyOf(portalBlocks); secrets = List.copyOf(secrets);
+        }
+
+        /** Marker blocks are authoring aids; chest/trapped-chest blocks remain visible gameplay blocks. */
+        public Set<Point> markerBlocks() {
+            Set<Point> result = new LinkedHashSet<>();
+            entrance.ifPresent(value -> result.add(value.point()));
+            exit.ifPresent(value -> result.add(value.point()));
+            result.addAll(normalMobs);
+            result.addAll(minibossMobs);
+            result.addAll(playerSpawns);
+            bossSpawn.ifPresent(result::add);
+            rewardChest.ifPresent(result::add);
+            return Set.copyOf(result);
         }
     }
 

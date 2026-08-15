@@ -214,6 +214,12 @@ public final class TemplateModels {
             Objects.requireNonNull(contentHash);
         }
 
+        /** Runtime planning only needs marker offsets and bounds; schematic blocks are pasted separately. */
+        public Template withoutSolidBlocks() {
+            return new Template(id, type, capabilities, bounds, entrance, exit, normalMobs, minibossMobs,
+                    playerSpawns, bossSpawn, rewardChest, secrets, portalBlocks, Set.of(), contentHash);
+        }
+
         private static List<Point> sorted(List<Point> points) {
             return List.copyOf(points.stream().sorted().toList());
         }

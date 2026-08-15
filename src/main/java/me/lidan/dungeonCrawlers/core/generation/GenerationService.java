@@ -2,6 +2,8 @@ package me.lidan.dungeonCrawlers.core.generation;
 
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.ConfigSnapshot;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.FloorDefinition;
+import me.lidan.dungeonCrawlers.config.registry.ConfigModels.EncounterCapability;
+import me.lidan.dungeonCrawlers.config.registry.ConfigModels.RoomType;
 import me.lidan.dungeonCrawlers.core.generation.SlotAllocator.SlotLease;
 import me.lidan.dungeonCrawlers.core.layout.LayoutPlanner.LayoutPlan;
 import me.lidan.dungeonCrawlers.core.layout.LayoutPlanner.Placement;
@@ -46,6 +48,7 @@ public final class GenerationService {
     private final Executor runtimeExecutor;
     private final BooleanSupplier primaryThread;
     private final Consumer<String> diagnostics;
+    private final Consumer<PlanningProgress> progressListener;
     private final Clock clock;
     private final String worldName;
     private final GenerationJournalCodec journalCodec = new GenerationJournalCodec();
@@ -62,6 +65,14 @@ public final class GenerationService {
                              GenerationWorldGateway world, PreparationProvider preparation, Executor planningExecutor,
                              Executor runtimeExecutor, BooleanSupplier primaryThread, Consumer<String> diagnostics,
                              Clock clock, String worldName) {
+        this(reservations, slots, repository, world, preparation, planningExecutor, runtimeExecutor, primaryThread,
+                diagnostics, clock, worldName, ignored -> { });
+    }
+
+    public GenerationService(PlayerReservationService reservations, SlotAllocator slots, DurableRepository repository,
+                             GenerationWorldGateway world, PreparationProvider preparation, Executor planningExecutor,
+                             Executor runtimeExecutor, BooleanSupplier primaryThread, Consumer<String> diagnostics,
+                             Clock clock, String worldName, Consumer<PlanningProgress> progressListener) {
         this.reservations = Objects.requireNonNull(reservations);
         this.slots = Objects.requireNonNull(slots);
         this.repository = Objects.requireNonNull(repository);
@@ -71,6 +82,7 @@ public final class GenerationService {
         this.runtimeExecutor = Objects.requireNonNull(runtimeExecutor);
         this.primaryThread = Objects.requireNonNull(primaryThread);
         this.diagnostics = Objects.requireNonNull(diagnostics);
+        this.progressListener = Objects.requireNonNull(progressListener);
         this.clock = Objects.requireNonNull(clock);
         this.worldName = Objects.requireNonNull(worldName);
     }
@@ -97,6 +109,7 @@ public final class GenerationService {
             instances.put(instanceId, instance);
         }
         diagnostics.accept("instance=" + instanceId + " admitted slot=" + instance.slot.id());
+        emitProgress(instance, 0.02, "planning dungeon", false, true);
         CompletableFuture.supplyAsync(() -> prepare(instance), planningExecutor)
                 .whenCompleteAsync((prepared, failure) -> finishPlanning(instanceId, instance.token, prepared, failure),
                         runtimeExecutor);
@@ -159,6 +172,28 @@ public final class GenerationService {
                 .findFirst()
                 .flatMap(placement -> placement.exit())
                 .map(exit -> new StartDoor(exit.point(), exit.outward()));
+    }
+
+    /** Returns the immutable generated combat layout used by Phase 6 reconciliation. */
+    public Optional<CombatPlan> combatPlan(UUID instanceId) {
+        requirePrimaryThread();
+        MutableInstance instance = instances.get(instanceId);
+        if (instance == null || instance.state != InstanceStatus.GENERATED || instance.prepared == null) {
+            return Optional.empty();
+        }
+        List<CombatRoom> rooms = instance.prepared.plan().placements().stream()
+                .filter(placement -> placement.type() == RoomType.NORMAL)
+                .map(placement -> new CombatRoom(placement.index(), placement.templateId(), placement.encounter(),
+                        placement.bounds(), placement.normalMobs(), placement.minibossMobs()))
+                .toList();
+        List<RoomLink> links = instance.prepared.plan().connections().stream()
+                .filter(connection -> rooms.stream().anyMatch(room -> room.index() == connection.toIndex()))
+                .map(connection -> new RoomLink(connection.fromIndex(), connection.toIndex(),
+                        union(connection.doorBounds(), connection.entranceBounds())))
+                .toList();
+        FloorDefinition floor = instance.request.floor();
+        return Optional.of(new CombatPlan(instance.instanceId, instance.request.seed(), rooms, links,
+                floor.normalMobs(), floor.minibossMobs(), floor.limits().mobRespawnRetries()));
     }
 
     /** Invokes a callback when generation completes or reaches a terminal cancellation state. */
@@ -244,8 +279,15 @@ public final class GenerationService {
 
     private PreparedGeneration prepare(MutableInstance instance) {
         try {
+            emitProgress(instance, 0.05, "loading room templates", false, true);
+            double[] lastProgress = {0.05};
             return preparation.prepare(instance.instanceId, instance.request.seed(), instance.request.floor(),
-                    instance.request.snapshot(), instance.slot);
+                    instance.request.snapshot(), instance.slot,
+                    update -> {
+                        double mapped = 0.05 + (0.63 * update.progress());
+                        lastProgress[0] = Math.max(lastProgress[0], Math.min(0.68, mapped));
+                        emitProgress(instance, lastProgress[0], update.detail(), false, true);
+                    });
         } catch (RuntimeException exception) {
             throw exception;
         } catch (Exception exception) {
@@ -268,6 +310,7 @@ public final class GenerationService {
         instance.journal = journal(instance, prepared.plan());
         instance.state = InstanceStatus.JOURNALING;
         instance.detail = "awaiting durable planned-bounds ACK";
+        emitProgress(instance, 0.68, "saving generation plan", false, true);
         DurableWrite write = new DurableWrite(UUID.randomUUID(), instanceId, JOURNAL_NAMESPACE,
                 instanceId.toString(), "generation-plan-" + instanceId, 1, journalCodec.encode(instance.journal));
         DurableSubmission submission = repository.submit(write);
@@ -298,6 +341,7 @@ public final class GenerationService {
         slots.markPasting(instance.slot.id(), instanceId);
         instance.state = InstanceStatus.PASTING;
         instance.detail = "pasting placement 0";
+        emitProgress(instance, 0.72, "pasting dungeon", false, true);
         paste(instance, 0, token);
     }
 
@@ -308,6 +352,7 @@ public final class GenerationService {
         }
         if (index >= instance.prepared.plan().placements().size()) {
             instance.detail = "setting up connections";
+            emitProgress(instance, 0.96, "opening room connections", false, true);
             try {
                 instance.inFlight = world.setupConnections(worldName, instance.prepared.plan().connections());
             } catch (RuntimeException exception) {
@@ -325,6 +370,7 @@ public final class GenerationService {
                     instance.state = InstanceStatus.GENERATED;
                     instance.detail = "generation complete";
                     instance.inFlight = null;
+                    emitProgress(instance, 1.0, "generation complete", true, true);
                     diagnostics.accept("instance=" + instance.instanceId + " generated placements="
                             + instance.prepared.plan().placements().size());
                     notifyGenerated(instance);
@@ -339,10 +385,13 @@ public final class GenerationService {
                 return;
             }
             instance.detail = "pasting placement " + index + " " + placement.templateId();
+            int total = instance.prepared.plan().placements().size();
+            double progress = 0.72 + (0.22 * index / Math.max(1, total));
+            emitProgress(instance, progress, "pasting " + placement.templateId(), false, true);
             try {
                 instance.inFlight = world.paste(worldName,
                         instance.prepared.schematic(placement.templateId()), placement.origin(),
-                        placement.rotation());
+                        placement.rotation(), placement.markerBlocks());
             } catch (RuntimeException exception) {
                 failAndClear(instance, "paste " + index + " failed: " + message(exception));
                 return;
@@ -374,6 +423,7 @@ public final class GenerationService {
         instance.cleanupInFlight = true;
         instance.state = InstanceStatus.CLEARING;
         instance.detail = reason;
+        emitProgress(instance, 0.97, "cleaning up: " + reason, false, false);
         instance.token++;
         slots.markClearing(instance.slot.id(), instance.instanceId);
         CompletableFuture<Void> clear;
@@ -399,6 +449,7 @@ public final class GenerationService {
                         instance.cleanupInFlight = false;
                         instance.state = InstanceStatus.DESTROYED;
                         instance.detail = "clear ACK, journal removed, reservation released, slot FREE";
+                        emitProgress(instance, 1.0, "cleanup complete", true, false);
                         notifyListeners(instance);
                         diagnostics.accept("instance=" + instance.instanceId + " cleanup complete");
                     }, runtimeExecutor);
@@ -410,6 +461,7 @@ public final class GenerationService {
         instance.cleanupInFlight = false;
         instance.state = InstanceStatus.CLEAR_FAILED;
         instance.detail = detail;
+        emitProgress(instance, instance.prepared == null ? 0.0 : 0.97, detail, true, false);
         diagnostics.accept("P0 instance=" + instance.instanceId + " " + detail + "; slot remains blocked");
     }
 
@@ -419,6 +471,7 @@ public final class GenerationService {
         slots.releaseUnmodified(instance.slot.id(), instance.instanceId);
         instance.state = InstanceStatus.DESTROYED;
         instance.detail = detail + "; no paste occurred";
+        emitProgress(instance, 1.0, instance.detail, true, false);
         notifyListeners(instance);
         diagnostics.accept("instance=" + instance.instanceId + " " + instance.detail);
     }
@@ -507,6 +560,12 @@ public final class GenerationService {
         return new Bounds(new Point(minX, minY, minZ), new Point(maxX, maxY, maxZ));
     }
 
+    private static Set<Point> union(Set<Point> first, Set<Point> second) {
+        Set<Point> result = new LinkedHashSet<>(first);
+        result.addAll(second);
+        return Set.copyOf(result);
+    }
+
     private static float yaw(Point direction) {
         return (float) Math.toDegrees(Math.atan2(-direction.x(), direction.z()));
     }
@@ -528,6 +587,16 @@ public final class GenerationService {
         });
     }
 
+    private void emitProgress(MutableInstance instance, double progress, String detail,
+                               boolean terminal, boolean successful) {
+        try {
+            progressListener.accept(new PlanningProgress(instance.instanceId,
+                    Set.copyOf(instance.request.party().onlineMembers()), progress, detail, terminal, successful));
+        } catch (RuntimeException exception) {
+            diagnostics.accept("instance=" + instance.instanceId + " progress callback failed: " + message(exception));
+        }
+    }
+
     private boolean current(MutableInstance instance, long token) {
         return instances.get(instance.instanceId) == instance && instance.token == token && !instance.cancelled;
     }
@@ -546,6 +615,32 @@ public final class GenerationService {
     public interface PreparationProvider {
         PreparedGeneration prepare(UUID instanceId, long seed, FloorDefinition floor, ConfigSnapshot snapshot,
                                    SlotLease slot) throws Exception;
+
+        default PreparedGeneration prepare(UUID instanceId, long seed, FloorDefinition floor, ConfigSnapshot snapshot,
+                                           SlotLease slot, Consumer<PreparationProgress> progress) throws Exception {
+            return prepare(instanceId, seed, floor, snapshot, slot);
+        }
+    }
+
+    public record PreparationProgress(double progress, String detail) {
+        public PreparationProgress {
+            if (!Double.isFinite(progress) || progress < 0.0 || progress > 1.0) {
+                throw new IllegalArgumentException("preparation progress must be in 0..1");
+            }
+            Objects.requireNonNull(detail);
+        }
+    }
+
+    public record PlanningProgress(UUID instanceId, Set<UUID> players, double progress, String detail,
+                                   boolean terminal, boolean successful) {
+        public PlanningProgress {
+            Objects.requireNonNull(instanceId);
+            players = Set.copyOf(players);
+            if (!Double.isFinite(progress) || progress < 0.0 || progress > 1.0) {
+                throw new IllegalArgumentException("planning progress must be in 0..1");
+            }
+            Objects.requireNonNull(detail);
+        }
     }
 
     public record PreparedGeneration(LayoutPlan plan, Map<String, byte[]> schematics) {
@@ -612,6 +707,41 @@ public final class GenerationService {
         public StartDoor {
             Objects.requireNonNull(center);
             Objects.requireNonNull(outward);
+        }
+    }
+
+    public record CombatPlan(UUID instanceId, long seed, List<CombatRoom> rooms, List<RoomLink> links,
+                             List<String> normalMobs, List<String> minibossMobs, int respawnRetries) {
+        public CombatPlan {
+            Objects.requireNonNull(instanceId);
+            rooms = List.copyOf(rooms);
+            links = List.copyOf(links);
+            normalMobs = List.copyOf(normalMobs);
+            minibossMobs = List.copyOf(minibossMobs);
+            if (respawnRetries < 0) throw new IllegalArgumentException("respawnRetries must not be negative");
+        }
+    }
+
+    public record CombatRoom(int index, String templateId, EncounterCapability encounter, Bounds bounds,
+                             List<Point> normalMarkers, List<Point> minibossMarkers) {
+        public CombatRoom {
+            if (index < 0) throw new IllegalArgumentException("room index must not be negative");
+            Objects.requireNonNull(templateId);
+            Objects.requireNonNull(encounter);
+            Objects.requireNonNull(bounds);
+            normalMarkers = List.copyOf(normalMarkers);
+            minibossMarkers = List.copyOf(minibossMarkers);
+            if (normalMarkers.isEmpty() && minibossMarkers.isEmpty()) {
+                throw new IllegalArgumentException("combat room must contain a mob marker");
+            }
+        }
+    }
+
+    public record RoomLink(int fromIndex, int toIndex, Set<Point> triggerBlocks) {
+        public RoomLink {
+            if (fromIndex < 0 || toIndex < 0) throw new IllegalArgumentException("room indexes must not be negative");
+            triggerBlocks = Set.copyOf(triggerBlocks);
+            if (triggerBlocks.isEmpty()) throw new IllegalArgumentException("room link must contain door blocks");
         }
     }
 
