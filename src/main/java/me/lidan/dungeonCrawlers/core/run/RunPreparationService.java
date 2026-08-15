@@ -154,8 +154,18 @@ public final class RunPreparationService {
                 run.startedAt = clock.instant();
             });
         } catch (RuntimeException exception) {
-            return DoorInteractionResult.failure(exception.getMessage() == null
-                    ? exception.getClass().getSimpleName() : exception.getMessage());
+            String detail = exception.getMessage() == null
+                    ? exception.getClass().getSimpleName() : exception.getMessage();
+            if (failOnFirstRoomActivation) {
+                cleanup(instanceId);
+                try {
+                    instanceCanceller.accept(instanceId);
+                } catch (RuntimeException cancellationFailure) {
+                    diagnose("instance=" + instanceId + " activation rollback failed: " + message(cancellationFailure));
+                }
+                return DoorInteractionResult.activationFailure("first room activation failed: " + detail);
+            }
+            return DoorInteractionResult.failure(detail);
         }
         run.door = opened.door();
         return DoorInteractionResult.success(opened.detail(), opened.door(), run.snapshot());
@@ -266,14 +276,18 @@ public final class RunPreparationService {
     }
 
     public record DoorInteractionResult(boolean successful, String detail,
-                                        DoorService.DoorSnapshot door, RunSnapshot snapshot) {
+                                        DoorService.DoorSnapshot door, RunSnapshot snapshot,
+                                        boolean rollbackRequired) {
         public DoorInteractionResult { Objects.requireNonNull(detail); }
         public static DoorInteractionResult success(String detail, DoorService.DoorSnapshot door,
                                                     RunSnapshot snapshot) {
-            return new DoorInteractionResult(true, detail, door, snapshot);
+            return new DoorInteractionResult(true, detail, door, snapshot, false);
         }
         public static DoorInteractionResult failure(String detail) {
-            return new DoorInteractionResult(false, detail, null, null);
+            return new DoorInteractionResult(false, detail, null, null, false);
+        }
+        public static DoorInteractionResult activationFailure(String detail) {
+            return new DoorInteractionResult(false, detail, null, null, true);
         }
     }
 

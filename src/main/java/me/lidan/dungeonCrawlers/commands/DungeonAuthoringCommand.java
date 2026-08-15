@@ -12,6 +12,7 @@ import me.lidan.dungeonCrawlers.core.template.TemplateModels.Bounds;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.EmeraldPolicy;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Rotation;
+import me.lidan.dungeonCrawlers.core.template.TemplateModels.Template;
 import me.lidan.dungeonCrawlers.core.template.TemplateValidator;
 import me.lidan.dungeonCrawlers.integration.WorldEditGateway;
 import me.lidan.dungeonCrawlers.integration.ProgressBarService;
@@ -33,6 +34,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
+import java.util.function.BiFunction;
 import java.util.logging.Logger;
 
 @Command("dungeon")
@@ -168,51 +170,8 @@ public final class DungeonAuthoringCommand {
             player.sendMessage("[FAIL] invalid room type or encounters");
             return;
         }
-        long startedAt = System.nanoTime();
-        logAuthoring("room create started id=" + id + " player=" + player.getName()
-                + " type=" + type + " encounters=" + capabilities);
-        UUID progressId = beginRoomProgress(player, "Creating room");
-        captureSelectionAsync(player, progressId).thenAccept(capture -> {
-            if (!capture.successful()) {
-                logAuthoring("room create capture failed id=" + id + " elapsedMs=" + elapsedMillis(startedAt)
-                        + " detail=" + capture.detail());
-                failRoomProgress(progressId, capture.detail());
-                runOnMain(player, () -> player.sendMessage("[FAIL] " + capture.detail()));
-                return;
-            }
-            updateRoomProgress(progressId, 0.78, "validating room markers");
-            long validationStarted = System.nanoTime();
-            var validation = templateValidator.validate(id, type, capabilities,
-                    capture.selection().orElseThrow(), emeraldPolicy);
-            logAuthoring("room create validation finished id=" + id + " elapsedMs="
-                    + elapsedMillis(validationStarted) + " blocks="
-                    + capture.selection().orElseThrow().blocks().size() + " successful=" + validation.successful()
-                    + " errors=" + validation.errors().size());
-            runOnMain(player, () -> {
-                if (!validation.successful()) {
-                    logAuthoring("room create rejected id=" + id + " totalMs=" + elapsedMillis(startedAt));
-                    failRoomProgress(progressId, "room validation failed");
-                    validation.errors().forEach(error -> player.sendMessage("[FAIL] " + error));
-                    return;
-                }
-                updateRoomProgress(progressId, 0.92, "saving room");
-                long saveStarted = System.nanoTime();
-                TemplateAuthoringService.OperationResult result = authoring.create(id, type, capabilities,
-                        capture.schematic(), validation.template().orElseThrow());
-                logAuthoring("room create save finished id=" + id + " elapsedMs=" + elapsedMillis(saveStarted)
-                        + " totalMs=" + elapsedMillis(startedAt) + " successful=" + result.successful());
-                player.sendMessage("[" + (result.successful() ? "PASS" : "FAIL") + "] " + result.detail());
-                if (result.successful()) reportAuthoringReload(player);
-                if (result.successful()) completeRoomProgress(progressId, "room created");
-                else failRoomProgress(progressId, result.detail());
-            });
-        }).exceptionally(error -> {
-            logAuthoring("room create failed id=" + id + " totalMs=" + elapsedMillis(startedAt)
-                    + " error=" + message(error));
-            failRoomProgress(progressId, message(error));
-            runOnMain(player, () -> player.sendMessage("[FAIL] room capture failed: " + message(error)));
-            return null;
-        });
+        runRoomWorkflow(player, "create", "Creating room", id, type, capabilities, true,
+                (schematic, template) -> authoring.create(id, type, capabilities, schematic, template));
     }
 
     @Subcommand("room update")
@@ -223,50 +182,8 @@ public final class DungeonAuthoringCommand {
             player.sendMessage("[FAIL] unknown room " + id);
             return;
         }
-        long startedAt = System.nanoTime();
-        logAuthoring("room update started id=" + id + " player=" + player.getName()
-                + " type=" + definition.type() + " capabilities=" + definition.capabilities());
-        UUID progressId = beginRoomProgress(player, "Updating room");
-        captureSelectionAsync(player, progressId).thenAccept(capture -> {
-            if (!capture.successful()) {
-                logAuthoring("room update capture failed id=" + id + " elapsedMs=" + elapsedMillis(startedAt)
-                        + " detail=" + capture.detail());
-                failRoomProgress(progressId, capture.detail());
-                runOnMain(player, () -> player.sendMessage("[FAIL] " + capture.detail()));
-                return;
-            }
-            updateRoomProgress(progressId, 0.78, "validating room markers");
-            long validationStarted = System.nanoTime();
-            var validation = templateValidator.validate(id, definition.type(), definition.capabilities(),
-                    capture.selection().orElseThrow(), emeraldPolicy);
-            logAuthoring("room update validation finished id=" + id + " elapsedMs="
-                    + elapsedMillis(validationStarted) + " blocks="
-                    + capture.selection().orElseThrow().blocks().size() + " successful=" + validation.successful()
-                    + " errors=" + validation.errors().size());
-            runOnMain(player, () -> {
-                if (!validation.successful()) {
-                    logAuthoring("room update rejected id=" + id + " totalMs=" + elapsedMillis(startedAt));
-                    failRoomProgress(progressId, "room validation failed");
-                    validation.errors().forEach(error -> player.sendMessage("[FAIL] " + error));
-                    return;
-                }
-                updateRoomProgress(progressId, 0.92, "saving room");
-                long saveStarted = System.nanoTime();
-                TemplateAuthoringService.OperationResult result = authoring.update(id, capture.schematic(),
-                        validation.template().orElseThrow());
-                logAuthoring("room update save finished id=" + id + " elapsedMs=" + elapsedMillis(saveStarted)
-                        + " totalMs=" + elapsedMillis(startedAt) + " successful=" + result.successful());
-                player.sendMessage("[" + (result.successful() ? "PASS" : "FAIL") + "] " + result.detail());
-                if (result.successful()) completeRoomProgress(progressId, "room updated");
-                else failRoomProgress(progressId, result.detail());
-            });
-        }).exceptionally(error -> {
-            logAuthoring("room update failed id=" + id + " totalMs=" + elapsedMillis(startedAt)
-                    + " error=" + message(error));
-            failRoomProgress(progressId, message(error));
-            runOnMain(player, () -> player.sendMessage("[FAIL] room capture failed: " + message(error)));
-            return null;
-        });
+        runRoomWorkflow(player, "update", "Updating room", id, definition.type(), definition.capabilities(), false,
+                (schematic, template) -> authoring.update(id, schematic, template));
     }
 
     @Subcommand("room delete")
@@ -374,6 +291,64 @@ public final class DungeonAuthoringCommand {
         trace.forEach(player::sendMessage);
     }
 
+    private void runRoomWorkflow(Player player, String action, String progressTitle, String id, RoomType type,
+                                 Set<EncounterCapability> capabilities, boolean reloadAfterSave,
+                                 BiFunction<byte[], Template, TemplateAuthoringService.OperationResult> persistence) {
+        long startedAt = System.nanoTime();
+        logAuthoring("room " + action + " started id=" + id + " player=" + player.getName()
+                + " type=" + type + " " + (action.equals("create") ? "encounters=" : "capabilities=")
+                + capabilities);
+        UUID progressId = beginRoomProgress(player, progressTitle);
+        captureSelectionAsync(player, progressId).thenAccept(capture -> {
+            if (!capture.successful()) {
+                logAuthoring("room " + action + " capture failed id=" + id + " elapsedMs="
+                        + elapsedMillis(startedAt) + " detail=" + capture.detail());
+                failRoomProgress(progressId, capture.detail());
+                runOnMain(player, () -> {
+                    if (player.isOnline()) player.sendMessage("[FAIL] " + capture.detail());
+                });
+                return;
+            }
+            updateRoomProgress(progressId, 0.78, "validating room markers");
+            long validationStarted = System.nanoTime();
+            var validation = templateValidator.validate(id, type, capabilities,
+                    capture.selection().orElseThrow(), emeraldPolicy);
+            logAuthoring("room " + action + " validation finished id=" + id + " elapsedMs="
+                    + elapsedMillis(validationStarted) + " blocks="
+                    + capture.selection().orElseThrow().blocks().size() + " successful=" + validation.successful()
+                    + " errors=" + validation.errors().size());
+            runOnMain(player, () -> {
+                if (!validation.successful()) {
+                    logAuthoring("room " + action + " rejected id=" + id + " totalMs=" + elapsedMillis(startedAt));
+                    failRoomProgress(progressId, "room validation failed");
+                    if (player.isOnline()) validation.errors().forEach(error -> player.sendMessage("[FAIL] " + error));
+                    return;
+                }
+                updateRoomProgress(progressId, 0.92, "saving room");
+                long saveStarted = System.nanoTime();
+                TemplateAuthoringService.OperationResult result = persistence.apply(capture.schematic(),
+                        validation.template().orElseThrow());
+                logAuthoring("room " + action + " save finished id=" + id + " elapsedMs="
+                        + elapsedMillis(saveStarted) + " totalMs=" + elapsedMillis(startedAt)
+                        + " successful=" + result.successful());
+                if (player.isOnline()) {
+                    player.sendMessage("[" + (result.successful() ? "PASS" : "FAIL") + "] " + result.detail());
+                    if (result.successful() && reloadAfterSave) reportAuthoringReload(player);
+                }
+                if (result.successful()) completeRoomProgress(progressId, "room " + action + "d");
+                else failRoomProgress(progressId, result.detail());
+            });
+        }).exceptionally(error -> {
+            logAuthoring("room " + action + " failed id=" + id + " totalMs=" + elapsedMillis(startedAt)
+                    + " error=" + message(error));
+            failRoomProgress(progressId, message(error));
+            runOnMain(player, () -> {
+                if (player.isOnline()) player.sendMessage("[FAIL] room capture failed: " + message(error));
+            });
+            return null;
+        });
+    }
+
     private WorldEditGateway.ScanResult scanSelection(Player player) {
         int maximumDimension = configRegistry.snapshot().floors().values().stream()
                 .mapToInt(floor -> floor.limits().maxTemplateDimension()).max().orElse(512);
@@ -438,9 +413,7 @@ public final class DungeonAuthoringCommand {
             callback.run();
             return;
         }
-        plugin.getServer().getScheduler().runTask(plugin, () -> {
-            if (player.isOnline()) callback.run();
-        });
+        plugin.getServer().getScheduler().runTask(plugin, callback);
     }
 
     private static String message(Throwable failure) {

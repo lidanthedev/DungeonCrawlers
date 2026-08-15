@@ -206,6 +206,7 @@ public final class DungeonPhaseFiveCommand {
                 actionBar.show(player, Component.text("Dungeon started — first room active"));
             }
         } else {
+            if (result.rollbackRequired()) abort(door.orElseThrow().instanceId(), result.detail());
             player.sendMessage("[FAIL] " + result.detail());
         }
     }

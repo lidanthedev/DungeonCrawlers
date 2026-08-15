@@ -105,6 +105,23 @@ class CombatRoomServiceTest {
         assertEquals(CombatRoomService.RoomState.ACTIVE, service.info(first).orElseThrow().rooms().getFirst().state());
     }
 
+    @Test
+    void cleanupAllRemovesEveryCombatInstanceAndMob() {
+        FakeMobs mobs = new FakeMobs();
+        CombatRoomService service = new CombatRoomService(mobs, new FakeChunks(), ignored -> { });
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        assertTrue(service.register(plan(first, 1)).successful());
+        assertTrue(service.register(plan(second, 1)).successful());
+        assertTrue(service.activateFirst(first).successful());
+        assertTrue(service.activateFirst(second).successful());
+
+        service.cleanupAll();
+
+        assertTrue(service.instances().isEmpty());
+        assertTrue(mobs.valid.isEmpty());
+    }
+
     private static GenerationService.CombatPlan plan(UUID instance, int retries) {
         Bounds bounds = new Bounds(new Point(0, 0, 0), new Point(4, 4, 4));
         var room1 = new GenerationService.CombatRoom(1, "one", NORMAL, bounds,

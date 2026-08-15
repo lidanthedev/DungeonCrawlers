@@ -6,9 +6,17 @@ import me.lidan.dungeonCrawlers.core.template.TemplateModels.Rotation;
 import org.bukkit.entity.Player;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.Optional;
 
 public interface WorldEditGateway {
+    Executor CAPTURE_EXECUTOR = Executors.newCachedThreadPool(runnable -> {
+        Thread thread = new Thread(runnable, "dungeoncrawlers-worldedit-capture");
+        thread.setDaemon(true);
+        return thread;
+    });
+
     SelectionResult selection(Player player);
 
     ScanResult scan(Player player, int maximumDimension, long maximumVolume);
@@ -21,7 +29,7 @@ public interface WorldEditGateway {
      */
     default CompletableFuture<CaptureResult> captureAsync(Player player, int maximumDimension,
                                                            long maximumVolume) {
-        return CompletableFuture.supplyAsync(() -> capture(player, maximumDimension, maximumVolume));
+        return CompletableFuture.supplyAsync(() -> capture(player, maximumDimension, maximumVolume), CAPTURE_EXECUTOR);
     }
 
     ScanResult read(byte[] schematic, int maximumDimension, long maximumVolume);

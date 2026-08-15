@@ -280,9 +280,14 @@ public final class GenerationService {
     private PreparedGeneration prepare(MutableInstance instance) {
         try {
             emitProgress(instance, 0.05, "loading room templates", false, true);
+            double[] lastProgress = {0.05};
             return preparation.prepare(instance.instanceId, instance.request.seed(), instance.request.floor(),
                     instance.request.snapshot(), instance.slot,
-                    update -> emitProgress(instance, update.progress(), update.detail(), false, true));
+                    update -> {
+                        double mapped = 0.05 + (0.63 * update.progress());
+                        lastProgress[0] = Math.max(lastProgress[0], Math.min(0.68, mapped));
+                        emitProgress(instance, lastProgress[0], update.detail(), false, true);
+                    });
         } catch (RuntimeException exception) {
             throw exception;
         } catch (Exception exception) {

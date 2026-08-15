@@ -194,17 +194,17 @@ public final class TemplateAuthoringService {
             Path archived = backup.resolve(id + ".schem");
             Files.copy(roomsFile, backup.resolve("rooms.yml"), StandardCopyOption.COPY_ATTRIBUTES);
             Path metadata = metadataPath(id);
-            if (Files.isRegularFile(metadata)) Files.copy(metadata, backup.resolve(id + ".meta.yml"),
-                    StandardCopyOption.COPY_ATTRIBUTES);
+            boolean hasMetadata = Files.isRegularFile(metadata);
+            Path archivedMetadata = backup.resolve(id + ".meta.yml");
             failures.before(FailureStage.BEFORE_COMMIT);
-            atomicCreate(target, archived);
-            if (Files.isRegularFile(metadata)) atomicCreate(metadata, backup.resolve(id + ".meta.yml"));
             try {
+                atomicCreate(target, archived);
+                if (hasMetadata) atomicCreate(metadata, archivedMetadata);
                 atomicReplace(commitRooms, roomsFile);
             } catch (Exception exception) {
-                atomicCreate(archived, target);
-                if (Files.isRegularFile(backup.resolve(id + ".meta.yml"))) {
-                    atomicCreate(backup.resolve(id + ".meta.yml"), metadata);
+                if (!Files.exists(target) && Files.exists(archived)) atomicCreate(archived, target);
+                if (hasMetadata && !Files.exists(metadata) && Files.exists(archivedMetadata)) {
+                    atomicCreate(archivedMetadata, metadata);
                 }
                 throw exception;
             }

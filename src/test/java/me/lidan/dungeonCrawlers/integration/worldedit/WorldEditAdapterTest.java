@@ -37,7 +37,7 @@ class WorldEditAdapterTest {
         when(region.iterator()).thenReturn(List.of(stonePosition).iterator());
         when(extent.getFullBlock(stonePosition)).thenReturn(stone);
         when(stone.getBlockType()).thenReturn(stoneType);
-        when(stoneType.id()).thenReturn("minecraft:stone");
+        when(stoneType.id()).thenReturn("minecraft:gray_concrete_powder");
         when(stone.getStates()).thenReturn(Map.of());
         when(stone.getNbtReference()).thenReturn(null);
 
@@ -46,7 +46,8 @@ class WorldEditAdapterTest {
         var tooLarge = WorldEditAdapter.scan(region, extent, 5, 124);
 
         assertTrue(read.successful(), read.detail());
-        assertEquals("minecraft:stone", read.selection().orElseThrow().block(new Point(1, 1, 1)).type());
+        assertEquals("minecraft:gray_concrete_powder",
+                read.selection().orElseThrow().block(new Point(1, 1, 1)).type());
         assertFalse(tooNarrow.successful());
         assertTrue(tooNarrow.detail().contains("dimension"));
         assertFalse(tooLarge.successful());

@@ -93,9 +93,9 @@ public final class WorldEditAdapter implements WorldEditGateway {
             // Copy the world once while recording the validation data from each copied block.
             // Scanning the world first and copying it afterwards caused two complete traversals.
             long sessionStarted = System.nanoTime();
-            logger.info("[AuthoringCapture] creating FAWE edit session");
+            logger.fine(() -> "[AuthoringCapture] creating FAWE edit session");
             try (EditSession editSession = WorldEdit.getInstance().newEditSession(actor.getWorld())) {
-                logger.info("[AuthoringCapture] FAWE edit session ready ms="
+                logger.fine(() -> "[AuthoringCapture] FAWE edit session ready ms="
                         + elapsedMillis(sessionStarted, System.nanoTime()));
                 BlockArrayClipboard clipboard = new BlockArrayClipboard(region);
                 clipboard.setOrigin(region.getMinimumPoint());
@@ -109,18 +109,18 @@ public final class WorldEditAdapter implements WorldEditGateway {
                 copy.setCopyingEntities(false);
                 copy.setCopyingBiomes(false);
                 long copyStarted = System.nanoTime();
-                logger.info("[AuthoringCapture] copy operation started");
+                logger.fine(() -> "[AuthoringCapture] copy operation started");
                 Operations.completeLegacy(copy);
                 long copiedAt = System.nanoTime();
                 addConnectorPlaneBlocks(region, clipboard, capturedBlocks);
-                logger.info("[AuthoringCapture] copy operation finished ms="
+                logger.fine(() -> "[AuthoringCapture] copy operation finished ms="
                         + elapsedMillis(copyStarted, copiedAt) + " modelBlocks=" + capturedBlocks.size());
                 ScanResult scanned = selection(region, capturedBlocks);
                 long selectedAt = System.nanoTime();
-                logger.info("[AuthoringCapture] selection model ready ms="
+                logger.fine(() -> "[AuthoringCapture] selection model ready ms="
                         + elapsedMillis(copiedAt, selectedAt));
                 ByteArrayOutputStream output = new ByteArrayOutputStream();
-                logger.info("[AuthoringCapture] schematic serialization started");
+                logger.fine(() -> "[AuthoringCapture] schematic serialization started");
                 try (var writer = BuiltInClipboardFormat.SPONGE_V3_SCHEMATIC.getWriter(output)) {
                     writer.write(clipboard);
                 }
@@ -209,10 +209,11 @@ public final class WorldEditAdapter implements WorldEditGateway {
             BaseBlock fullBlock = extent.getFullBlock(worldPoint);
             Point relative = new Point(worldPoint.x() - minimum.x(), worldPoint.y() - minimum.y(),
                     worldPoint.z() - minimum.z());
-            if (!fullBlock.getBlockType().id().equals("minecraft:air")) {
-                blocks.put(relative, toModelBlock(fullBlock));
+            if (isAuthoringMarker(fullBlock.getBlockType().id())) {
+                blocks.put(relative, toCaptureModelBlock(fullBlock));
             }
         }
+        addConnectorPlaneBlocks(region, extent, blocks);
         Selection selection = new Selection(bounds, blocks);
         return new ScanResult(true, "origin=" + minimum + ", size=" + width + "x" + height + "x" + length
                 + ", volume=" + region.getVolume(), Optional.of(selection));

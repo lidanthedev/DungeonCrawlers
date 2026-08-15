@@ -94,12 +94,15 @@ public record TemplateMetadata(long schematicSize, long schematicModifiedMillis,
         Objects.requireNonNull(path);
         Objects.requireNonNull(metadata);
         Files.createDirectories(path.toAbsolutePath().normalize().getParent());
-        if (!Files.exists(path)) Files.writeString(path, "schema-version: 1\n");
-        BoostedCustomConfig config = factory.open(path);
-        config.set("schema-version", SCHEMA_VERSION);
-        config.set("template", metadata.values());
-        if (!config.save()) throw new IOException("failed to save template metadata " + path.getFileName());
-        factory.release(path);
+        try {
+            if (!Files.exists(path)) Files.writeString(path, "schema-version: " + SCHEMA_VERSION + "\n");
+            BoostedCustomConfig config = factory.open(path);
+            config.set("schema-version", SCHEMA_VERSION);
+            config.set("template", metadata.values());
+            if (!config.save()) throw new IOException("failed to save template metadata " + path.getFileName());
+        } finally {
+            factory.release(path);
+        }
     }
 
     public static TemplateMetadata read(BoostedConfigFactory factory, Path path) throws IOException {

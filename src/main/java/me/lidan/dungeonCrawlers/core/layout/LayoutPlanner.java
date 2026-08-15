@@ -308,41 +308,49 @@ public final class LayoutPlanner {
                 return "bounds collision with placement " + placed.index();
             }
             int effectivePadding = placed.index() == connectedPlacementIndex ? 0 : padding;
-            if (!detailedCollisionData || placed.solidBlocks().isEmpty()) {
+            if (!detailedCollisionData) {
                 if (effectivePadding > 0 && candidate.bounds().expand(effectivePadding + 1)
                         .intersects(placed.bounds().expand(effectivePadding + 1))) {
                     return "bounds collision with placement " + placed.index()
                             + " within collision padding";
                 }
-                continue;
             }
-            if (!candidate.bounds().expand(effectivePadding + 1)
-                    .intersects(placed.bounds().expand(effectivePadding + 1))) continue;
-            if (hasIndexedCollision(candidateOccupied, placed.index(), effectivePadding, allowedInterface,
-                    collisionIndex)) {
-                return "collision with placement " + placed.index();
+        }
+        if (detailedCollisionData) {
+            int collidingIndex = hasIndexedCollision(candidateOccupied, padding, connectedPlacementIndex,
+                    allowedInterface, collisionIndex);
+            if (collidingIndex >= 0) {
+                Placement placed = existing.stream().filter(value -> value.index() == collidingIndex)
+                        .findFirst().orElseThrow();
+                int effectivePadding = collidingIndex == connectedPlacementIndex ? 0 : padding;
+                if (candidate.bounds().expand(effectivePadding + 1)
+                        .intersects(placed.bounds().expand(effectivePadding + 1))) {
+                    return "collision with placement " + collidingIndex;
+                }
             }
         }
         return null;
     }
 
-    private static boolean hasIndexedCollision(Set<Point> candidateOccupied, int placementIndex, int padding,
-                                               Set<Point> allowedInterface, PlacementIndex collisionIndex) {
+    private static int hasIndexedCollision(Set<Point> candidateOccupied, int padding, int connectedPlacementIndex,
+                                           Set<Point> allowedInterface, PlacementIndex collisionIndex) {
         for (Point point : candidateOccupied) {
             for (int x = -padding; x <= padding; x++) {
                 for (int y = -padding; y <= padding; y++) {
                     for (int z = -padding; z <= padding; z++) {
                         Point other = point.add(new Point(x, y, z));
                         for (int existingIndex : collisionIndex.occupants(other)) {
-                            if (existingIndex != placementIndex) continue;
+                            int effectivePadding = existingIndex == connectedPlacementIndex ? 0 : padding;
+                            if (Math.abs(x) > effectivePadding || Math.abs(y) > effectivePadding
+                                    || Math.abs(z) > effectivePadding) continue;
                             if (allowedInterface.contains(point) && allowedInterface.contains(other)) continue;
-                            return true;
+                            return existingIndex;
                         }
                     }
                 }
             }
         }
-        return false;
+        return -1;
     }
 
     private static final class PlacementIndex {

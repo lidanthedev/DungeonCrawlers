@@ -96,12 +96,12 @@ public final class BukkitProgressBarService implements ProgressBarService {
     }
 
     private void runOnMain(Runnable callback) {
-        if (closed) return;
+        if (closed || !plugin.isEnabled()) return;
         Runnable guarded = () -> {
-            if (!closed) callback.run();
+            if (!closed && plugin.isEnabled()) callback.run();
         };
         if (Bukkit.isPrimaryThread()) guarded.run();
-        else plugin.getServer().getScheduler().runTask(plugin, guarded);
+        else if (plugin.isEnabled()) plugin.getServer().getScheduler().runTask(plugin, guarded);
     }
 
     private static double clamp(double progress) {
@@ -114,10 +114,12 @@ public final class BukkitProgressBarService implements ProgressBarService {
     }
 
     private static final class ActiveTask {
+        private final String title;
         private final Map<UUID, BossBar> bars = new HashMap<>();
         private double progress;
 
         private ActiveTask(String title, Collection<? extends Player> players) {
+            this.title = Objects.requireNonNull(title, "title");
             for (Player player : players) {
                 if (player == null || !player.isOnline()) continue;
                 BossBar bar = Bukkit.createBossBar(title, BarColor.BLUE, BarStyle.SOLID);
@@ -131,7 +133,7 @@ public final class BukkitProgressBarService implements ProgressBarService {
             bars.values().forEach(bar -> {
                 bar.setProgress(this.progress);
                 bar.setColor(color);
-                bar.setTitle(barTitle(bar.getTitle() == null ? "DungeonCrawlers" : baseTitle(bar.getTitle()), detail));
+                bar.setTitle(barTitle(title, detail));
                 bar.setVisible(true);
             });
         }
@@ -144,9 +146,5 @@ public final class BukkitProgressBarService implements ProgressBarService {
             bars.clear();
         }
 
-        private static String baseTitle(String title) {
-            int separator = title.indexOf("  |  ");
-            return separator < 0 ? title : title.substring(0, separator);
-        }
     }
 }

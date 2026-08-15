@@ -109,6 +109,7 @@ class TemplateAuthoringServiceTest {
     void deleteRejectsReferencesAndArchivesUnreferencedContent() throws Exception {
         try (MockedStatic<JavaPlugin> ignored = providingPlugin()) {
             var service = service(snapshot(), 10, stage -> { });
+            Files.writeString(directory.resolve("templates/spare.meta.yml"), "schema-version: 1\n");
             var referenced = service.delete("start", Set.of());
             var active = service.delete("spare", Set.of("spare"));
             var deleted = service.delete("spare", Set.of());
@@ -118,9 +119,12 @@ class TemplateAuthoringServiceTest {
             assertFalse(active.successful());
             assertTrue(deleted.successful(), deleted.detail());
             assertFalse(Files.exists(directory.resolve("templates/spare.schem")));
+            assertFalse(Files.exists(directory.resolve("templates/spare.meta.yml")));
             assertFalse(Files.readString(directory.resolve("rooms.yml")).contains("spare:"));
             try (var backups = Files.walk(directory.resolve("backups/authoring"))) {
-                assertTrue(backups.anyMatch(path -> path.getFileName().toString().equals("spare.schem")));
+                var backupNames = backups.map(path -> path.getFileName().toString()).toList();
+                assertTrue(backupNames.contains("spare.schem"));
+                assertTrue(backupNames.contains("spare.meta.yml"));
             }
         }
     }

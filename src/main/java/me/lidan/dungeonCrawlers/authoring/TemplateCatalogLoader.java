@@ -14,12 +14,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.logging.Logger;
 
 public final class TemplateCatalogLoader {
     private final TemplateAuthoringService authoring;
     private final WorldEditGateway worldEdit;
     private final TemplateValidator validator;
     private final EmeraldPolicy emeraldPolicy;
+    private final Logger logger = Logger.getLogger(TemplateCatalogLoader.class.getName());
     private CacheEntry cache;
 
     public TemplateCatalogLoader(TemplateAuthoringService authoring, WorldEditGateway worldEdit,
@@ -63,7 +65,10 @@ public final class TemplateCatalogLoader {
                 Optional<TemplateMetadata> metadata;
                 try {
                     metadata = authoring.metadata(id);
-                } catch (IOException | RuntimeException ignored) {
+                } catch (IOException | RuntimeException exception) {
+                    String detail = exception.getMessage() == null
+                            ? exception.getClass().getSimpleName() : exception.getMessage();
+                    logger.warning(id + ": metadata lookup failed: " + detail + "; rescanning schematic");
                     metadata = Optional.empty();
                 }
                 FileStamp schematicStamp = fingerprints.get(id);

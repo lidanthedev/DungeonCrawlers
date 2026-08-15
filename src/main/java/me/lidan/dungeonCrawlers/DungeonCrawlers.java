@@ -91,10 +91,12 @@ public final class DungeonCrawlers extends JavaPlugin {
     private RunPreparationService runPreparation;
     private DungeonPhaseFiveCommand phaseFiveCommand;
     private BukkitProgressBarService progressBars;
+    private volatile boolean disabling;
 
     @Override
     public void onEnable() {
         // Plugin startup logic
+        disabling = false;
         commandHandlerBuilder = BukkitLamp.builder(this);
         progressBars = new BukkitProgressBarService(this);
         registerSerializer();
@@ -211,8 +213,6 @@ public final class DungeonCrawlers extends JavaPlugin {
                 instanceId -> {
                     var result = combat.activateFirst(instanceId);
                     if (!result.successful()) {
-                        combat.cleanup(instanceId);
-                        generation.cancel(instanceId);
                         throw new IllegalStateException(result.detail());
                     }
                     getLogger().info("instance=" + instanceId + " first room activated");
@@ -316,7 +316,7 @@ public final class DungeonCrawlers extends JavaPlugin {
                 () -> generation.protectionRegions().stream().map(WorldProtectionService.InstanceRegion::from).toList(),
                 teleportPermits, phaseClock()));
         registerEvent(new BukkitDungeonRunListener(phaseFiveCommand, runPreparation, generationWorldName));
-        registerEvent(new BukkitCombatListener(combat, entityIdentity, generationWorldName));
+        registerEvent(new BukkitCombatListener(combat, entityIdentity, generationWorldName, () -> disabling));
     }
 
     private org.bukkit.World generationWorld() {
@@ -345,7 +345,9 @@ public final class DungeonCrawlers extends JavaPlugin {
     @Override
     public void onDisable() {
         // Plugin shutdown logic
+        disabling = true;
         if (progressBars != null) progressBars.cancelAll();
+        if (combat != null) combat.cleanupAll();
         if (generation != null) generation.freezeForDisable();
         if (centralUpdates != null) centralUpdates.clear();
         getServer().getScheduler().cancelTasks(this);

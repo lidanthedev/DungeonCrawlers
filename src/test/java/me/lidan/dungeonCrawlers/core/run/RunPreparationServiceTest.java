@@ -152,6 +152,29 @@ class RunPreparationServiceTest {
         assertTrue(diagnostics.stream().anyMatch(message -> message.contains("first room activation failed")));
     }
 
+    @Test
+    void recoveryAwareActivationFailureCleansPreparationAndInvokesCancellation() {
+        UUID player = UUID.randomUUID();
+        UUID instance = UUID.randomUUID();
+        AtomicInteger cancellations = new AtomicInteger();
+        RunPreparationService service = new RunPreparationService(new DoorService(),
+                new CentralUpdateService(Clock.fixed(START, ZoneOffset.UTC), ignored -> { }),
+                new StateTransitionService(), Clock.fixed(START, ZoneOffset.UTC),
+                ignored -> { throw new IllegalStateException("spawn failed"); },
+                ignored -> { }, ignored -> cancellations.incrementAndGet(), true);
+        service.registerGenerated(instance, new PartySnapshot(player, List.of(player), true), List.of("tank"),
+                Map.of("tank", classDefinition("tank")), new Point(0, 64, 0), Facing.NORTH);
+        service.markSnapshotsReady(instance);
+        service.selectClass(instance, player, "tank");
+
+        var opened = service.openDoor(instance, player);
+
+        assertFalse(opened.successful());
+        assertTrue(opened.rollbackRequired());
+        assertTrue(service.info(instance).isEmpty());
+        assertEquals(1, cancellations.get());
+    }
+
     private static RunPreparationService service(AtomicInteger activations) {
         return new RunPreparationService(new DoorService(),
                 new CentralUpdateService(Clock.fixed(START, ZoneOffset.UTC), ignored -> { }),

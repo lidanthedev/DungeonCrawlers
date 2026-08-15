@@ -116,9 +116,9 @@ public final class CombatRoomService {
         if (link == null) return ActivationResult.failure("no combat door at " + clickedBlock);
         MutableRoom previous = room(instance, link.fromIndex()).orElse(null);
         MutableRoom target = room(instance, link.toIndex()).orElse(null);
-        if (previous == null) return ActivationResult.failure("combat door is not unlocked yet");
+        if (previous == null) return ActivationResult.failure("combat door source room is missing");
         if (target == null) return ActivationResult.failure("door target is not a combat room");
-        if (previous != null && previous.state != RoomState.CLEARED) {
+        if (previous.state != RoomState.CLEARED) {
             return ActivationResult.failure("previous room " + previous.room.index() + " is not cleared");
         }
         ActivationResult result = activate(instance, target.room.index());
@@ -227,7 +227,6 @@ public final class CombatRoomService {
         if (instance == null) return ClearResult.failure("unknown combat instance " + instanceId);
         MutableRoom room = room(instance, roomIndex).orElse(null);
         if (room == null) return ClearResult.failure("unknown combat room " + roomIndex);
-        room.adminSuppression = true;
         room.requirements.forEach(requirement -> {
             if (requirement.entityId != null) mobs.remove(requirement.entityId);
             requirement.entityId = null;
@@ -349,6 +348,10 @@ public final class CombatRoomService {
         chunks.releaseAll(instance.plan.instanceId());
     }
 
+    public synchronized void cleanupAll() {
+        new ArrayList<>(instances.keySet()).forEach(this::cleanup);
+    }
+
     private void releaseTickets(MutableInstance instance, MutableRoom room) {
         if (!room.ticketsHeld) return;
         chunks.release(instance.plan.instanceId(), room.room.bounds());
@@ -436,7 +439,6 @@ public final class CombatRoomService {
         private final Map<UUID, MobRequirement> byEntity = new LinkedHashMap<>();
         private RoomState state = RoomState.LOCKED;
         private boolean ticketsHeld;
-        private boolean adminSuppression;
         private String detail = "locked";
 
         private MutableRoom(GenerationService.CombatRoom room, List<String> normalMobs,
