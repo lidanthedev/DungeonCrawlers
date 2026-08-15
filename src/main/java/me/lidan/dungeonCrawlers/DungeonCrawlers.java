@@ -4,6 +4,7 @@ import dev.triumphteam.gui.guis.BaseGui;
 import me.lidan.dungeonCrawlers.commands.DungeonCrawlersCommand;
 import me.lidan.dungeonCrawlers.commands.DungeonAuthoringCommand;
 import me.lidan.dungeonCrawlers.commands.DungeonGenerationCommand;
+import me.lidan.dungeonCrawlers.commands.InstanceIdSuggestionProvider;
 import me.lidan.dungeonCrawlers.authoring.TemplateAuthoringService;
 import me.lidan.dungeonCrawlers.authoring.TemplateCatalogLoader;
 import me.lidan.dungeonCrawlers.compatibility.CompatibilityService;
@@ -12,12 +13,22 @@ import me.lidan.dungeonCrawlers.config.registry.EncounterRegistry;
 import me.lidan.dungeonCrawlers.config.BoostedConfigFactory;
 import me.lidan.cavecrawlers.utils.BoostedCustomConfig;
 import me.lidan.dungeonCrawlers.core.reservation.PlayerReservationService;
+import me.lidan.dungeonCrawlers.core.chunk.ChunkTicketBudget;
+import me.lidan.dungeonCrawlers.core.door.DoorService;
 import me.lidan.dungeonCrawlers.core.generation.GenerationPreparationProvider;
 import me.lidan.dungeonCrawlers.core.generation.GenerationService;
 import me.lidan.dungeonCrawlers.core.generation.SlotAllocator;
 import me.lidan.dungeonCrawlers.core.layout.LayoutPlanner;
+import me.lidan.dungeonCrawlers.core.protection.TeleportPermitService;
+import me.lidan.dungeonCrawlers.core.protection.WorldProtectionService;
+import me.lidan.dungeonCrawlers.core.snapshot.PlayerSnapshotService;
+import me.lidan.dungeonCrawlers.core.update.CentralUpdateService;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.EmeraldPolicy;
 import me.lidan.dungeonCrawlers.core.template.TemplateValidator;
+import me.lidan.dungeonCrawlers.commands.DungeonPhaseFourCommand;
+import me.lidan.dungeonCrawlers.integration.BukkitChunkTicketService;
+import me.lidan.dungeonCrawlers.integration.BukkitEntityIdentity;
+import me.lidan.dungeonCrawlers.integration.BukkitWorldProtectionListener;
 import me.lidan.dungeonCrawlers.integration.parties.PartyProviders;
 import me.lidan.dungeonCrawlers.integration.worldedit.FaweGenerationAdapter;
 import me.lidan.dungeonCrawlers.integration.worldedit.WorldEditAdapter;
@@ -27,6 +38,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.event.Listener;
 import org.bukkit.plugin.java.JavaPlugin;
 import revxrsal.commands.Lamp;
+import revxrsal.commands.annotation.SuggestWith;
 import revxrsal.commands.bukkit.BukkitLamp;
 import revxrsal.commands.bukkit.actor.BukkitCommandActor;
 
@@ -50,6 +62,15 @@ public final class DungeonCrawlers extends JavaPlugin {
     private TemplateAuthoringService authoring;
     private GenerationService generation;
     private ExecutorService generationExecutor;
+    private java.time.Clock phaseClock;
+    private String generationWorldName;
+    private CentralUpdateService centralUpdates;
+    private DoorService doors;
+    private PlayerSnapshotService playerSnapshots;
+    private WorldProtectionService protectionPolicy;
+    private TeleportPermitService teleportPermits;
+    private BukkitEntityIdentity entityIdentity;
+    private BukkitChunkTicketService chunkTickets;
 
     @Override
     public void onEnable() {
@@ -115,6 +136,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         FaweGenerationAdapter generationWorld = new FaweGenerationAdapter(this, generationExecutor);
         var worldCheck = generationWorld.ensureDedicatedVoidWorld(worldName);
         if (!worldCheck.successful()) throw new IllegalStateException(worldCheck.detail());
+        generationWorldName = worldName;
         SlotAllocator slots = new SlotAllocator(new SlotAllocator.Settings(capacity, spacing, margin, baseY,
                 worldCheck.minimumY(), worldCheck.maximumY()));
         EmeraldPolicy emeraldPolicy;
@@ -129,8 +151,30 @@ public final class DungeonCrawlers extends JavaPlugin {
         generation = new GenerationService(reservations, slots, durableRepository, generationWorld,
                 new GenerationPreparationProvider(catalog, authoring, new LayoutPlanner()), generationExecutor,
                 callback -> getServer().getScheduler().runTask(this, callback), getServer()::isPrimaryThread,
-                getLogger()::info, Clock.systemUTC(), worldName);
+                getLogger()::info, phaseClock(), worldName);
         generation.recover();
+        initializePhaseFourServices(worldName);
+    }
+
+    private java.time.Clock phaseClock() {
+        if (phaseClock == null) phaseClock = Clock.systemUTC();
+        return phaseClock;
+    }
+
+    private void initializePhaseFourServices(String worldName) {
+        centralUpdates = new CentralUpdateService(phaseClock(), getLogger()::info);
+        doors = new DoorService();
+        playerSnapshots = new PlayerSnapshotService(durableRepository);
+        protectionPolicy = new WorldProtectionService();
+        teleportPermits = new TeleportPermitService();
+        entityIdentity = new BukkitEntityIdentity(this);
+        int maximumPerInstance = configRegistry.snapshot().floors().values().stream()
+                .mapToInt(floor -> floor.limits().maxLoadedChunksPerInstance()).max().orElse(256);
+        int maximumTotal = Math.multiplyExact(maximumPerInstance, generation.slots().size());
+        org.bukkit.World world = getServer().getWorld(worldName);
+        if (world == null) throw new IllegalStateException("generation world disappeared during Phase 4 setup");
+        chunkTickets = new BukkitChunkTicketService(this, world,
+                new ChunkTicketBudget(maximumPerInstance, maximumTotal));
     }
 
     private int configuredBackupRetention() {
@@ -182,6 +226,13 @@ public final class DungeonCrawlers extends JavaPlugin {
 
     private void registerCommands() {
         // Register commands
+        commandHandlerBuilder.suggestionProviders().addProviderForAnnotation(SuggestWith.class, annotation -> {
+            if (annotation.value() != InstanceIdSuggestionProvider.class) return null;
+            return new InstanceIdSuggestionProvider<BukkitCommandActor>(() -> generation.instances().stream()
+                    .map(GenerationService.InstanceSnapshot::instanceId)
+                    .map(java.util.UUID::toString)
+                    .toList());
+        });
         Lamp<BukkitCommandActor> commandHandler = commandHandlerBuilder.build();
         commandHandler.register(new DungeonCrawlersCommand(this,
                 new CompatibilityService(this, mainConfig, configRegistry), mainConfig, configRegistry,
@@ -189,21 +240,30 @@ public final class DungeonCrawlers extends JavaPlugin {
         commandHandler.register(new DungeonAuthoringCommand(mainConfig, configRegistry, reservations, authoring,
                 generation::activeTemplateIds));
         commandHandler.register(new DungeonGenerationCommand(configRegistry,
-                PartyProviders.forServer(getServer()), generation));
+                PartyProviders.forServer(getServer()), generation, getServer(),
+                generationWorldName,
+                teleportPermits, phaseClock()));
+        commandHandler.register(new DungeonPhaseFourCommand(centralUpdates, doors, protectionPolicy,
+                teleportPermits, playerSnapshots, getServer(), this, phaseClock(),
+                generationWorldName,
+                () -> generation.protectionRegions().stream().map(WorldProtectionService.InstanceRegion::from).toList()));
     }
 
     private void registerEvents() {
-        // Register event listeners
+        registerEvent(new BukkitWorldProtectionListener(protectionPolicy,
+                () -> generation.protectionRegions().stream().map(WorldProtectionService.InstanceRegion::from).toList(),
+                teleportPermits, phaseClock()));
     }
 
     private void startTasks() {
-        // Start any repeating or scheduled tasks if needed
+        getServer().getScheduler().runTaskTimer(this, (Runnable) centralUpdates::tick, 1L, 1L);
     }
 
     @Override
     public void onDisable() {
         // Plugin shutdown logic
         if (generation != null) generation.freezeForDisable();
+        if (centralUpdates != null) centralUpdates.clear();
         getServer().getScheduler().cancelTasks(this);
         if (durableRepository != null) durableRepository.close();
         if (generationExecutor != null) generationExecutor.shutdownNow();

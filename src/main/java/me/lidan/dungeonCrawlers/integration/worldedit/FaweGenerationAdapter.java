@@ -16,6 +16,7 @@ import me.lidan.dungeonCrawlers.core.template.TemplateModels.Rotation;
 import me.lidan.dungeonCrawlers.integration.GenerationWorldGateway;
 import me.lidan.dungeonCrawlers.persistence.model.GenerationJournal.PlannedBounds;
 import org.bukkit.NamespacedKey;
+import org.bukkit.GameRule;
 import org.bukkit.Location;
 import org.bukkit.Server;
 import org.bukkit.World;
@@ -68,6 +69,8 @@ public final class FaweGenerationAdapter implements GenerationWorldGateway {
             return new WorldCheck(false, "world " + worldName + " is not owned as a DungeonCrawlers void world",
                     world.getMinHeight(), world.getMaxHeight() - 1);
         }
+        world.setGameRule(GameRule.KEEP_INVENTORY, true);
+        world.setGameRule(GameRule.DO_MOB_SPAWNING, false);
         return new WorldCheck(true, "dedicated void world " + worldName + " is ready",
                 world.getMinHeight(), world.getMaxHeight() - 1);
     }
