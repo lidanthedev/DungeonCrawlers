@@ -56,17 +56,48 @@ class PlayerSnapshotServiceTest {
                 4, 2, 3, 0, 0, "SURVIVAL", 20, 20, 0, 0, 0, 300, 400, capturedAt.plusSeconds(1));
         service.save(second);
         assertNotEquals(firstKey, repository.lastWrite.idempotencyKey());
-        assertEquals(firstVersion + 1, repository.lastWrite.recordVersion());
+        assertTrue(repository.lastWrite.recordVersion() > firstVersion);
+    }
+
+    @Test
+    void newServiceUsesVersionAbovePersistedSnapshot() {
+        FakeRepository repository = new FakeRepository();
+        UUID player = UUID.randomUUID();
+        UUID instance = UUID.randomUUID();
+        Instant capturedAt = Instant.parse("2026-01-01T00:00:00Z");
+        PlayerRecoverySnapshot first = new PlayerRecoverySnapshot(player, instance, "world",
+                1, 2, 3, 0, 0, "SURVIVAL", 20, 20, 0, 0, 0, 300, 400, capturedAt);
+
+        assertTrue(new PlayerSnapshotService(repository).save(first).accepted());
+        PlayerRecoverySnapshot second = new PlayerRecoverySnapshot(player, instance, "world",
+                4, 2, 3, 0, 0, "SURVIVAL", 20, 20, 0, 0, 0, 300, 400,
+                capturedAt.plusMillis(1));
+
+        var submission = new PlayerSnapshotService(repository).save(second);
+
+        assertTrue(submission.accepted());
+        assertTrue(submission.runtimeAck().join() != null);
     }
 
     private static final class FakeRepository implements DurableRepository {
         private DurableWrite lastWrite;
         private byte[] payload;
+        private long persistedVersion = -1;
+        private String persistedKey;
 
         @Override public boolean reserveTerminalLane(UUID instanceId) { return true; }
         @Override public void releaseTerminalLane(UUID instanceId) { }
         @Override public DurableSubmission submit(DurableWrite write) {
+            if (persistedVersion >= write.recordVersion()
+                    && !(write.recordVersion() == persistedVersion
+                    && write.idempotencyKey().equals(persistedKey))) {
+                var failure = new IllegalStateException("stale record version");
+                return new DurableSubmission(true, CompletableFuture.failedFuture(failure),
+                        CompletableFuture.failedFuture(failure), "accepted");
+            }
             lastWrite = write; payload = write.payload();
+            persistedVersion = write.recordVersion();
+            persistedKey = write.idempotencyKey();
             var receipt = new DurableWriteReceipt(write.operationId(), write.idempotencyKey(), write.recordVersion(),
                     "checksum", Path.of("snapshot.bin"), Instant.EPOCH);
             return new DurableSubmission(true, CompletableFuture.completedFuture(receipt),
@@ -78,7 +109,12 @@ class PlayerSnapshotServiceTest {
                     : Optional.of(new DurableRecord(namespace, recordId, payload, "checksum", Path.of("snapshot.bin"))));
         }
         @Override public CompletableFuture<List<DurableRecord>> list(String namespace) { return CompletableFuture.completedFuture(List.of()); }
-        @Override public CompletableFuture<Void> delete(String namespace, String recordId) { payload = null; return CompletableFuture.completedFuture(null); }
+        @Override public CompletableFuture<Void> delete(String namespace, String recordId) {
+            payload = null;
+            persistedVersion = -1;
+            persistedKey = null;
+            return CompletableFuture.completedFuture(null);
+        }
         @Override public RepositoryDiagnostics diagnostics() { return new RepositoryDiagnostics(1, 0, 0, 0, 0, false); }
         @Override public void close() { }
     }

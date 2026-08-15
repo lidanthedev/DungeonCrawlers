@@ -6,9 +6,10 @@ import me.lidan.dungeonCrawlers.persistence.DurableWrite;
 import me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot;
 import me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshotCodec;
 
-import java.util.Objects;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -37,10 +38,23 @@ public final class PlayerSnapshotService {
         CaptureKey capture = new CaptureKey(snapshot.playerId(), snapshot.instanceId(), snapshot.capturedAt(),
                 idempotencyKey);
         long recordVersion = captureVersions.computeIfAbsent(capture, ignored ->
-                latestVersions.merge(snapshot.playerId(), 1L, Long::sum));
+                nextVersion(snapshot.playerId(), snapshot.capturedAt()));
         DurableWrite write = new DurableWrite(UUID.randomUUID(), snapshot.instanceId(), NAMESPACE,
                 snapshot.playerId().toString(), idempotencyKey, recordVersion, payload);
         return repository.submit(write);
+    }
+
+    private long nextVersion(UUID playerId, Instant capturedAt) {
+        long timestampVersion;
+        try {
+            timestampVersion = Math.max(1L, capturedAt.toEpochMilli());
+        } catch (ArithmeticException exception) {
+            timestampVersion = Math.max(1L, capturedAt.getEpochSecond());
+        }
+        long previous = latestVersions.getOrDefault(playerId, 0L);
+        long next = Math.max(timestampVersion, previous == Long.MAX_VALUE ? Long.MAX_VALUE : previous + 1);
+        latestVersions.put(playerId, next);
+        return next;
     }
 
     public CompletableFuture<Optional<PlayerRecoverySnapshot>> read(UUID playerId) {
