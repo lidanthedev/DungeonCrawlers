@@ -30,6 +30,7 @@ public final class RunPreparationService {
     private final StateTransitionService transitions;
     private final Clock clock;
     private final Consumer<UUID> firstRoomActivator;
+    private final boolean failOnFirstRoomActivation;
     private final Consumer<String> diagnostics;
     private final Consumer<UUID> instanceCanceller;
     private final Map<UUID, MutableRun> runs = new LinkedHashMap<>();
@@ -45,11 +46,21 @@ public final class RunPreparationService {
                                  Consumer<UUID> firstRoomActivator,
                                  Consumer<String> diagnostics,
                                  Consumer<UUID> instanceCanceller) {
+        this(doors, updates, transitions, clock, firstRoomActivator, diagnostics, instanceCanceller, false);
+    }
+
+    public RunPreparationService(DoorService doors, CentralUpdateService updates,
+                                 StateTransitionService transitions, Clock clock,
+                                 Consumer<UUID> firstRoomActivator,
+                                 Consumer<String> diagnostics,
+                                 Consumer<UUID> instanceCanceller,
+                                 boolean failOnFirstRoomActivation) {
         this.doors = Objects.requireNonNull(doors, "doors");
         this.updates = Objects.requireNonNull(updates, "updates");
         this.transitions = Objects.requireNonNull(transitions, "transitions");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.firstRoomActivator = Objects.requireNonNull(firstRoomActivator, "firstRoomActivator");
+        this.failOnFirstRoomActivation = failOnFirstRoomActivation;
         this.diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
         this.instanceCanceller = Objects.requireNonNull(instanceCanceller, "instanceCanceller");
     }
@@ -127,19 +138,20 @@ public final class RunPreparationService {
         DoorService.OpenResult opened;
         try {
             opened = doors.open(instanceId, () -> {
+                if (!run.firstRoomActivated) {
+                    try {
+                        firstRoomActivator.accept(instanceId);
+                    } catch (RuntimeException exception) {
+                        diagnose("instance=" + instanceId + " first room activation failed: " + message(exception));
+                        if (failOnFirstRoomActivation) throw exception;
+                    }
+                    run.firstRoomActivated = true;
+                }
                 StateTransitionService.TransitionResult transition = transitions.transition(
                         InstanceState.PREPARING, InstanceState.RUNNING);
                 if (!transition.accepted()) throw new IllegalStateException(transition.detail());
                 run.state = RunState.RUNNING;
                 run.startedAt = clock.instant();
-                if (!run.firstRoomActivated) {
-                    run.firstRoomActivated = true;
-                    try {
-                        firstRoomActivator.accept(instanceId);
-                    } catch (RuntimeException exception) {
-                        diagnose("instance=" + instanceId + " first room activation failed: " + message(exception));
-                    }
-                }
             });
         } catch (RuntimeException exception) {
             return DoorInteractionResult.failure(exception.getMessage() == null

@@ -28,6 +28,7 @@ import org.bukkit.plugin.Plugin;
 import java.io.ByteArrayInputStream;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -77,9 +78,17 @@ public final class FaweGenerationAdapter implements GenerationWorldGateway {
 
     @Override
     public CompletableFuture<Void> paste(String worldName, byte[] schematic, Point origin, Rotation rotation) {
+        return paste(worldName, schematic, origin, rotation, Set.of());
+    }
+
+    @Override
+    public CompletableFuture<Void> paste(String worldName, byte[] schematic, Point origin, Rotation rotation,
+                                         Set<Point> markerBlocks) {
         Objects.requireNonNull(schematic); Objects.requireNonNull(origin); Objects.requireNonNull(rotation);
+        Objects.requireNonNull(markerBlocks);
         com.sk89q.worldedit.world.World world = requireWorld(worldName);
         byte[] copy = schematic.clone();
+        Set<Point> markers = Set.copyOf(markerBlocks);
         return CompletableFuture.runAsync(() -> {
             try (var reader = BuiltInClipboardFormat.SPONGE_V3_SCHEMATIC
                     .getReader(new ByteArrayInputStream(copy));
@@ -89,6 +98,7 @@ public final class FaweGenerationAdapter implements GenerationWorldGateway {
                 holder.setTransform(new AffineTransform().rotateY(rotationDegrees(rotation)));
                 Operations.complete(holder.createPaste(editSession)
                         .to(BlockVector3.at(origin.x(), origin.y(), origin.z())).ignoreAirBlocks(false).build());
+                for (Point marker : markers) editSession.setBlock(vector(marker), BlockTypes.AIR.getDefaultState());
             } catch (Exception exception) {
                 throw new IllegalStateException("FAWE paste failed", exception);
             }
@@ -125,7 +135,8 @@ public final class FaweGenerationAdapter implements GenerationWorldGateway {
                     CuboidRegion region = new CuboidRegion(world,
                             BlockVector3.at(bound.minX(), bound.minY(), bound.minZ()),
                             BlockVector3.at(bound.maxX(), bound.maxY(), bound.maxZ()));
-                    editSession.setBlocks(region, BlockTypes.AIR.getDefaultState());
+                    editSession.setBlocks((com.sk89q.worldedit.regions.Region) region,
+                            BlockTypes.AIR.getDefaultState());
                 }
             } catch (Exception exception) {
                 throw new IllegalStateException("FAWE clear failed", exception);

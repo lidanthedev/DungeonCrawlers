@@ -6,6 +6,7 @@ import me.lidan.dungeonCrawlers.config.registry.ConfigModels.ConfigSnapshot;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.FloorDefinition;
 import me.lidan.dungeonCrawlers.config.registry.ConfigRegistryService;
 import me.lidan.dungeonCrawlers.core.generation.GenerationService;
+import me.lidan.dungeonCrawlers.core.combat.CombatRoomService;
 import me.lidan.dungeonCrawlers.core.party.PartySnapshotPolicy;
 import me.lidan.dungeonCrawlers.core.protection.TeleportPermitService;
 import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
@@ -15,6 +16,7 @@ import me.lidan.dungeonCrawlers.integration.BukkitDoorBlockService;
 import me.lidan.dungeonCrawlers.integration.BukkitPlayerRecovery;
 import me.lidan.dungeonCrawlers.integration.DungeonActionBar;
 import me.lidan.dungeonCrawlers.integration.PartyProvider;
+import me.lidan.dungeonCrawlers.integration.ProgressBarService;
 import me.lidan.dungeonCrawlers.integration.SpawnProvider;
 import me.lidan.dungeonCrawlers.integration.spawn.BukkitSpawnProvider;
 import net.kyori.adventure.text.Component;
@@ -55,6 +57,8 @@ public final class DungeonPhaseFiveCommand {
     private final Clock clock;
     private final String generationWorldName;
     private final DungeonActionBar actionBar;
+    private final CombatRoomService combat;
+    private final ProgressBarService progressBars;
     private final Executor mainThread;
     private final BukkitDoorBlockService doorBlocks = new BukkitDoorBlockService();
     private final Map<UUID, Map<UUID, me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot>> captured
@@ -65,6 +69,25 @@ public final class DungeonPhaseFiveCommand {
                                    PlayerSnapshotService snapshots, TeleportPermitService permits,
                                    Server server, Plugin plugin, Clock clock, String generationWorldName,
                                    DungeonActionBar actionBar) {
+        this(configRegistry, parties, generation, runs, snapshots, permits, server, plugin, clock,
+                generationWorldName, actionBar, null);
+    }
+
+    public DungeonPhaseFiveCommand(ConfigRegistryService configRegistry, PartyProvider parties,
+                                   GenerationService generation, RunPreparationService runs,
+                                   PlayerSnapshotService snapshots, TeleportPermitService permits,
+                                   Server server, Plugin plugin, Clock clock, String generationWorldName,
+                                   DungeonActionBar actionBar, CombatRoomService combat) {
+        this(configRegistry, parties, generation, runs, snapshots, permits, server, plugin, clock,
+                generationWorldName, actionBar, combat, null);
+    }
+
+    public DungeonPhaseFiveCommand(ConfigRegistryService configRegistry, PartyProvider parties,
+                                   GenerationService generation, RunPreparationService runs,
+                                   PlayerSnapshotService snapshots, TeleportPermitService permits,
+                                   Server server, Plugin plugin, Clock clock, String generationWorldName,
+                                   DungeonActionBar actionBar, CombatRoomService combat,
+                                   ProgressBarService progressBars) {
         this.configRegistry = Objects.requireNonNull(configRegistry, "configRegistry");
         this.parties = Objects.requireNonNull(parties, "parties");
         this.generation = Objects.requireNonNull(generation, "generation");
@@ -75,6 +98,8 @@ public final class DungeonPhaseFiveCommand {
         this.clock = Objects.requireNonNull(clock, "clock");
         this.generationWorldName = Objects.requireNonNull(generationWorldName, "generationWorldName");
         this.actionBar = Objects.requireNonNull(actionBar, "actionBar");
+        this.combat = combat;
+        this.progressBars = progressBars;
         this.mainThread = callback -> server.getScheduler().runTask(plugin, callback);
     }
 
@@ -99,11 +124,19 @@ public final class DungeonPhaseFiveCommand {
             player.sendMessage("[FAIL] " + result.detail());
             return;
         }
+        if (progressBars != null) {
+            List<Player> players = party.snapshot().onlineMembers().stream()
+                    .map(server::getPlayer).filter(Objects::nonNull).toList();
+            progressBars.begin(result.instanceId(), players, "Dungeon generation",
+                    "planning dungeon", 0.02);
+        }
         boolean waiting = generation.whenGenerated(result.instanceId(), snapshot -> {
             if (snapshot.status() != GenerationService.InstanceStatus.GENERATED) {
+                if (progressBars != null) progressBars.fail(result.instanceId(), snapshot.detail());
                 player.sendMessage("[FAIL] generation did not complete: " + snapshot.detail());
                 return;
             }
+            if (progressBars != null) progressBars.complete(result.instanceId(), "generation complete");
             preparePlayers(result.instanceId(), party.snapshot(), floor, config);
         });
         if (!waiting) {
@@ -157,6 +190,7 @@ public final class DungeonPhaseFiveCommand {
     /** Called by the admin instance-cancel path before generation cleanup. */
     public void cancelFromAdmin(UUID instanceId) {
         if (runs.info(instanceId).isPresent()) abort(instanceId, "preparation cancelled");
+        else if (combat != null) combat.cleanup(instanceId);
     }
 
     /** Called by the interaction listener when a player clicks a preparation door. */
@@ -185,6 +219,15 @@ public final class DungeonPhaseFiveCommand {
         try {
             GenerationService.StartDoor startDoor = generation.startDoor(instanceId)
                     .orElseThrow(() -> new IllegalStateException("generated START room has no exit"));
+            if (combat != null) {
+                GenerationService.CombatPlan combatPlan = generation.combatPlan(instanceId)
+                        .orElseThrow(() -> new IllegalStateException("generated combat plan is unavailable"));
+                var combatRegistration = combat.register(combatPlan);
+                if (!combatRegistration.successful()) {
+                    abort(instanceId, combatRegistration.detail());
+                    return;
+                }
+            }
             var registration = runs.registerGenerated(instanceId, party, floor.allowedClasses(), config.classes(),
                     startDoor.center(), startDoor.outward());
             if (!registration.successful()) {
@@ -247,6 +290,7 @@ public final class DungeonPhaseFiveCommand {
     }
 
     private void abort(UUID instanceId, String reason) {
+        if (combat != null) combat.cleanup(instanceId);
         runs.cleanup(instanceId);
         generation.cancel(instanceId);
         Map<UUID, me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot> saved = captured.remove(instanceId);

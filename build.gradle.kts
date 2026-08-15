@@ -28,6 +28,7 @@ dependencies {
     compileOnly(libs.paper.api)
     compileOnly(libs.cave.crawlers)
     compileOnly(libs.worldedit.bukkit)
+    compileOnly(libs.fawe.core)
     compileOnly(libs.mythic.mobs)
     compileOnly(libs.vault.api)
     compileOnly(libs.essentials)

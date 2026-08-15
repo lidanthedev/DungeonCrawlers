@@ -14,9 +14,11 @@ import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Rotation;
 import me.lidan.dungeonCrawlers.core.template.TemplateValidator;
 import me.lidan.dungeonCrawlers.integration.WorldEditGateway;
+import me.lidan.dungeonCrawlers.integration.ProgressBarService;
 import me.lidan.dungeonCrawlers.integration.worldedit.WorldEditAdapter;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
 import revxrsal.commands.annotation.Command;
 import revxrsal.commands.annotation.Subcommand;
 import revxrsal.commands.annotation.SuggestWith;
@@ -29,29 +31,51 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
+import java.util.logging.Logger;
 
 @Command("dungeon")
 public final class DungeonAuthoringCommand {
     private final ConfigRegistryService configRegistry;
     private final PlayerReservationService reservations;
     private final TemplateAuthoringService authoring;
-    private final WorldEditGateway worldEdit = new WorldEditAdapter();
+    private final WorldEditGateway worldEdit;
     private final TemplateValidator templateValidator = new TemplateValidator();
     private final TemplateCatalogLoader templateCatalog;
     private final LayoutPlanner layoutPlanner = new LayoutPlanner();
     private final Map<UUID, List<String>> generationTraces = new ConcurrentHashMap<>();
     private final EmeraldPolicy emeraldPolicy;
     private final Supplier<Set<String>> activeTemplates;
+    private final Plugin plugin;
+    private final ProgressBarService progressBars;
 
     public DungeonAuthoringCommand(BoostedCustomConfig mainConfig, ConfigRegistryService configRegistry,
                                    PlayerReservationService reservations, TemplateAuthoringService authoring) {
-        this(mainConfig, configRegistry, reservations, authoring, Set::of);
+        this(null, mainConfig, configRegistry, reservations, authoring, Set::of);
     }
 
     public DungeonAuthoringCommand(BoostedCustomConfig mainConfig, ConfigRegistryService configRegistry,
                                    PlayerReservationService reservations, TemplateAuthoringService authoring,
                                    Supplier<Set<String>> activeTemplates) {
+        this(null, mainConfig, configRegistry, reservations, authoring, activeTemplates);
+    }
+
+    public DungeonAuthoringCommand(Plugin plugin, BoostedCustomConfig mainConfig,
+                                   ConfigRegistryService configRegistry,
+                                   PlayerReservationService reservations, TemplateAuthoringService authoring,
+                                   Supplier<Set<String>> activeTemplates) {
+        this(plugin, mainConfig, configRegistry, reservations, authoring, activeTemplates, null);
+    }
+
+    public DungeonAuthoringCommand(Plugin plugin, BoostedCustomConfig mainConfig,
+                                   ConfigRegistryService configRegistry,
+                                   PlayerReservationService reservations, TemplateAuthoringService authoring,
+                                   Supplier<Set<String>> activeTemplates, ProgressBarService progressBars) {
+        this.plugin = plugin;
+        this.progressBars = progressBars;
+        this.worldEdit = new WorldEditAdapter(plugin == null
+                ? Logger.getLogger(WorldEditAdapter.class.getName()) : plugin.getLogger());
         this.configRegistry = configRegistry;
         this.reservations = reservations;
         this.authoring = authoring;
@@ -144,20 +168,51 @@ public final class DungeonAuthoringCommand {
             player.sendMessage("[FAIL] invalid room type or encounters");
             return;
         }
-        WorldEditGateway.CaptureResult capture = captureSelection(player);
-        if (!capture.successful()) {
-            player.sendMessage("[FAIL] " + capture.detail());
-            return;
-        }
-        var validation = templateValidator.validate(id, type, capabilities, capture.selection().orElseThrow(),
-                emeraldPolicy);
-        if (!validation.successful()) {
-            validation.errors().forEach(error -> player.sendMessage("[FAIL] " + error));
-            return;
-        }
-        TemplateAuthoringService.OperationResult result = authoring.create(id, type, capabilities, capture.schematic());
-        player.sendMessage("[" + (result.successful() ? "PASS" : "FAIL") + "] " + result.detail());
-        if (result.successful()) reportAuthoringReload(player);
+        long startedAt = System.nanoTime();
+        logAuthoring("room create started id=" + id + " player=" + player.getName()
+                + " type=" + type + " encounters=" + capabilities);
+        UUID progressId = beginRoomProgress(player, "Creating room");
+        captureSelectionAsync(player, progressId).thenAccept(capture -> {
+            if (!capture.successful()) {
+                logAuthoring("room create capture failed id=" + id + " elapsedMs=" + elapsedMillis(startedAt)
+                        + " detail=" + capture.detail());
+                failRoomProgress(progressId, capture.detail());
+                runOnMain(player, () -> player.sendMessage("[FAIL] " + capture.detail()));
+                return;
+            }
+            updateRoomProgress(progressId, 0.78, "validating room markers");
+            long validationStarted = System.nanoTime();
+            var validation = templateValidator.validate(id, type, capabilities,
+                    capture.selection().orElseThrow(), emeraldPolicy);
+            logAuthoring("room create validation finished id=" + id + " elapsedMs="
+                    + elapsedMillis(validationStarted) + " blocks="
+                    + capture.selection().orElseThrow().blocks().size() + " successful=" + validation.successful()
+                    + " errors=" + validation.errors().size());
+            runOnMain(player, () -> {
+                if (!validation.successful()) {
+                    logAuthoring("room create rejected id=" + id + " totalMs=" + elapsedMillis(startedAt));
+                    failRoomProgress(progressId, "room validation failed");
+                    validation.errors().forEach(error -> player.sendMessage("[FAIL] " + error));
+                    return;
+                }
+                updateRoomProgress(progressId, 0.92, "saving room");
+                long saveStarted = System.nanoTime();
+                TemplateAuthoringService.OperationResult result = authoring.create(id, type, capabilities,
+                        capture.schematic(), validation.template().orElseThrow());
+                logAuthoring("room create save finished id=" + id + " elapsedMs=" + elapsedMillis(saveStarted)
+                        + " totalMs=" + elapsedMillis(startedAt) + " successful=" + result.successful());
+                player.sendMessage("[" + (result.successful() ? "PASS" : "FAIL") + "] " + result.detail());
+                if (result.successful()) reportAuthoringReload(player);
+                if (result.successful()) completeRoomProgress(progressId, "room created");
+                else failRoomProgress(progressId, result.detail());
+            });
+        }).exceptionally(error -> {
+            logAuthoring("room create failed id=" + id + " totalMs=" + elapsedMillis(startedAt)
+                    + " error=" + message(error));
+            failRoomProgress(progressId, message(error));
+            runOnMain(player, () -> player.sendMessage("[FAIL] room capture failed: " + message(error)));
+            return null;
+        });
     }
 
     @Subcommand("room update")
@@ -168,19 +223,50 @@ public final class DungeonAuthoringCommand {
             player.sendMessage("[FAIL] unknown room " + id);
             return;
         }
-        WorldEditGateway.CaptureResult capture = captureSelection(player);
-        if (!capture.successful()) {
-            player.sendMessage("[FAIL] " + capture.detail());
-            return;
-        }
-        var validation = templateValidator.validate(id, definition.type(), definition.capabilities(),
-                capture.selection().orElseThrow(), emeraldPolicy);
-        if (!validation.successful()) {
-            validation.errors().forEach(error -> player.sendMessage("[FAIL] " + error));
-            return;
-        }
-        TemplateAuthoringService.OperationResult result = authoring.update(id, capture.schematic());
-        player.sendMessage("[" + (result.successful() ? "PASS" : "FAIL") + "] " + result.detail());
+        long startedAt = System.nanoTime();
+        logAuthoring("room update started id=" + id + " player=" + player.getName()
+                + " type=" + definition.type() + " capabilities=" + definition.capabilities());
+        UUID progressId = beginRoomProgress(player, "Updating room");
+        captureSelectionAsync(player, progressId).thenAccept(capture -> {
+            if (!capture.successful()) {
+                logAuthoring("room update capture failed id=" + id + " elapsedMs=" + elapsedMillis(startedAt)
+                        + " detail=" + capture.detail());
+                failRoomProgress(progressId, capture.detail());
+                runOnMain(player, () -> player.sendMessage("[FAIL] " + capture.detail()));
+                return;
+            }
+            updateRoomProgress(progressId, 0.78, "validating room markers");
+            long validationStarted = System.nanoTime();
+            var validation = templateValidator.validate(id, definition.type(), definition.capabilities(),
+                    capture.selection().orElseThrow(), emeraldPolicy);
+            logAuthoring("room update validation finished id=" + id + " elapsedMs="
+                    + elapsedMillis(validationStarted) + " blocks="
+                    + capture.selection().orElseThrow().blocks().size() + " successful=" + validation.successful()
+                    + " errors=" + validation.errors().size());
+            runOnMain(player, () -> {
+                if (!validation.successful()) {
+                    logAuthoring("room update rejected id=" + id + " totalMs=" + elapsedMillis(startedAt));
+                    failRoomProgress(progressId, "room validation failed");
+                    validation.errors().forEach(error -> player.sendMessage("[FAIL] " + error));
+                    return;
+                }
+                updateRoomProgress(progressId, 0.92, "saving room");
+                long saveStarted = System.nanoTime();
+                TemplateAuthoringService.OperationResult result = authoring.update(id, capture.schematic(),
+                        validation.template().orElseThrow());
+                logAuthoring("room update save finished id=" + id + " elapsedMs=" + elapsedMillis(saveStarted)
+                        + " totalMs=" + elapsedMillis(startedAt) + " successful=" + result.successful());
+                player.sendMessage("[" + (result.successful() ? "PASS" : "FAIL") + "] " + result.detail());
+                if (result.successful()) completeRoomProgress(progressId, "room updated");
+                else failRoomProgress(progressId, result.detail());
+            });
+        }).exceptionally(error -> {
+            logAuthoring("room update failed id=" + id + " totalMs=" + elapsedMillis(startedAt)
+                    + " error=" + message(error));
+            failRoomProgress(progressId, message(error));
+            runOnMain(player, () -> player.sendMessage("[FAIL] room capture failed: " + message(error)));
+            return null;
+        });
     }
 
     @Subcommand("room delete")
@@ -296,12 +382,71 @@ public final class DungeonAuthoringCommand {
         return worldEdit.scan(player, maximumDimension, maximumVolume);
     }
 
-    private WorldEditGateway.CaptureResult captureSelection(Player player) {
+    private CompletableFuture<WorldEditGateway.CaptureResult> captureSelectionAsync(Player player, UUID progressId) {
         int maximumDimension = configRegistry.snapshot().floors().values().stream()
                 .mapToInt(floor -> floor.limits().maxTemplateDimension()).max().orElse(512);
         long maximumVolume = configRegistry.snapshot().floors().values().stream()
                 .mapToLong(floor -> floor.limits().maxTemplateVolume()).max().orElse(16_777_216L);
-        return worldEdit.capture(player, maximumDimension, maximumVolume);
+        updateRoomProgress(progressId, 0.10, "capturing WorldEdit selection");
+        if (plugin != null && progressBars == null) {
+            player.sendMessage("[INFO] capturing selection asynchronously; the server thread remains responsive");
+        }
+        long startedAt = System.nanoTime();
+        logAuthoring("capture started player=" + player.getName() + " maxDimension=" + maximumDimension
+                + " maxVolume=" + maximumVolume);
+        return worldEdit.captureAsync(player, maximumDimension, maximumVolume).whenComplete((capture, error) -> {
+            if (error != null) {
+                logAuthoring("capture failed player=" + player.getName() + " elapsedMs=" + elapsedMillis(startedAt)
+                        + " error=" + message(error));
+            } else {
+                logAuthoring("capture finished player=" + player.getName() + " elapsedMs=" + elapsedMillis(startedAt)
+                        + " successful=" + capture.successful() + " detail=" + capture.detail()
+                        + " blocks=" + capture.selection().map(selection -> selection.blocks().size()).orElse(0));
+            }
+        });
+    }
+
+    private void logAuthoring(String message) {
+        if (plugin != null) plugin.getLogger().info("[Authoring] " + message);
+    }
+
+    private static long elapsedMillis(long startedAt) {
+        return (System.nanoTime() - startedAt) / 1_000_000L;
+    }
+
+    private UUID beginRoomProgress(Player player, String title) {
+        if (progressBars == null) return null;
+        UUID taskId = UUID.randomUUID();
+        progressBars.begin(taskId, List.of(player), title, "starting", 0.02);
+        return taskId;
+    }
+
+    private void updateRoomProgress(UUID taskId, double progress, String detail) {
+        if (taskId != null) progressBars.update(taskId, progress, detail);
+    }
+
+    private void completeRoomProgress(UUID taskId, String detail) {
+        if (taskId != null) progressBars.complete(taskId, detail);
+    }
+
+    private void failRoomProgress(UUID taskId, String detail) {
+        if (taskId != null) progressBars.fail(taskId, detail);
+    }
+
+    private void runOnMain(Player player, Runnable callback) {
+        if (plugin == null) {
+            callback.run();
+            return;
+        }
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            if (player.isOnline()) callback.run();
+        });
+    }
+
+    private static String message(Throwable failure) {
+        Throwable cause = failure;
+        while (cause.getCause() != null) cause = cause.getCause();
+        return cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
     }
 
     private void reportAuthoringReload(CommandSender sender) {

@@ -1,6 +1,8 @@
 package me.lidan.dungeonCrawlers.integration;
 
 import me.lidan.dungeonCrawlers.core.chunk.ChunkTicketBudget;
+import me.lidan.dungeonCrawlers.core.combat.CombatChunkGateway;
+import me.lidan.dungeonCrawlers.core.template.TemplateModels.Bounds;
 import org.bukkit.World;
 import org.bukkit.plugin.Plugin;
 
@@ -10,7 +12,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
-public final class BukkitChunkTicketService {
+public final class BukkitChunkTicketService implements CombatChunkGateway {
     private final Plugin plugin;
     private final World world;
     private final ChunkTicketBudget budget;
@@ -60,4 +62,27 @@ public final class BukkitChunkTicketService {
     }
 
     public ChunkTicketBudget budget() { return budget; }
+
+    @Override
+    public boolean acquire(UUID instanceId, Bounds bounds) {
+        return acquire(instanceId, chunks(bounds));
+    }
+
+    @Override
+    public int release(UUID instanceId, Bounds bounds) {
+        return release(instanceId, chunks(bounds));
+    }
+
+    private static Set<ChunkTicketBudget.ChunkKey> chunks(Bounds bounds) {
+        Objects.requireNonNull(bounds, "bounds");
+        Set<ChunkTicketBudget.ChunkKey> result = new LinkedHashSet<>();
+        int minX = Math.floorDiv(bounds.minimum().x(), 16);
+        int maxX = Math.floorDiv(bounds.maximum().x(), 16);
+        int minZ = Math.floorDiv(bounds.minimum().z(), 16);
+        int maxZ = Math.floorDiv(bounds.maximum().z(), 16);
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) result.add(new ChunkTicketBudget.ChunkKey(x, z));
+        }
+        return Set.copyOf(result);
+    }
 }

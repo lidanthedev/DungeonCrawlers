@@ -7,6 +7,7 @@ import me.lidan.dungeonCrawlers.config.registry.ConfigModels.EncounterCapability
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.FloorDefinition;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.RoomDefinition;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.RoomType;
+import me.lidan.dungeonCrawlers.core.template.TemplateModels.Template;
 
 import java.io.IOException;
 import java.nio.file.AtomicMoveNotSupportedException;
@@ -23,6 +24,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -66,6 +68,11 @@ public final class TemplateAuthoringService {
 
     public synchronized OperationResult create(String id, RoomType type, Set<EncounterCapability> capabilities,
                                                byte[] schematic) {
+        return create(id, type, capabilities, schematic, null);
+    }
+
+    public synchronized OperationResult create(String id, RoomType type, Set<EncounterCapability> capabilities,
+                                               byte[] schematic, Template template) {
         String invalid = validateInput(id, type, capabilities, schematic);
         if (invalid != null) return OperationResult.failure(invalid);
         ConfigSnapshot current = snapshot.get();
@@ -80,6 +87,7 @@ public final class TemplateAuthoringService {
             Files.createDirectories(staging);
             Path stagedRooms = staging.resolve("rooms.yml");
             Path stagedSchematic = staging.resolve(id + ".schem");
+            Path stagedMetadata = staging.resolve(id + ".meta.yml");
             Files.write(stagedRooms, originalRooms, StandardOpenOption.CREATE_NEW);
             BoostedCustomConfig config = configs.open(stagedRooms);
             config.set("rooms." + id, roomValues(type, capabilities));
@@ -87,12 +95,16 @@ public final class TemplateAuthoringService {
             Path commitRooms = staging.resolve("rooms-commit.yml");
             Files.write(commitRooms, Files.readAllBytes(stagedRooms), StandardOpenOption.CREATE_NEW);
             Files.write(stagedSchematic, schematic, StandardOpenOption.CREATE_NEW);
+            if (template != null) writeMetadataFile(stagedMetadata, template, stagedSchematic);
             failures.before(FailureStage.BEFORE_COMMIT);
             Files.createDirectories(templateDirectory);
             atomicReplace(commitRooms, roomsFile);
             try {
                 atomicCreate(stagedSchematic, target);
+                if (template != null) atomicCreate(stagedMetadata, metadataPath(id));
             } catch (Exception exception) {
+                Files.deleteIfExists(target);
+                Files.deleteIfExists(metadataPath(id));
                 restoreRooms(originalRooms, staging);
                 throw exception;
             }
@@ -106,6 +118,10 @@ public final class TemplateAuthoringService {
     }
 
     public synchronized OperationResult update(String id, byte[] schematic) {
+        return update(id, schematic, null);
+    }
+
+    public synchronized OperationResult update(String id, byte[] schematic, Template template) {
         String invalid = validateIdAndPayload(id, schematic);
         if (invalid != null) return OperationResult.failure(invalid);
         if (!snapshot.get().rooms().containsKey(id)) return OperationResult.failure("unknown room: " + id);
@@ -118,17 +134,28 @@ public final class TemplateAuthoringService {
         try {
             Files.createDirectories(staging);
             Path staged = staging.resolve(id + ".schem");
+            Path stagedMetadata = staging.resolve(id + ".meta.yml");
             Files.write(staged, schematic, StandardOpenOption.CREATE_NEW);
+            if (template != null) writeMetadataFile(stagedMetadata, template, staged);
             Path backup = null;
             if (replacing) {
                 backup = createBackup(id);
                 Files.copy(target, backup.resolve(id + ".schem"), StandardCopyOption.COPY_ATTRIBUTES);
                 Files.copy(roomsFile, backup.resolve("rooms.yml"), StandardCopyOption.COPY_ATTRIBUTES);
+                Path existingMetadata = metadataPath(id);
+                if (Files.isRegularFile(existingMetadata)) {
+                    Files.copy(existingMetadata, backup.resolve(id + ".meta.yml"), StandardCopyOption.COPY_ATTRIBUTES);
+                }
             }
             failures.before(FailureStage.BEFORE_COMMIT);
             Files.createDirectories(templateDirectory);
             if (replacing) atomicReplace(staged, target);
             else atomicCreate(staged, target);
+            if (template != null) {
+                Path metadata = metadataPath(id);
+                if (Files.exists(metadata)) atomicReplace(stagedMetadata, metadata);
+                else atomicCreate(stagedMetadata, metadata);
+            }
             pruneBackups();
             return OperationResult.success("updated room " + id + "; generation metadata preserved"
                     + (backup == null ? "; initial schematic created" : "; backup=" + dataDirectory.relativize(backup)));
@@ -166,12 +193,19 @@ public final class TemplateAuthoringService {
             backup = createBackup(id);
             Path archived = backup.resolve(id + ".schem");
             Files.copy(roomsFile, backup.resolve("rooms.yml"), StandardCopyOption.COPY_ATTRIBUTES);
+            Path metadata = metadataPath(id);
+            if (Files.isRegularFile(metadata)) Files.copy(metadata, backup.resolve(id + ".meta.yml"),
+                    StandardCopyOption.COPY_ATTRIBUTES);
             failures.before(FailureStage.BEFORE_COMMIT);
             atomicCreate(target, archived);
+            if (Files.isRegularFile(metadata)) atomicCreate(metadata, backup.resolve(id + ".meta.yml"));
             try {
                 atomicReplace(commitRooms, roomsFile);
             } catch (Exception exception) {
                 atomicCreate(archived, target);
+                if (Files.isRegularFile(backup.resolve(id + ".meta.yml"))) {
+                    atomicCreate(backup.resolve(id + ".meta.yml"), metadata);
+                }
                 throw exception;
             }
             pruneBackups();
@@ -195,6 +229,29 @@ public final class TemplateAuthoringService {
         Path path = templateDirectory.resolve(id + ".schem").normalize();
         if (!path.startsWith(templateDirectory)) throw new IllegalArgumentException("room path escaped template directory");
         return path;
+    }
+
+    public Path metadataPath(String id) {
+        if (!validId(id)) throw new IllegalArgumentException("invalid room id: " + id);
+        Path path = templateDirectory.resolve(id + ".meta.yml").normalize();
+        if (!path.startsWith(templateDirectory)) throw new IllegalArgumentException("room path escaped template directory");
+        return path;
+    }
+
+    public synchronized Optional<TemplateMetadata> metadata(String id) throws IOException {
+        Path path = metadataPath(id);
+        return Files.isRegularFile(path) ? Optional.of(TemplateMetadata.read(configs, path)) : Optional.empty();
+    }
+
+    public synchronized void writeMetadata(String id, Template template) throws IOException {
+        Objects.requireNonNull(template, "template");
+        Path schematic = schematicPath(id);
+        if (!Files.isRegularFile(schematic)) throw new IOException("room schematic is missing: " + id);
+        writeMetadataFile(metadataPath(id), template, schematic);
+    }
+
+    private void writeMetadataFile(Path path, Template template, Path schematic) throws IOException {
+        TemplateMetadata.write(configs, path, TemplateMetadata.fromTemplate(template, schematic));
     }
 
     private static String validateInput(String id, RoomType type, Set<EncounterCapability> capabilities,
