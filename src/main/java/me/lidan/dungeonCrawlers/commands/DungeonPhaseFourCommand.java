@@ -39,7 +39,7 @@ public final class DungeonPhaseFourCommand {
     private final Server server;
     private final Clock clock;
     private final Executor mainThread;
-    private final org.bukkit.World generationWorld;
+    private final String generationWorldName;
     private final BukkitDoorBlockService doorBlocks = new BukkitDoorBlockService();
     private final Supplier<List<WorldProtectionService.InstanceRegion>> regions;
 
@@ -56,7 +56,8 @@ public final class DungeonPhaseFourCommand {
         this.server = java.util.Objects.requireNonNull(server);
         this.clock = java.util.Objects.requireNonNull(clock);
         this.mainThread = callback -> server.getScheduler().runTask(plugin, callback);
-        this.generationWorld = server.getWorld(java.util.Objects.requireNonNull(generationWorldName));
+        this.generationWorldName = java.util.Objects.requireNonNull(generationWorldName);
+        if (this.generationWorldName.isBlank()) throw new IllegalArgumentException("generation world name is blank");
         this.regions = java.util.Objects.requireNonNull(regions);
     }
 
@@ -77,10 +78,9 @@ public final class DungeonPhaseFourCommand {
     public void registerDoor(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
                               int x, int y, int z, String facing) {
         try {
-            if (generationWorld == null) throw new IllegalStateException("generation world is not loaded");
             DoorService.DoorSnapshot door = doors.register(UUID.fromString(instanceId), new Point(x, y, z),
                     Facing.valueOf(facing.toUpperCase(Locale.ROOT)));
-            doorBlocks.render(generationWorld, door);
+            doorBlocks.render(generationWorld(), door);
             sender.sendMessage("[PASS] " + door + " blocks=" + door.blocks().size());
         } catch (RuntimeException exception) {
             sender.sendMessage("[FAIL] " + message(exception));
@@ -103,13 +103,12 @@ public final class DungeonPhaseFourCommand {
                         String state) {
         try {
             UUID id = UUID.fromString(instanceId);
-            if (generationWorld == null) throw new IllegalStateException("generation world is not loaded");
             DoorService.DoorSnapshot result = switch (state.toUpperCase(Locale.ROOT)) {
                 case "LOCKED" -> doors.setLocked(id);
                 case "READY" -> doors.setReady(id);
                 default -> throw new IllegalArgumentException("state must be LOCKED or READY");
             };
-            doorBlocks.render(generationWorld, result);
+            doorBlocks.render(generationWorld(), result);
             sender.sendMessage("[PASS] " + result);
         } catch (RuntimeException exception) { sender.sendMessage("[FAIL] " + message(exception)); }
     }
@@ -119,9 +118,8 @@ public final class DungeonPhaseFourCommand {
     public void doorOpen(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
         try {
             DoorService.OpenResult result = doors.open(UUID.fromString(instanceId),
-                    () -> {
-                        if (generationWorld == null) throw new IllegalStateException("generation world is not loaded");
-                        doorBlocks.render(generationWorld, doors.info(UUID.fromString(instanceId)).orElseThrow());
+                () -> {
+                        doorBlocks.render(generationWorld(), doors.info(UUID.fromString(instanceId)).orElseThrow());
                         sender.sendMessage("[PASS] door open callback invoked once");
                     });
             sender.sendMessage("[" + (result.opened() || result.alreadyOpen() ? "PASS" : "FAIL") + "] "
@@ -179,11 +177,18 @@ public final class DungeonPhaseFourCommand {
             fallback.spawn().map(Location::clone).ifPresent(location -> destinations.add(
                     new TeleportPermitService.Destination(location.getWorld().getName(),
                             new Point(location.getBlockX(), location.getBlockY(), location.getBlockZ()))));
-            permits.authorize(player.getUniqueId(), destinations, clock.instant().plusSeconds(5));
+            permits.authorize(player.getUniqueId(), destinations,
+                    clock.instant().plus(DungeonGenerationCommand.TELEPORT_PERMIT_DURATION));
             var result = BukkitPlayerRecovery.restore(player, saved, server, fallback);
             player.sendMessage("[" + (result.successful() ? "PASS" : "FAIL") + "] restore source="
                     + result.source() + " detail=" + result.detail());
         }, mainThread);
+    }
+
+    private org.bukkit.World generationWorld() {
+        org.bukkit.World world = server.getWorld(generationWorldName);
+        if (world == null) throw new IllegalStateException("generation world is not loaded: " + generationWorldName);
+        return world;
     }
 
     private static String message(Throwable throwable) {

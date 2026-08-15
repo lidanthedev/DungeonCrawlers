@@ -4,6 +4,7 @@ import dev.triumphteam.gui.guis.BaseGui;
 import me.lidan.dungeonCrawlers.commands.DungeonCrawlersCommand;
 import me.lidan.dungeonCrawlers.commands.DungeonAuthoringCommand;
 import me.lidan.dungeonCrawlers.commands.DungeonGenerationCommand;
+import me.lidan.dungeonCrawlers.commands.InstanceIdSuggestionProvider;
 import me.lidan.dungeonCrawlers.authoring.TemplateAuthoringService;
 import me.lidan.dungeonCrawlers.authoring.TemplateCatalogLoader;
 import me.lidan.dungeonCrawlers.compatibility.CompatibilityService;
@@ -37,6 +38,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.event.Listener;
 import org.bukkit.plugin.java.JavaPlugin;
 import revxrsal.commands.Lamp;
+import revxrsal.commands.annotation.SuggestWith;
 import revxrsal.commands.bukkit.BukkitLamp;
 import revxrsal.commands.bukkit.actor.BukkitCommandActor;
 
@@ -61,6 +63,7 @@ public final class DungeonCrawlers extends JavaPlugin {
     private GenerationService generation;
     private ExecutorService generationExecutor;
     private java.time.Clock phaseClock;
+    private String generationWorldName;
     private CentralUpdateService centralUpdates;
     private DoorService doors;
     private PlayerSnapshotService playerSnapshots;
@@ -133,6 +136,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         FaweGenerationAdapter generationWorld = new FaweGenerationAdapter(this, generationExecutor);
         var worldCheck = generationWorld.ensureDedicatedVoidWorld(worldName);
         if (!worldCheck.successful()) throw new IllegalStateException(worldCheck.detail());
+        generationWorldName = worldName;
         SlotAllocator slots = new SlotAllocator(new SlotAllocator.Settings(capacity, spacing, margin, baseY,
                 worldCheck.minimumY(), worldCheck.maximumY()));
         EmeraldPolicy emeraldPolicy;
@@ -222,6 +226,13 @@ public final class DungeonCrawlers extends JavaPlugin {
 
     private void registerCommands() {
         // Register commands
+        commandHandlerBuilder.suggestionProviders().addProviderForAnnotation(SuggestWith.class, annotation -> {
+            if (annotation.value() != InstanceIdSuggestionProvider.class) return null;
+            return new InstanceIdSuggestionProvider<BukkitCommandActor>(() -> generation.instances().stream()
+                    .map(GenerationService.InstanceSnapshot::instanceId)
+                    .map(java.util.UUID::toString)
+                    .toList());
+        });
         Lamp<BukkitCommandActor> commandHandler = commandHandlerBuilder.build();
         commandHandler.register(new DungeonCrawlersCommand(this,
                 new CompatibilityService(this, mainConfig, configRegistry), mainConfig, configRegistry,
@@ -230,11 +241,11 @@ public final class DungeonCrawlers extends JavaPlugin {
                 generation::activeTemplateIds));
         commandHandler.register(new DungeonGenerationCommand(configRegistry,
                 PartyProviders.forServer(getServer()), generation, getServer(),
-                mainConfig.getString("generation.world", "dungeon_instances").trim(),
+                generationWorldName,
                 teleportPermits, phaseClock()));
         commandHandler.register(new DungeonPhaseFourCommand(centralUpdates, doors, protectionPolicy,
                 teleportPermits, playerSnapshots, getServer(), this, phaseClock(),
-                mainConfig.getString("generation.world", "dungeon_instances").trim(),
+                generationWorldName,
                 () -> generation.protectionRegions().stream().map(WorldProtectionService.InstanceRegion::from).toList()));
     }
 

@@ -51,4 +51,21 @@ class CentralUpdateServiceTest {
         service.tick(Instant.EPOCH.plusSeconds(2));
         assertEquals(2, calls[0]);
     }
+
+    @Test
+    void diagnosticsFailureDoesNotStopLaterUpdates() {
+        List<Instant> observed = new ArrayList<>();
+        CentralUpdateService service = new CentralUpdateService(Clock.systemUTC(), ignored -> {
+            throw new IllegalStateException("diagnostics unavailable");
+        });
+        UUID failing = UUID.randomUUID();
+        UUID healthy = UUID.randomUUID();
+        service.register(failing, ignored -> { throw new IllegalStateException("boom"); });
+        service.register(healthy, observed::add);
+
+        var report = service.tick(Instant.EPOCH);
+
+        assertEquals(List.of(failing), report.failures());
+        assertEquals(List.of(Instant.EPOCH), observed);
+    }
 }

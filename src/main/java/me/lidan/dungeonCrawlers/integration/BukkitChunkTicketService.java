@@ -5,7 +5,9 @@ import org.bukkit.World;
 import org.bukkit.plugin.Plugin;
 
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 public final class BukkitChunkTicketService {
@@ -40,8 +42,11 @@ public final class BukkitChunkTicketService {
     }
 
     public synchronized int release(UUID instanceId, Collection<ChunkTicketBudget.ChunkKey> requested) {
+        Set<ChunkTicketBudget.ChunkKey> held = budget.tickets(instanceId);
+        Set<ChunkTicketBudget.ChunkKey> removable = new LinkedHashSet<>(requested);
+        removable.retainAll(held);
         int released = budget.release(instanceId, requested);
-        requested.forEach(chunk -> world.removePluginChunkTicket(chunk.x(), chunk.z(), plugin));
+        removable.forEach(chunk -> world.removePluginChunkTicket(chunk.x(), chunk.z(), plugin));
         return released;
     }
 

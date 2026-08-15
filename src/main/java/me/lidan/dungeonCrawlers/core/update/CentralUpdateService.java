@@ -50,8 +50,12 @@ public final class CentralUpdateService {
                 entry.getValue().accept(now);
             } catch (RuntimeException exception) {
                 failures.add(entry.getKey());
-                diagnostics.accept("instance=" + entry.getKey() + " central update failed: "
-                        + message(exception));
+                try {
+                    diagnostics.accept("instance=" + entry.getKey() + " central update failed: "
+                            + message(exception));
+                } catch (RuntimeException ignored) {
+                    // Diagnostics are best-effort; one consumer must not stop the update loop.
+                }
             }
         }
         return new TickReport(now, snapshot.size(), failures);

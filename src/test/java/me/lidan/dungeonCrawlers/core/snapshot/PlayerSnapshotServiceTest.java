@@ -17,6 +17,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlayerSnapshotServiceTest {
@@ -32,6 +33,30 @@ class PlayerSnapshotServiceTest {
         service.delete(snapshot.playerId()).join();
         assertTrue(service.read(snapshot.playerId()).join().isEmpty());
         assertEquals("player-snapshots", repository.lastWrite.namespace());
+    }
+
+    @Test
+    void retriesReuseCaptureMetadataAndNewCapturesAdvanceVersion() {
+        FakeRepository repository = new FakeRepository();
+        PlayerSnapshotService service = new PlayerSnapshotService(repository);
+        UUID player = UUID.randomUUID();
+        UUID instance = UUID.randomUUID();
+        Instant capturedAt = Instant.parse("2026-01-01T00:00:00Z");
+        PlayerRecoverySnapshot first = new PlayerRecoverySnapshot(player, instance, "world",
+                1, 2, 3, 0, 0, "SURVIVAL", 20, 20, 0, 0, 0, 300, 400, capturedAt);
+
+        service.save(first);
+        String firstKey = repository.lastWrite.idempotencyKey();
+        long firstVersion = repository.lastWrite.recordVersion();
+        service.save(first);
+        assertEquals(firstKey, repository.lastWrite.idempotencyKey());
+        assertEquals(firstVersion, repository.lastWrite.recordVersion());
+
+        PlayerRecoverySnapshot second = new PlayerRecoverySnapshot(player, instance, "world",
+                4, 2, 3, 0, 0, "SURVIVAL", 20, 20, 0, 0, 0, 300, 400, capturedAt.plusSeconds(1));
+        service.save(second);
+        assertNotEquals(firstKey, repository.lastWrite.idempotencyKey());
+        assertEquals(firstVersion + 1, repository.lastWrite.recordVersion());
     }
 
     private static final class FakeRepository implements DurableRepository {

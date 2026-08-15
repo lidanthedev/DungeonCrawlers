@@ -22,11 +22,14 @@ import revxrsal.commands.annotation.SuggestWith;
 import revxrsal.commands.bukkit.annotation.CommandPermission;
 
 import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
 
 @Command("dungeon")
 public final class DungeonGenerationCommand {
+    public static final Duration TELEPORT_PERMIT_DURATION = Duration.ofSeconds(5);
     private final ConfigRegistryService configRegistry;
     private final PartyProvider parties;
     private final PartySnapshotPolicy partyPolicy = new PartySnapshotPolicy();
@@ -46,10 +49,6 @@ public final class DungeonGenerationCommand {
         this.generationWorldName = generationWorldName;
         this.teleportPermits = teleportPermits;
         this.clock = clock;
-        InstanceIdSuggestionProvider.setSource(() -> this.generation.instances().stream()
-                .map(GenerationService.InstanceSnapshot::instanceId)
-                .map(UUID::toString)
-                .toList());
     }
 
     @Subcommand("instance generate-debug")
@@ -110,12 +109,14 @@ public final class DungeonGenerationCommand {
             if (world == null) throw new IllegalStateException("generation world is not loaded: " + generationWorldName);
 
             Point destinationPoint = new Point(spawn.point().x(), spawn.point().y() + 1, spawn.point().z());
+            Instant permitExpiry = clock.instant().plus(TELEPORT_PERMIT_DURATION);
             teleportPermits.authorize(player.getUniqueId(), Set.of(
                     new TeleportPermitService.Destination(generationWorldName, destinationPoint)),
-                    clock.instant().plusSeconds(5));
+                    permitExpiry);
             Location destination = new Location(world, spawn.point().x() + 0.5,
                     spawn.point().y() + 1.0, spawn.point().z() + 0.5, spawn.yaw(), 0.0f);
             if (!player.teleport(destination)) {
+                teleportPermits.revoke(player.getUniqueId());
                 player.sendMessage("[FAIL] teleport to instance " + id + " was rejected");
                 return;
             }

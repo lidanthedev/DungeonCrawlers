@@ -7,6 +7,8 @@ import me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot;
 import me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshotCodec;
 
 import java.util.Objects;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -16,6 +18,8 @@ public final class PlayerSnapshotService {
     public static final String NAMESPACE = "player-snapshots";
     private final DurableRepository repository;
     private final PlayerRecoverySnapshotCodec codec;
+    private final Map<CaptureKey, Long> captureVersions = new HashMap<>();
+    private final Map<UUID, Long> latestVersions = new HashMap<>();
 
     public PlayerSnapshotService(DurableRepository repository) {
         this(repository, new PlayerRecoverySnapshotCodec());
@@ -26,10 +30,16 @@ public final class PlayerSnapshotService {
         this.codec = Objects.requireNonNull(codec, "codec");
     }
 
-    public DurableSubmission save(PlayerRecoverySnapshot snapshot) {
+    public synchronized DurableSubmission save(PlayerRecoverySnapshot snapshot) {
         Objects.requireNonNull(snapshot, "snapshot");
+        byte[] payload = codec.encode(snapshot);
+        String idempotencyKey = "player-snapshot-" + UUID.nameUUIDFromBytes(payload);
+        CaptureKey capture = new CaptureKey(snapshot.playerId(), snapshot.instanceId(), snapshot.capturedAt(),
+                idempotencyKey);
+        long recordVersion = captureVersions.computeIfAbsent(capture, ignored ->
+                latestVersions.merge(snapshot.playerId(), 1L, Long::sum));
         DurableWrite write = new DurableWrite(UUID.randomUUID(), snapshot.instanceId(), NAMESPACE,
-                snapshot.playerId().toString(), "player-snapshot-" + snapshot.playerId(), 1, codec.encode(snapshot));
+                snapshot.playerId().toString(), idempotencyKey, recordVersion, payload);
         return repository.submit(write);
     }
 
@@ -42,4 +52,7 @@ public final class PlayerSnapshotService {
     public CompletableFuture<Void> delete(UUID playerId) {
         return repository.delete(NAMESPACE, Objects.requireNonNull(playerId, "playerId").toString());
     }
+
+    private record CaptureKey(UUID playerId, UUID instanceId, java.time.Instant capturedAt,
+                              String idempotencyKey) { }
 }

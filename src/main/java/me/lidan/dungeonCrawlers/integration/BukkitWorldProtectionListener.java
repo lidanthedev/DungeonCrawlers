@@ -1,5 +1,6 @@
 package me.lidan.dungeonCrawlers.integration;
 
+import com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent;
 import me.lidan.dungeonCrawlers.core.protection.TeleportPermitService;
 import me.lidan.dungeonCrawlers.core.protection.WorldProtectionService;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
@@ -109,6 +110,11 @@ public final class BukkitWorldProtectionListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onProjectileHit(org.bukkit.event.entity.ProjectileHitEvent event) {
+        launches.remove(event.getEntity().getUniqueId());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onEntityRemoveFromWorld(EntityRemoveFromWorldEvent event) {
         launches.remove(event.getEntity().getUniqueId());
     }
 
