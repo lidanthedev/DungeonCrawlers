@@ -176,7 +176,8 @@ public final class DungeonCrawlers extends JavaPlugin {
         centralUpdates = new CentralUpdateService(phaseClock(), getLogger()::info);
         doors = new DoorService();
         runPreparation = new RunPreparationService(doors, centralUpdates, new StateTransitionService(), phaseClock(),
-                instanceId -> getLogger().info("instance=" + instanceId + " first room activated"));
+                instanceId -> getLogger().info("instance=" + instanceId + " first room activated"),
+                getLogger()::warning, generation::cancel);
         playerSnapshots = new PlayerSnapshotService(durableRepository);
         protectionPolicy = new WorldProtectionService();
         teleportPermits = new TeleportPermitService();

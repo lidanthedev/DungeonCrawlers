@@ -30,16 +30,28 @@ public final class RunPreparationService {
     private final StateTransitionService transitions;
     private final Clock clock;
     private final Consumer<UUID> firstRoomActivator;
+    private final Consumer<String> diagnostics;
+    private final Consumer<UUID> instanceCanceller;
     private final Map<UUID, MutableRun> runs = new LinkedHashMap<>();
 
     public RunPreparationService(DoorService doors, CentralUpdateService updates,
                                  StateTransitionService transitions, Clock clock,
                                  Consumer<UUID> firstRoomActivator) {
+        this(doors, updates, transitions, clock, firstRoomActivator, ignored -> { }, ignored -> { });
+    }
+
+    public RunPreparationService(DoorService doors, CentralUpdateService updates,
+                                 StateTransitionService transitions, Clock clock,
+                                 Consumer<UUID> firstRoomActivator,
+                                 Consumer<String> diagnostics,
+                                 Consumer<UUID> instanceCanceller) {
         this.doors = Objects.requireNonNull(doors, "doors");
         this.updates = Objects.requireNonNull(updates, "updates");
         this.transitions = Objects.requireNonNull(transitions, "transitions");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.firstRoomActivator = Objects.requireNonNull(firstRoomActivator, "firstRoomActivator");
+        this.diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
+        this.instanceCanceller = Objects.requireNonNull(instanceCanceller, "instanceCanceller");
     }
 
     public synchronized PreparationResult registerGenerated(UUID instanceId, PartySnapshot party,
@@ -53,7 +65,7 @@ public final class RunPreparationService {
         Objects.requireNonNull(doorCenter, "doorCenter");
         Objects.requireNonNull(outward, "outward");
         MutableRun existing = runs.get(instanceId);
-        if (existing != null) return PreparationResult.success("preparation already registered", existing.snapshot());
+        if (existing != null) return PreparationResult.failure("preparation already registered");
         if (allowedClasses.isEmpty()) return PreparationResult.failure("floor has no allowed classes");
         List<String> orderedAllowed = List.copyOf(new ArrayList<>(allowedClasses));
         for (String classId : orderedAllowed) {
@@ -62,7 +74,7 @@ public final class RunPreparationService {
         DoorService.DoorSnapshot door = doors.register(instanceId, doorCenter, outward);
         MutableRun run = new MutableRun(instanceId, party, orderedAllowed, classes, door,
                 clock.instant().plus(PREPARATION_TIMEOUT));
-        if (!updates.register(instanceId, now -> run.lastUpdated = now)) {
+        if (!updates.register(instanceId, now -> update(instanceId, run, now))) {
             doors.remove(instanceId);
             return PreparationResult.failure("central update already registered for instance");
         }
@@ -90,10 +102,11 @@ public final class RunPreparationService {
         if (!run.allowedClasses.contains(classId)) return ClassSelectionResult.failure("class is not allowed: " + classId);
         if (!run.classes.containsKey(classId)) return ClassSelectionResult.failure("unknown class " + classId);
         run.selectedClasses.put(playerId, classId);
-        DoorService.DoorSnapshot door = run.selectedClasses.keySet().containsAll(run.participants)
+        boolean allClassesSelected = run.selectedClasses.keySet().containsAll(run.participants);
+        DoorService.DoorSnapshot door = allClassesSelected
                 ? doors.setReady(instanceId) : doors.info(instanceId).orElseThrow();
         run.door = door;
-        return ClassSelectionResult.success(run.selectedClasses.keySet().containsAll(run.participants)
+        return ClassSelectionResult.success(allClassesSelected
                 ? "class selected; start door is ready" : "class selected", run.snapshot(), door);
     }
 
@@ -107,7 +120,8 @@ public final class RunPreparationService {
             return DoorInteractionResult.success("run is already " + run.state,
                     doors.info(instanceId).orElseThrow(), run.snapshot());
         }
-        if (!run.selectedClasses.keySet().containsAll(run.participants)) {
+        boolean allClassesSelected = run.selectedClasses.keySet().containsAll(run.participants);
+        if (!allClassesSelected) {
             return DoorInteractionResult.failure("every active member must select a class first");
         }
         DoorService.OpenResult opened;
@@ -120,8 +134,11 @@ public final class RunPreparationService {
                 run.startedAt = clock.instant();
                 if (!run.firstRoomActivated) {
                     run.firstRoomActivated = true;
-                    try { firstRoomActivator.accept(instanceId); }
-                    catch (RuntimeException ignored) { }
+                    try {
+                        firstRoomActivator.accept(instanceId);
+                    } catch (RuntimeException exception) {
+                        diagnose("instance=" + instanceId + " first room activation failed: " + message(exception));
+                    }
                 }
             });
         } catch (RuntimeException exception) {
@@ -167,6 +184,35 @@ public final class RunPreparationService {
         updates.remove(instanceId);
         doors.remove(instanceId);
         return PreparationResult.success("preparation cleaned", run.snapshot());
+    }
+
+    private synchronized void update(UUID instanceId, MutableRun run, Instant now) {
+        if (runs.get(instanceId) != run) return;
+        if (run.state != RunState.PREPARING || now.isBefore(run.preparationDeadline)) {
+            run.lastUpdated = now;
+            return;
+        }
+        runs.remove(instanceId);
+        updates.remove(instanceId);
+        doors.remove(instanceId);
+        diagnose("instance=" + instanceId + " preparation timed out");
+        try {
+            instanceCanceller.accept(instanceId);
+        } catch (RuntimeException exception) {
+            diagnose("instance=" + instanceId + " timeout cancellation failed: " + message(exception));
+        }
+    }
+
+    private void diagnose(String message) {
+        try {
+            diagnostics.accept(message);
+        } catch (RuntimeException ignored) {
+            // Diagnostics are best-effort and must not interrupt state cleanup.
+        }
+    }
+
+    private static String message(Throwable throwable) {
+        return throwable.getMessage() == null ? throwable.getClass().getSimpleName() : throwable.getMessage();
     }
 
     public enum RunState { PREPARING, RUNNING }

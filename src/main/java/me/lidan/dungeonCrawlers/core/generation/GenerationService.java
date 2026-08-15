@@ -114,7 +114,6 @@ public final class GenerationService {
         InstanceStatus previous = instance.state;
         instance.cancelled = true;
         instance.token++;
-        generatedListeners.remove(instanceId);
         instance.state = InstanceStatus.CANCELLING;
         instance.detail = "cancellation requested during " + previous;
         if (previous == InstanceStatus.GENERATED) return beginClear(instance, "cancel after generation");
@@ -162,7 +161,7 @@ public final class GenerationService {
                 .map(exit -> new StartDoor(exit.point(), exit.outward()));
     }
 
-    /** Invokes a callback once generation reaches the GENERATED state. */
+    /** Invokes a callback when generation completes or reaches a terminal cancellation state. */
     public boolean whenGenerated(UUID instanceId, Consumer<InstanceSnapshot> callback) {
         requirePrimaryThread();
         Objects.requireNonNull(instanceId, "instanceId");
@@ -400,7 +399,7 @@ public final class GenerationService {
                         instance.cleanupInFlight = false;
                         instance.state = InstanceStatus.DESTROYED;
                         instance.detail = "clear ACK, journal removed, reservation released, slot FREE";
-                        generatedListeners.remove(instance.instanceId);
+                        notifyListeners(instance);
                         diagnostics.accept("instance=" + instance.instanceId + " cleanup complete");
                     }, runtimeExecutor);
         }, runtimeExecutor);
@@ -418,9 +417,9 @@ public final class GenerationService {
         if (instance.state == InstanceStatus.DESTROYED) return;
         reservations.release(instance.instanceId);
         slots.releaseUnmodified(instance.slot.id(), instance.instanceId);
-        generatedListeners.remove(instance.instanceId);
         instance.state = InstanceStatus.DESTROYED;
         instance.detail = detail + "; no paste occurred";
+        notifyListeners(instance);
         diagnostics.accept("instance=" + instance.instanceId + " " + instance.detail);
     }
 
@@ -513,13 +512,17 @@ public final class GenerationService {
     }
 
     private void notifyGenerated(MutableInstance instance) {
+        notifyListeners(instance);
+    }
+
+    private void notifyListeners(MutableInstance instance) {
         List<Consumer<InstanceSnapshot>> listeners = generatedListeners.remove(instance.instanceId);
         if (listeners == null) return;
         InstanceSnapshot snapshot = instance.snapshot();
         listeners.forEach(listener -> {
             try { listener.accept(snapshot); }
             catch (RuntimeException exception) {
-                diagnostics.accept("instance=" + instance.instanceId + " generated callback failed: "
+                diagnostics.accept("instance=" + instance.instanceId + " generation callback failed: "
                         + message(exception));
             }
         });

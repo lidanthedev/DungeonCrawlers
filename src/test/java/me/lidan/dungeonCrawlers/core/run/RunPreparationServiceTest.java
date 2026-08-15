@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.ArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -72,6 +73,26 @@ class RunPreparationServiceTest {
     }
 
     @Test
+    void invalidParticipantsClassesAndDuplicateRegistrationFailClosed() {
+        UUID player = UUID.randomUUID();
+        UUID outsider = UUID.randomUUID();
+        UUID instance = UUID.randomUUID();
+        RunPreparationService service = service(new AtomicInteger());
+        PartySnapshot party = new PartySnapshot(player, List.of(player), true);
+        Map<String, ClassDefinition> classes = Map.of("tank", classDefinition("tank"));
+
+        assertTrue(service.registerGenerated(instance, party, List.of("tank"), classes,
+                new Point(0, 64, 0), Facing.NORTH).successful());
+        assertFalse(service.registerGenerated(instance, party, List.of("tank"), classes,
+                new Point(0, 64, 0), Facing.NORTH).successful());
+        assertTrue(service.markSnapshotsReady(instance).successful());
+        assertFalse(service.selectClass(instance, outsider, "tank").successful());
+        assertFalse(service.selectClass(instance, player, "mage").successful());
+        assertFalse(service.openDoor(instance, outsider).successful());
+        assertFalse(service.openDoor(instance, player).successful());
+    }
+
+    @Test
     void cleanupRemovesDoorAndCentralRegistration() {
         UUID player = UUID.randomUUID();
         UUID instance = UUID.randomUUID();
@@ -85,6 +106,50 @@ class RunPreparationServiceTest {
         assertTrue(service.cleanup(instance).successful());
         assertEquals(0, updates.size());
         assertTrue(service.doorAt(new Point(0, 64, 0)).isEmpty());
+    }
+
+    @Test
+    void preparationTimeoutCancelsGeneratedInstanceAndRemovesRegistration() {
+        UUID player = UUID.randomUUID();
+        UUID instance = UUID.randomUUID();
+        CentralUpdateService updates = new CentralUpdateService(Clock.fixed(START, ZoneOffset.UTC), ignored -> { });
+        AtomicInteger cancellations = new AtomicInteger();
+        List<String> diagnostics = new ArrayList<>();
+        RunPreparationService service = new RunPreparationService(new DoorService(), updates,
+                new StateTransitionService(), Clock.fixed(START, ZoneOffset.UTC), ignored -> { },
+                diagnostics::add, ignored -> cancellations.incrementAndGet());
+        service.registerGenerated(instance, new PartySnapshot(player, List.of(player), true), List.of("tank"),
+                Map.of("tank", classDefinition("tank")), new Point(0, 64, 0), Facing.NORTH);
+
+        var report = updates.tick(START.plus(RunPreparationService.PREPARATION_TIMEOUT));
+
+        assertTrue(report.successful());
+        assertTrue(service.info(instance).isEmpty());
+        assertEquals(0, updates.size());
+        assertEquals(1, cancellations.get());
+        assertTrue(diagnostics.stream().anyMatch(message -> message.contains("preparation timed out")));
+    }
+
+    @Test
+    void firstRoomActivationFailureIsRecordedWithoutBlockingDoorStart() {
+        UUID player = UUID.randomUUID();
+        UUID instance = UUID.randomUUID();
+        List<String> diagnostics = new ArrayList<>();
+        RunPreparationService service = new RunPreparationService(new DoorService(),
+                new CentralUpdateService(Clock.fixed(START, ZoneOffset.UTC), ignored -> { }),
+                new StateTransitionService(), Clock.fixed(START, ZoneOffset.UTC),
+                ignored -> { throw new IllegalStateException("activation unavailable"); },
+                diagnostics::add, ignored -> { });
+        service.registerGenerated(instance, new PartySnapshot(player, List.of(player), true), List.of("tank"),
+                Map.of("tank", classDefinition("tank")), new Point(0, 64, 0), Facing.NORTH);
+        service.markSnapshotsReady(instance);
+        service.selectClass(instance, player, "tank");
+
+        var opened = service.openDoor(instance, player);
+
+        assertTrue(opened.successful());
+        assertTrue(opened.snapshot().firstRoomActivated());
+        assertTrue(diagnostics.stream().anyMatch(message -> message.contains("first room activation failed")));
     }
 
     private static RunPreparationService service(AtomicInteger activations) {

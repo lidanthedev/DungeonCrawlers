@@ -99,8 +99,17 @@ public final class DungeonPhaseFiveCommand {
             player.sendMessage("[FAIL] " + result.detail());
             return;
         }
-        generation.whenGenerated(result.instanceId(), ignored -> preparePlayers(result.instanceId(), party.snapshot(),
-                floor, config));
+        boolean waiting = generation.whenGenerated(result.instanceId(), snapshot -> {
+            if (snapshot.status() != GenerationService.InstanceStatus.GENERATED) {
+                player.sendMessage("[FAIL] generation did not complete: " + snapshot.detail());
+                return;
+            }
+            preparePlayers(result.instanceId(), party.snapshot(), floor, config);
+        });
+        if (!waiting) {
+            player.sendMessage("[FAIL] generation was no longer available");
+            return;
+        }
         DungeonGenerationCommand.suggest(player, "<green>[PASS]</green> start admitted instance="
                         + result.instanceId() + " <gray>(click for instance info)</gray>",
                 "/dungeon instance info " + result.instanceId());
@@ -117,7 +126,6 @@ public final class DungeonPhaseFiveCommand {
         RunPreparationService.RunSnapshot snapshot = runs.info(instanceId).orElseThrow();
         player.sendMessage("[PASS] class selection instance=" + instanceId + " state=" + snapshot.state());
         snapshot.allowedClasses().forEach(classId -> {
-            ClassDefinition definition = configRegistry.snapshot().classes().get(classId);
             String selected = snapshot.selectedClasses().entrySet().stream()
                     .filter(entry -> entry.getValue().equals(classId)).map(entry -> entry.getKey().toString())
                     .findFirst().orElse("none");
@@ -160,6 +168,7 @@ public final class DungeonPhaseFiveCommand {
             render(result.door());
             player.sendMessage("[PASS] " + result.detail() + " state=" + result.door().state());
             if (result.snapshot().state() == RunPreparationService.RunState.RUNNING) {
+                captured.remove(result.snapshot().instanceId());
                 actionBar.show(player, Component.text("Dungeon started — first room active"));
             }
         } else {
@@ -191,10 +200,10 @@ public final class DungeonPhaseFiveCommand {
                 var snapshot = BukkitPlayerRecovery.capture(player, instanceId, clock);
                 var submission = snapshots.save(snapshot);
                 if (!submission.accepted()) throw new IllegalStateException("snapshot rejected: " + submission.detail());
+                captured.computeIfAbsent(instanceId, ignored -> new LinkedHashMap<>()).put(playerId, snapshot);
                 saved.put(playerId, snapshot);
                 acknowledgements.add(submission.runtimeAck());
             }
-            captured.put(instanceId, saved);
             CompletableFuture.allOf(acknowledgements.toArray(CompletableFuture[]::new))
                     .whenCompleteAsync((ignored, failure) -> {
                         if (failure != null) abort(instanceId, "recovery snapshot ACK failed: " + message(failure));
@@ -238,7 +247,6 @@ public final class DungeonPhaseFiveCommand {
     }
 
     private void abort(UUID instanceId, String reason) {
-        var run = runs.info(instanceId);
         runs.cleanup(instanceId);
         generation.cancel(instanceId);
         Map<UUID, me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot> saved = captured.remove(instanceId);
