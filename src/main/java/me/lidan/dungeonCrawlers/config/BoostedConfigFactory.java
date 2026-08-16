@@ -62,6 +62,9 @@ public class BoostedConfigFactory {
         }
 
         int storedVersion = schemaVersion(config);
+        if (storedVersion <= 0) {
+            throw new IOException("invalid config.yml schema-version " + storedVersion);
+        }
         if (storedVersion < CURRENT_SCHEMA_VERSION) {
             BasicDefaultVersioning versioning = new BasicDefaultVersioning(VERSION_ROUTE, CURRENT_SCHEMA_VERSION);
             try (InputStream defaults = BoostedConfigFactory.class.getClassLoader().getResourceAsStream("config.yml")) {
@@ -84,6 +87,9 @@ public class BoostedConfigFactory {
         if (currentSchemaVersion < 1) throw new IllegalArgumentException("schema version must be positive");
         BoostedCustomConfig config = open(path);
         int storedVersion = schemaVersion(config);
+        if (storedVersion <= 0) {
+            throw new IOException("invalid " + path.getFileName() + " schema-version " + storedVersion);
+        }
         if (storedVersion > currentSchemaVersion) {
             throw new IOException("unsupported " + path.getFileName() + " schema-version " + storedVersion);
         }

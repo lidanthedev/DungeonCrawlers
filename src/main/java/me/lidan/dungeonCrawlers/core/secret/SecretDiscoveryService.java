@@ -156,9 +156,7 @@ public final class SecretDiscoveryService {
         if (state == null) return Optional.empty();
         BlessingDefinition blessing = state.definitions.get(Objects.requireNonNull(blessingId, "blessingId"));
         if (blessing == null) return Optional.empty();
-        BlessingLevels.DiscoveryResult result = null;
-        for (int index = 0; index < discoveries; index++) result = state.levels.discover(blessing);
-        return Optional.of(result);
+        return Optional.of(state.levels.discover(blessing, discoveries));
     }
 
     public synchronized boolean removeBlessing(UUID instanceId, String blessingId) {

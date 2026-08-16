@@ -13,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
@@ -123,6 +124,20 @@ class BoostedConfigMigrationTest {
 
         assertEquals(-1, BoostedConfigFactory.schemaVersion(config));
         assertEquals(-1, BoostedConfigFactory.schemaVersion(config));
+    }
+
+    @Test
+    void invalidPersistedVersionIsRejectedBeforeMigration() throws Exception {
+        Path blessingsFile = directory.resolve("blessings.yml");
+        String original = "schema-version: 1.5\nblessings: {}\n";
+        Files.writeString(blessingsFile, original);
+
+        try (MockedStatic<JavaPlugin> ignored = providingPlugin()) {
+            assertThrows(java.io.IOException.class,
+                    () -> new BoostedConfigFactory().openVersionedConfig(blessingsFile, "blessings.yml", 2));
+        }
+
+        assertEquals(original, Files.readString(blessingsFile));
     }
 
     private static MockedStatic<JavaPlugin> providingPlugin() {

@@ -228,6 +228,7 @@ public final class DungeonCrawlers extends JavaPlugin {
                     }
                     getLogger().info("instance=" + instanceId + " first room activated");
                 }, getLogger()::warning, instanceId -> {
+                    if (phaseSeven != null) phaseSeven.cleanup(instanceId);
                     combat.cleanup(instanceId);
                     generation.cancel(instanceId);
                 }, true);

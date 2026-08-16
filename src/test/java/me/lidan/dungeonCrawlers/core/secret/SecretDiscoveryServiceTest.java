@@ -79,7 +79,9 @@ class SecretDiscoveryServiceTest {
         SecretDiscoveryService service = new SecretDiscoveryService(() -> config(blessing));
         assertTrue(service.register(instance, 1, floor(), plan(instance), Set.of()).successful());
 
-        assertEquals(3, service.addBlessing(instance, "power", 3).orElseThrow().currentLevel());
+        var result = service.addBlessing(instance, "power", 3).orElseThrow();
+        assertEquals(3, result.levelsAwarded());
+        assertEquals(3, result.currentLevel());
         assertEquals(Map.of("power", 3), service.blessingLevels(instance));
     }
 
