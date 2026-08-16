@@ -89,6 +89,34 @@ class BoostedConfigMigrationTest {
     }
 
     @Test
+    void versionOneBlessingsConfigReceivesLevelRangeDefault() throws Exception {
+        Path blessingsFile = directory.resolve("blessings.yml");
+        Files.writeString(blessingsFile, """
+                schema-version: 1
+                blessings:
+                  crypt_strength:
+                    display-name: "<red>Crypt Strength"
+                    icon: BLAZE_POWDER
+                    stacking: levels
+                    max-level: 5
+                    per-level:
+                      stat-add: { STRENGTH: 10 }
+                      stat-multiply: {}
+                """);
+
+        BoostedCustomConfig migrated;
+        try (MockedStatic<JavaPlugin> ignored = providingPlugin()) {
+            migrated = new BoostedConfigFactory().openVersionedConfig(blessingsFile, "blessings.yml", 2);
+        }
+
+        assertAll(
+                () -> assertEquals(2, BoostedConfigFactory.schemaVersion(migrated)),
+                () -> assertEquals("1-1", migrated.getString("blessings.crypt_strength.level-range")),
+                () -> assertTrue(Files.readString(blessingsFile).contains("schema-version: 2")),
+                () -> assertTrue(Files.readString(blessingsFile).contains("level-range: 1-1")));
+    }
+
+    @Test
     void schemaVersionRejectsFractionalAndOutOfRangeNumbers() {
         var config = mock(me.lidan.cavecrawlers.boostedyaml.block.implementation.Section.class);
         when(config.get(BoostedConfigFactory.VERSION_ROUTE)).thenReturn(1.5, (long) Integer.MAX_VALUE + 1);

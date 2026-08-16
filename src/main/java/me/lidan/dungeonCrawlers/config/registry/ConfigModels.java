@@ -1,6 +1,7 @@
 package me.lidan.dungeonCrawlers.config.registry;
 
 import me.lidan.cavecrawlers.stats.StatType;
+import me.lidan.cavecrawlers.utils.Range;
 import org.bukkit.Material;
 
 import java.time.Instant;
@@ -32,10 +33,19 @@ public final class ConfigModels {
     public enum BlessingStacking { LEVELS, REPLACE }
 
     public record BlessingDefinition(String id, String displayName, Material icon, BlessingStacking stacking,
-                                     int maxLevel, StatModifiers perLevel) {
+                                     int maxLevel, Range levelRange, StatModifiers perLevel) {
+        public BlessingDefinition(String id, String displayName, Material icon, BlessingStacking stacking,
+                                  int maxLevel, StatModifiers perLevel) {
+            this(id, displayName, icon, stacking, maxLevel, new Range(1, 1), perLevel);
+        }
+
         public BlessingDefinition {
             Objects.requireNonNull(id); Objects.requireNonNull(displayName); Objects.requireNonNull(icon);
-            Objects.requireNonNull(stacking); Objects.requireNonNull(perLevel);
+            Objects.requireNonNull(stacking); Objects.requireNonNull(levelRange); Objects.requireNonNull(perLevel);
+            if (maxLevel < 1 || levelRange.getMin() < 1 || levelRange.getMin() > levelRange.getMax()
+                    || levelRange.getMax() > maxLevel) {
+                throw new IllegalArgumentException("blessing level range must be within 1..maxLevel");
+            }
         }
     }
 

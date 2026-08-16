@@ -196,6 +196,27 @@ public final class GenerationService {
                 floor.normalMobs(), floor.minibossMobs(), floor.limits().mobRespawnRetries()));
     }
 
+    /** Returns the immutable generated layout for location and secret context. */
+    public Optional<LayoutPlan> layoutPlan(UUID instanceId) {
+        requirePrimaryThread();
+        MutableInstance instance = instances.get(Objects.requireNonNull(instanceId, "instanceId"));
+        if (instance == null || instance.state != InstanceStatus.GENERATED || instance.prepared == null) {
+            return Optional.empty();
+        }
+        return Optional.of(instance.prepared.plan());
+    }
+
+    /** Returns the immutable seed/floor/layout tuple used by Phase 7 runtime context. */
+    public Optional<LayoutContext> layoutContext(UUID instanceId) {
+        requirePrimaryThread();
+        MutableInstance instance = instances.get(Objects.requireNonNull(instanceId, "instanceId"));
+        if (instance == null || instance.state != InstanceStatus.GENERATED || instance.prepared == null) {
+            return Optional.empty();
+        }
+        return Optional.of(new LayoutContext(instance.request.seed(), instance.request.floor(),
+                instance.prepared.plan()));
+    }
+
     /** Invokes a callback when generation completes or reaches a terminal cancellation state. */
     public boolean whenGenerated(UUID instanceId, Consumer<InstanceSnapshot> callback) {
         requirePrimaryThread();
@@ -707,6 +728,13 @@ public final class GenerationService {
         public StartDoor {
             Objects.requireNonNull(center);
             Objects.requireNonNull(outward);
+        }
+    }
+
+    public record LayoutContext(long seed, FloorDefinition floor, LayoutPlan plan) {
+        public LayoutContext {
+            Objects.requireNonNull(floor, "floor");
+            Objects.requireNonNull(plan, "plan");
         }
     }
 

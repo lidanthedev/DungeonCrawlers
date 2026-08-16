@@ -74,6 +74,34 @@ public class BoostedConfigFactory {
         return config;
     }
 
+    /**
+     * Opens a bundled data document and applies its BoostedYAML defaults when
+     * the persisted document is on an older schema. Existing values are kept;
+     * newly introduced default keys are added and the current schema is saved.
+     */
+    public BoostedCustomConfig openVersionedConfig(Path path, String defaultsResource,
+                                                   int currentSchemaVersion) throws IOException {
+        if (currentSchemaVersion < 1) throw new IllegalArgumentException("schema version must be positive");
+        BoostedCustomConfig config = open(path);
+        int storedVersion = schemaVersion(config);
+        if (storedVersion > currentSchemaVersion) {
+            throw new IOException("unsupported " + path.getFileName() + " schema-version " + storedVersion);
+        }
+        if (storedVersion < currentSchemaVersion) {
+            BasicDefaultVersioning versioning = new BasicDefaultVersioning(VERSION_ROUTE, currentSchemaVersion);
+            try (InputStream defaults = BoostedConfigFactory.class.getClassLoader()
+                    .getResourceAsStream(defaultsResource)) {
+                if (defaults == null) throw new IOException("missing bundled " + defaultsResource + " defaults");
+                config.update(defaults, updaterSettings(versioning));
+            }
+            config.set(VERSION_ROUTE, currentSchemaVersion);
+            if (!config.save()) {
+                throw new IOException("failed to persist " + path.getFileName() + " schema update");
+            }
+        }
+        return config;
+    }
+
     public static int schemaVersion(Section config) {
         Object value = config.get(VERSION_ROUTE);
         if (value instanceof Number number) {

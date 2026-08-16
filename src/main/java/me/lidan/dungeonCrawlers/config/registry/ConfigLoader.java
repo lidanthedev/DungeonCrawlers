@@ -1,6 +1,7 @@
 package me.lidan.dungeonCrawlers.config.registry;
 
 import me.lidan.cavecrawlers.stats.StatType;
+import me.lidan.cavecrawlers.utils.Range;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.*;
 import me.lidan.dungeonCrawlers.config.BoostedConfigFactory;
 import org.bukkit.Material;
@@ -82,7 +83,7 @@ public final class ConfigLoader {
 
     private Map<String, BlessingDefinition> parseBlessings(Path file, Parser p) {
         Map<String, Object> root = p.file(file);
-        p.schema(root, file);
+        p.schema(root, file, 2);
         Map<String, Object> entries = p.map(root.get("blessings"), "blessings.yml:blessings", true);
         Map<String, BlessingDefinition> result = new LinkedHashMap<>();
         for (var pair : entries.entrySet()) {
@@ -94,10 +95,12 @@ public final class ConfigLoader {
             BlessingStacking stacking = p.enumValue(BlessingStacking.class, stackingRaw,
                     "blessings.yml:" + id + ".stacking");
             int maxLevel = p.integer(entry.get("max-level"), "blessings.yml:" + id + ".max-level", 1, 1_000);
+            Range levelRange = p.range(entry.get("level-range"), "blessings.yml:" + id + ".level-range",
+                    1, Math.max(1, maxLevel));
             Map<String, Object> perLevel = p.map(entry.get("per-level"), "blessings.yml:" + id + ".per-level", true);
             StatModifiers stats = p.stats(perLevel, "blessings.yml:" + id + ".per-level");
             if (id != null && icon != null && display != null && stacking != null && maxLevel > 0) {
-                result.put(id, new BlessingDefinition(id, display, icon, stacking, maxLevel, stats));
+                result.put(id, new BlessingDefinition(id, display, icon, stacking, maxLevel, levelRange, stats));
             }
         }
         if (result.isEmpty()) p.error("blessings.yml:blessings must not be empty");
@@ -285,6 +288,13 @@ public final class ConfigLoader {
             }
         }
 
+        void schema(Map<String, Object> root, Path file, int latestVersion) {
+            Integer version = exactInteger(root.get("schema-version"));
+            if (version == null || version != latestVersion) {
+                error(file.getFileName() + ":schema-version must be " + latestVersion);
+            }
+        }
+
         @SuppressWarnings("unchecked")
         Map<String, Object> map(Object value, String path, boolean required) {
             if (value instanceof Map<?, ?> raw) {
@@ -343,6 +353,26 @@ public final class ConfigLoader {
 
         int optionalInteger(Object value, String path, int fallback, int minimum, int maximum) {
             return value == null ? fallback : integer(value, path, minimum, maximum);
+        }
+
+        Range range(Object value, String path, long minimum, long maximum) {
+            if (value == null) return new Range(1, 1);
+            try {
+                Range parsed;
+                if (value instanceof Number number) {
+                    Integer exact = exactInteger(number);
+                    if (exact == null) throw new IllegalArgumentException();
+                    parsed = new Range(exact, exact);
+                } else {
+                    parsed = new Range(string(value, path));
+                }
+                if (parsed.getMin() < minimum || parsed.getMax() < parsed.getMin()
+                        || parsed.getMax() > maximum) throw new IllegalArgumentException();
+                return parsed;
+            } catch (RuntimeException exception) {
+                error(path + " must be a positive integer or min-max range within " + minimum + ".." + maximum);
+                return new Range(1, 1);
+            }
         }
 
         long optionalLong(Object value, String path, long fallback, long minimum, long maximum) {

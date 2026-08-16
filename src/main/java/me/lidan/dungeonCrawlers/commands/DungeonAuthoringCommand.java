@@ -147,7 +147,7 @@ public final class DungeonAuthoringCommand {
                 "- Player spawn/teleport: EMERALD_BLOCK",
                 "- Boss spawn: RED_CONCRETE_POWDER",
                 "- Reward chest: LIME_CONCRETE_POWDER",
-                "- Secret: CHEST; blessing secret: TRAPPED_CHEST",
+                "- Secret/blessing: CHEST; standard secret: TRAPPED_CHEST",
                 "- Portal trigger: connected NETHER_PORTAL blocks",
                 "- Jigsaw target=dungeoncrawlers:connector, pool=minecraft:empty, final_state=minecraft:air,"
                         + " orientation=north_up/east_up/south_up/west_up"

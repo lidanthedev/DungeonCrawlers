@@ -67,9 +67,9 @@ public final class TemplateValidator {
             } else if (block.is("lime_concrete_powder")) {
                 rewards.add(point); solids.remove(point);
             } else if (block.is("chest")) {
-                secrets.add(new Secret(point, SecretKind.STANDARD));
-            } else if (block.is("trapped_chest")) {
                 secrets.add(new Secret(point, SecretKind.BLESSING));
+            } else if (block.is("trapped_chest")) {
+                secrets.add(new Secret(point, SecretKind.STANDARD));
             } else if (block.is("nether_portal")) {
                 portals.add(point);
             }

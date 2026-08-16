@@ -9,6 +9,7 @@ import me.lidan.dungeonCrawlers.core.template.TemplateModels.Facing;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Rotation;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Selection;
+import me.lidan.dungeonCrawlers.core.template.TemplateModels.SecretKind;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
@@ -58,6 +59,8 @@ class TemplateValidatorTest {
         assertTrue(bossResult.successful(), bossResult.errors().toString());
         assertEquals(new Point(2, 2, 0), normalResult.template().orElseThrow().entrance().orElseThrow().point());
         assertEquals(1, normalResult.template().orElseThrow().secrets().size());
+        assertEquals(SecretKind.BLESSING, normalResult.template().orElseThrow().secrets().getFirst().kind());
+        assertEquals(SecretKind.STANDARD, bossResult.template().orElseThrow().secrets().getFirst().kind());
         assertEquals(2, portalResult.template().orElseThrow().portalBlocks().size());
         assertTrue(bossResult.template().orElseThrow().solidBlocks().contains(new Point(1, 1, 1)));
     }
