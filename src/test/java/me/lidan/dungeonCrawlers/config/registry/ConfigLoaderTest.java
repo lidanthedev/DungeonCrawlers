@@ -165,6 +165,25 @@ class ConfigLoaderTest {
                 result.errors().toString());
     }
 
+    @Test
+    void blessingLevelRangeLoadsFromConfigAndRejectsOutOfBoundsValues() throws Exception {
+        copyDefaults();
+        Path blessings = directory.resolve("blessings.yml");
+        Files.writeString(blessings, Files.readString(blessings)
+                .replace("level-range: \"1-1\"", "level-range: \"2-4\""));
+
+        ConfigLoadResult valid = loader().load(directory);
+
+        assertTrue(valid.successful(), valid.errors().toString());
+        assertEquals(2, valid.snapshot().blessings().get("crypt_strength").levelRange().getMin());
+        assertEquals(4, valid.snapshot().blessings().get("crypt_strength").levelRange().getMax());
+
+        Files.writeString(blessings, Files.readString(blessings).replace("level-range: \"2-4\"", "level-range: \"0-4\""));
+        ConfigLoadResult invalid = loader().load(directory);
+        assertTrue(invalid.errors().stream().anyMatch(error -> error.contains("level-range")),
+                invalid.errors().toString());
+    }
+
     private void copyDefaults() throws IOException {
         Path resources = Path.of("src/main/resources");
         for (String file : new String[]{"classes.yml", "blessings.yml", "rooms.yml"}) {

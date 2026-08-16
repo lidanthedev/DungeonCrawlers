@@ -53,10 +53,12 @@ public final class DungeonPhaseSixCommand {
                 long missing = room.requiredMobs().stream().filter(mob -> mob.state() == CombatRoomService.MobState.MISSING).count();
                 long failed = room.requiredMobs().stream().filter(mob -> mob.state() == CombatRoomService.MobState.FAILED).count();
                 sender.sendMessage("[PASS] room=" + room.index() + " state=" + room.state()
+                        + " encounter=" + (room.encounter() == null ? "none" : room.encounter())
                         + " required=" + room.requiredMobs().size() + " alive=" + alive + " dead=" + dead
                         + " missing=" + missing + " failed=" + failed + " detail=" + room.detail());
             } else {
                 sender.sendMessage("[PASS] room=" + room.index() + " state=" + room.state()
+                        + " encounter=" + (room.encounter() == null ? "none" : room.encounter())
                         + " detail=" + room.detail());
                 room.requiredMobs().forEach(mob -> sender.sendMessage("  mob=" + mob.mobId()
                         + " state=" + mob.state() + " entity=" + mob.entityId()

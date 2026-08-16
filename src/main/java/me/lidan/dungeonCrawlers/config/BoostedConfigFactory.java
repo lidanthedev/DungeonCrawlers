@@ -62,6 +62,9 @@ public class BoostedConfigFactory {
         }
 
         int storedVersion = schemaVersion(config);
+        if (storedVersion <= 0) {
+            throw new IOException("invalid config.yml schema-version " + storedVersion);
+        }
         if (storedVersion < CURRENT_SCHEMA_VERSION) {
             BasicDefaultVersioning versioning = new BasicDefaultVersioning(VERSION_ROUTE, CURRENT_SCHEMA_VERSION);
             try (InputStream defaults = BoostedConfigFactory.class.getClassLoader().getResourceAsStream("config.yml")) {
@@ -70,6 +73,37 @@ public class BoostedConfigFactory {
             }
             config.set(VERSION_ROUTE, CURRENT_SCHEMA_VERSION);
             if (!config.save()) throw new IOException("failed to persist config.yml schema update");
+        }
+        return config;
+    }
+
+    /**
+     * Opens a bundled data document and applies its BoostedYAML defaults when
+     * the persisted document is on an older schema. Existing values are kept;
+     * newly introduced default keys are added and the current schema is saved.
+     */
+    public BoostedCustomConfig openVersionedConfig(Path path, String defaultsResource,
+                                                   int currentSchemaVersion) throws IOException {
+        if (currentSchemaVersion < 1) throw new IllegalArgumentException("schema version must be positive");
+        BoostedCustomConfig config = open(path);
+        int storedVersion = schemaVersion(config);
+        if (storedVersion <= 0) {
+            throw new IOException("invalid " + path.getFileName() + " schema-version " + storedVersion);
+        }
+        if (storedVersion > currentSchemaVersion) {
+            throw new IOException("unsupported " + path.getFileName() + " schema-version " + storedVersion);
+        }
+        if (storedVersion < currentSchemaVersion) {
+            BasicDefaultVersioning versioning = new BasicDefaultVersioning(VERSION_ROUTE, currentSchemaVersion);
+            try (InputStream defaults = BoostedConfigFactory.class.getClassLoader()
+                    .getResourceAsStream(defaultsResource)) {
+                if (defaults == null) throw new IOException("missing bundled " + defaultsResource + " defaults");
+                config.update(defaults, updaterSettings(versioning));
+            }
+            config.set(VERSION_ROUTE, currentSchemaVersion);
+            if (!config.save()) {
+                throw new IOException("failed to persist " + path.getFileName() + " schema update");
+            }
         }
         return config;
     }

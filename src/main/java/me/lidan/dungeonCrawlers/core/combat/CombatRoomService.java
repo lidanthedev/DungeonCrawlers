@@ -374,7 +374,8 @@ public final class CombatRoomService {
         List<MobSnapshot> mobs = room.requirements.stream().map(requirement -> new MobSnapshot(
                 requirement.mobId, requirement.point, requirement.entityId, requirement.state,
                 requirement.attempts, requirement.adminSuppressed, requirement.detail)).toList();
-        return new RoomSnapshot(room.room.index(), room.room.templateId(), room.state, room.detail, mobs);
+        return new RoomSnapshot(room.room.index(), room.room.templateId(), room.room.encounter(), room.state,
+                room.detail, mobs);
     }
 
     private InstanceSnapshot snapshot(MutableInstance instance) {
@@ -539,11 +540,17 @@ public final class CombatRoomService {
         public InstanceSnapshot { Objects.requireNonNull(instanceId); rooms = List.copyOf(rooms); }
     }
 
-    public record RoomSnapshot(int index, String templateId, RoomState state, String detail,
-                               List<MobSnapshot> requiredMobs) {
+    public record RoomSnapshot(int index, String templateId,
+                               me.lidan.dungeonCrawlers.config.registry.ConfigModels.EncounterCapability encounter,
+                               RoomState state, String detail, List<MobSnapshot> requiredMobs) {
         public RoomSnapshot {
             Objects.requireNonNull(templateId); Objects.requireNonNull(state); Objects.requireNonNull(detail);
             requiredMobs = List.copyOf(requiredMobs);
+        }
+
+        public RoomSnapshot(int index, String templateId, RoomState state, String detail,
+                            List<MobSnapshot> requiredMobs) {
+            this(index, templateId, null, state, detail, requiredMobs);
         }
     }
 

@@ -1,10 +1,12 @@
-schema-version: 1
+schema-version: 2
+# level-range is the inclusive number of levels gained by a blessing secret.
 blessings:
   crypt_strength:
     display-name: "<red>Crypt Strength"
     icon: BLAZE_POWDER
     stacking: levels
     max-level: 5
+    level-range: "1-1"
     per-level:
       stat-add: { STRENGTH: 10 }
       stat-multiply: {}
@@ -13,6 +15,7 @@ blessings:
     icon: GLISTERING_MELON_SLICE
     stacking: levels
     max-level: 5
+    level-range: "1-1"
     per-level:
       stat-add: { HEALTH: 25 }
       stat-multiply: {}

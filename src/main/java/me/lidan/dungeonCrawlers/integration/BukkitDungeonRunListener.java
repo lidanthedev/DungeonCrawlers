@@ -2,10 +2,11 @@ package me.lidan.dungeonCrawlers.integration;
 
 import me.lidan.cavecrawlers.stats.StatType;
 import me.lidan.cavecrawlers.stats.StatsCalculateEvent;
+import me.lidan.cavecrawlers.utils.MiniMessageUtils;
 import me.lidan.dungeonCrawlers.commands.DungeonPhaseFiveCommand;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.ClassDefinition;
 import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
-import me.lidan.dungeonCrawlers.core.stats.StatAggregationService;
+import me.lidan.dungeonCrawlers.core.secret.SecretDiscoveryService;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -17,19 +18,26 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 
 /** Main-thread boundary for preparation-door interaction and transient run stats. */
 public final class BukkitDungeonRunListener implements Listener {
     private final DungeonPhaseFiveCommand phaseFive;
     private final RunPreparationService runs;
-    private final StatAggregationService stats = new StatAggregationService();
+    private final SecretDiscoveryService phaseSeven;
     private final String generationWorldName;
 
     public BukkitDungeonRunListener(DungeonPhaseFiveCommand phaseFive, RunPreparationService runs,
                                     String generationWorldName) {
+        this(phaseFive, runs, generationWorldName, null);
+    }
+
+    public BukkitDungeonRunListener(DungeonPhaseFiveCommand phaseFive, RunPreparationService runs,
+                                    String generationWorldName, SecretDiscoveryService phaseSeven) {
         this.phaseFive = Objects.requireNonNull(phaseFive, "phaseFive");
         this.runs = Objects.requireNonNull(runs, "runs");
         this.generationWorldName = Objects.requireNonNull(generationWorldName, "generationWorldName");
+        this.phaseSeven = phaseSeven;
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -53,7 +61,41 @@ public final class BukkitDungeonRunListener implements Listener {
             var value = event.getStats().get(type);
             if (value != null) incoming.put(type, value.getValue());
         }
-        var aggregated = stats.aggregate(incoming, selected, java.util.Map.of(), java.util.Map.of());
+        UUID instanceId = runs.instanceFor(event.getPlayer().getUniqueId()).orElse(null);
+        var aggregated = phaseSeven == null || instanceId == null
+                ? new me.lidan.dungeonCrawlers.core.stats.StatAggregationService().aggregate(
+                        incoming, selected, java.util.Map.of(), java.util.Map.of())
+                : phaseSeven.aggregate(instanceId, selected, incoming);
         aggregated.forEach((type, value) -> event.getStats().set(type, value));
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onSecretInteract(PlayerInteractEvent event) {
+        if (phaseSeven == null || event.getHand() == EquipmentSlot.OFF_HAND
+                || event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getClickedBlock() == null
+                || !event.getClickedBlock().getWorld().getName().equals(generationWorldName)) return;
+        org.bukkit.Material material = event.getClickedBlock().getType();
+        if (material != org.bukkit.Material.CHEST && material != org.bukkit.Material.TRAPPED_CHEST) return;
+        UUID instanceId = runs.instanceFor(event.getPlayer().getUniqueId()).orElse(null);
+        if (instanceId == null) return;
+        Point point = new Point(event.getClickedBlock().getX(), event.getClickedBlock().getY(),
+                event.getClickedBlock().getZ());
+        var result = phaseSeven.discover(instanceId, event.getPlayer().getUniqueId(), point);
+        if (!result.successful()) return;
+        event.setCancelled(true);
+        if (result.status() == SecretDiscoveryService.Status.ALREADY_DISCOVERED) {
+            event.getPlayer().sendMessage(MiniMessageUtils.miniMessage("<yellow>Secret already found.</yellow>"));
+            return;
+        }
+        if (result.blessingId() == null) {
+            event.getPlayer().sendMessage(MiniMessageUtils.miniMessage("<green>Secret discovered.</green>"));
+        } else {
+            var discovery = result.blessing();
+            String displayName = phaseSeven.blessingDisplayName(instanceId, result.blessingId())
+                    .orElse(result.blessingId());
+            event.getPlayer().sendMessage(MiniMessageUtils.miniMessage("<light_purple>Blessing discovered: "
+                    + displayName + " <gray>level " + discovery.levelsAwarded()
+                    + (discovery.atCap() ? " (max)" : "") + ".</light_purple>"));
+        }
     }
 }

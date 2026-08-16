@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static me.lidan.dungeonCrawlers.config.registry.ConfigModels.EncounterCapability.NORMAL;
+import static me.lidan.dungeonCrawlers.config.registry.ConfigModels.EncounterCapability.MINIBOSS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -120,6 +121,25 @@ class CombatRoomServiceTest {
 
         assertTrue(service.instances().isEmpty());
         assertTrue(mobs.valid.isEmpty());
+    }
+
+    @Test
+    void minibossRoomUsesMinibossMarkersAndKeepsEncounterContext() {
+        UUID instance = UUID.randomUUID();
+        FakeMobs mobs = new FakeMobs();
+        CombatRoomService service = new CombatRoomService(mobs, new FakeChunks(), ignored -> { });
+        Bounds bounds = new Bounds(new Point(0, 0, 0), new Point(4, 4, 4));
+        var room = new GenerationService.CombatRoom(1, "mini", MINIBOSS, bounds, List.of(),
+                List.of(new Point(2, 1, 2)));
+        var plan = new GenerationService.CombatPlan(instance, 1, List.of(room), List.of(),
+                List.of("normal"), List.of("miniboss"), 0);
+
+        assertTrue(service.register(plan).successful());
+        assertTrue(service.activateFirst(instance).successful());
+        var snapshot = service.info(instance).orElseThrow().rooms().getFirst();
+        assertEquals(MINIBOSS, snapshot.encounter());
+        assertEquals("miniboss", snapshot.requiredMobs().getFirst().mobId());
+        assertEquals(new Point(2, 1, 2), snapshot.requiredMobs().getFirst().point());
     }
 
     private static GenerationService.CombatPlan plan(UUID instance, int retries) {

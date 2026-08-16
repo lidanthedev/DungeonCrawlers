@@ -34,7 +34,8 @@ public record TemplateMetadata(long schematicSize, long schematicModifiedMillis,
                                List<Point> normalMobs, List<Point> minibossMobs, List<Point> playerSpawns,
                                Optional<Point> bossSpawn, Optional<Point> rewardChest, List<Secret> secrets,
                                Set<Point> portalBlocks, String contentHash) {
-    public static final int SCHEMA_VERSION = 1;
+    /** Version 2 records the updated CHEST blessing / TRAPPED_CHEST standard semantics. */
+    public static final int SCHEMA_VERSION = 2;
 
     public TemplateMetadata {
         if (schematicSize < 0 || schematicModifiedMillis < 0) {
