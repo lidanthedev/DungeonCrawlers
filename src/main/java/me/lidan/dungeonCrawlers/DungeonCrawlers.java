@@ -417,7 +417,6 @@ public final class DungeonCrawlers extends JavaPlugin {
                     getLogger().warning("REVIVED player is offline or unknown: " + notice.playerId());
                     return;
                 }
-                getLogger().info("REVIVED " + player.getName());
                 healToFull(player);
                 Player target = notice.reviveTarget() == null ? null : getServer().getPlayer(notice.reviveTarget());
                 if (target != null) player.teleport(target.getLocation().clone().add(0, 1, 0));
@@ -454,7 +453,6 @@ public final class DungeonCrawlers extends JavaPlugin {
     }
 
     private void healToFull(Player player) {
-        getLogger().info("Reviving " + player.getName());
         StatsManager.healPlayerPercent(player, 100D);
     }
 
