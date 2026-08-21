@@ -9,7 +9,10 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerPortalEvent;
+import org.bukkit.plugin.Plugin;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -18,12 +21,17 @@ public final class BukkitPortalBossListener implements Listener {
     private final PortalEncounterService encounters;
     private final RunPreparationService runs;
     private final String generationWorldName;
+    private final Map<Point, UUID> portalBlocks = new HashMap<>();
+    private final Map<UUID, UUID> countdownOwners = new HashMap<>();
 
-    public BukkitPortalBossListener(PortalEncounterService encounters, RunPreparationService runs,
+    public BukkitPortalBossListener(Plugin plugin, PortalEncounterService encounters, RunPreparationService runs,
                                     String generationWorldName) {
+        Objects.requireNonNull(plugin, "plugin");
         this.encounters = Objects.requireNonNull(encounters, "encounters");
         this.runs = Objects.requireNonNull(runs, "runs");
         this.generationWorldName = Objects.requireNonNull(generationWorldName, "generationWorldName");
+        refreshPortalCache();
+        plugin.getServer().getScheduler().runTaskTimer(plugin, this::refreshPortalCache, 1L, 20L);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -50,13 +58,26 @@ public final class BukkitPortalBossListener implements Listener {
                 && event.getFrom().getBlockY() == event.getTo().getBlockY()
                 && event.getFrom().getBlockZ() == event.getTo().getBlockZ()) return;
         UUID playerId = event.getPlayer().getUniqueId();
-        UUID entered = portalAt(event.getTo().getBlockX(), event.getTo().getBlockY(), event.getTo().getBlockZ());
-        UUID instanceId = runs.instanceFor(playerId).orElse(null);
-        if (entered != null && instanceId != null && entered.equals(instanceId)) {
-            encounters.enterPortal(instanceId, playerId);
-        } else if (instanceId != null && encounters.isCountdownOwner(instanceId, playerId)) {
-            encounters.ownerLeftPortal(instanceId, playerId);
+        UUID entered = portalBlocks.get(new Point(event.getTo().getBlockX(), event.getTo().getBlockY(), event.getTo().getBlockZ()));
+        if (entered != null) {
+            UUID instanceId = runs.instanceFor(playerId).orElse(null);
+            if (instanceId != null && entered.equals(instanceId)) {
+                encounters.enterPortal(instanceId, playerId);
+            } else if (instanceId != null && playerId.equals(countdownOwners.get(instanceId))) {
+                encounters.ownerLeftPortal(instanceId, playerId);
+            }
+            return;
         }
+        countdownOwners.entrySet().stream().filter(entry -> entry.getValue().equals(playerId))
+                .map(Map.Entry::getKey).findFirst().ifPresent(instanceId -> encounters.ownerLeftPortal(instanceId, playerId));
+    }
+
+    private void refreshPortalCache() {
+        PortalEncounterService.PortalLocations locations = encounters.portalLocations();
+        portalBlocks.clear();
+        portalBlocks.putAll(locations.portals());
+        countdownOwners.clear();
+        countdownOwners.putAll(locations.countdownOwners());
     }
 
     private UUID portalAt(int x, int y, int z) {

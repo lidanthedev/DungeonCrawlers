@@ -97,7 +97,7 @@ public final class PortalEncounterService {
             if (state.owner.equals(playerId)) return PortalResult.success("portal countdown already active", snapshot(state));
             return PortalResult.failure("portal countdown owned by " + state.owner);
         }
-        if (!updates.registerSupplemental(instanceId, now -> tick(instanceId, now))) {
+        if (!updates.registerSupplemental(instanceId, state.callback)) {
             return PortalResult.failure("central update is not registered for this instance");
         }
         state.owner = playerId;
@@ -139,11 +139,20 @@ public final class PortalEncounterService {
         if (state == null) return PortalResult.failure("unknown portal instance " + instanceId);
         if (state.status == Status.BOSS) return PortalResult.success("boss encounter already active", snapshot(state));
         if (state.status == Status.COMPLETION_PENDING) return PortalResult.success("boss already defeated", snapshot(state));
+        boolean registered = false;
         if (state.status == Status.COUNTDOWN) {
             state.owner = null;
             state.deadline = null;
+        } else if (!updates.registerSupplemental(instanceId, state.callback)) {
+            return PortalResult.failure("central update is not registered for this instance");
+        } else {
+            registered = true;
         }
-        return startBossInternal(state);
+        PortalResult result = startBossInternal(state);
+        if (registered && !result.successful() && state.status != Status.FAILED) {
+            updates.removeSupplemental(instanceId, state.callback);
+        }
+        return result;
     }
 
     public synchronized DeathResult onBossDeath(UUID instanceId, UUID entityId) {
@@ -179,6 +188,17 @@ public final class PortalEncounterService {
                 .map(state -> state.instanceId).findFirst();
     }
 
+    /** Returns the portal and countdown-owner indexes used by the Bukkit movement listener. */
+    public synchronized PortalLocations portalLocations() {
+        Map<Point, UUID> portals = new LinkedHashMap<>();
+        Map<UUID, UUID> owners = new LinkedHashMap<>();
+        instances.values().forEach(state -> {
+            state.portalBlocks.forEach(point -> portals.put(point, state.instanceId));
+            if (state.status == Status.COUNTDOWN && state.owner != null) owners.put(state.instanceId, state.owner);
+        });
+        return new PortalLocations(portals, owners);
+    }
+
     public synchronized boolean isPortalBlock(UUID instanceId, Point point) {
         MutableInstance state = instances.get(Objects.requireNonNull(instanceId, "instanceId"));
         return state != null && state.portalBlocks.contains(Objects.requireNonNull(point, "point"));
@@ -202,11 +222,12 @@ public final class PortalEncounterService {
         return state == null ? Optional.empty() : Optional.of(snapshot(state));
     }
 
-    public synchronized void cleanup(UUID instanceId) {
+    public synchronized boolean cleanup(UUID instanceId) {
         MutableInstance state = instances.remove(Objects.requireNonNull(instanceId, "instanceId"));
-        if (state == null) return;
+        if (state == null) return false;
         updates.removeSupplemental(instanceId, state.callback);
         if (state.encounter != null) state.encounter.cleanup();
+        return true;
     }
 
     public synchronized void cleanupAll() { new ArrayList<>(instances.keySet()).forEach(this::cleanup); }
@@ -253,15 +274,15 @@ public final class PortalEncounterService {
         List<UUID> active = participants.activePlayers(state.instanceId).stream()
                 .filter(registered::contains).sorted().toList();
         if (active.isEmpty()) return failStart(state, "no active participants for boss encounter");
-        for (int index = 0; index < active.size(); index++) {
-            Point target = state.playerSpawns.get(index % state.playerSpawns.size());
-            if (!participants.teleport(active.get(index), target)) {
-                return failStart(state, "boss teleport failed for " + active.get(index));
-            }
-        }
-        EncounterFactory factory = factories.factory(state.floor.encounterId()).orElse(null);
-        if (factory == null) return failStart(state, "unknown encounter factory: " + state.floor.encounterId());
         try {
+            for (int index = 0; index < active.size(); index++) {
+                Point target = state.playerSpawns.get(index % state.playerSpawns.size());
+                if (!participants.teleport(active.get(index), target)) {
+                    return failStart(state, "boss teleport failed for " + active.get(index));
+                }
+            }
+            EncounterFactory factory = factories.factory(state.floor.encounterId()).orElse(null);
+            if (factory == null) return failStart(state, "unknown encounter factory: " + state.floor.encounterId());
             state.encounter = factory.create(new EncounterFactory.EncounterContext(state.instanceId,
                     state.floor.encounterId(), state.floor.bossMob(), state.bossSpawn, entities,
                     message -> diagnostics.accept("instance=" + state.instanceId + " " + message)));
@@ -341,6 +362,10 @@ public final class PortalEncounterService {
     public enum Status { IDLE, COUNTDOWN, BOSS, COMPLETION_PENDING, FAILED }
 
     public record RegistrationResult(boolean successful, String detail, Snapshot snapshot) {
+        public RegistrationResult {
+            Objects.requireNonNull(detail, "detail");
+        }
+
         public static RegistrationResult success(String detail, Snapshot snapshot) {
             return new RegistrationResult(true, detail, snapshot);
         }
@@ -348,6 +373,10 @@ public final class PortalEncounterService {
     }
 
     public record PortalResult(boolean successful, String detail, Snapshot snapshot) {
+        public PortalResult {
+            Objects.requireNonNull(detail, "detail");
+        }
+
         public static PortalResult success(String detail, Snapshot snapshot) {
             return new PortalResult(true, detail, snapshot);
         }
@@ -355,6 +384,10 @@ public final class PortalEncounterService {
     }
 
     public record DeathResult(boolean accepted, String detail, Snapshot snapshot) {
+        public DeathResult {
+            Objects.requireNonNull(detail, "detail");
+        }
+
         public static DeathResult accepted(String detail, Snapshot snapshot) {
             return new DeathResult(true, detail, snapshot);
         }
@@ -362,6 +395,10 @@ public final class PortalEncounterService {
     }
 
     public record BossResult(boolean successful, String detail, Snapshot snapshot) {
+        public BossResult {
+            Objects.requireNonNull(detail, "detail");
+        }
+
         public static BossResult success(String detail, Snapshot snapshot) {
             return new BossResult(true, detail, snapshot);
         }
@@ -374,6 +411,13 @@ public final class PortalEncounterService {
         public Snapshot {
             Objects.requireNonNull(instanceId); Objects.requireNonNull(status); Objects.requireNonNull(bossSpawn);
             Objects.requireNonNull(rewardChest); Objects.requireNonNull(detail);
+        }
+    }
+
+    public record PortalLocations(Map<Point, UUID> portals, Map<UUID, UUID> countdownOwners) {
+        public PortalLocations {
+            portals = Map.copyOf(portals);
+            countdownOwners = Map.copyOf(countdownOwners);
         }
     }
 

@@ -83,8 +83,11 @@ public final class DungeonPhaseNineCommand {
                             @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
         UUID id = parse(sender, instanceId);
         if (id == null) return;
-        encounters.cleanup(id);
-        sender.sendMessage(MiniMessageUtils.miniMessage("<green>[PASS] boss and portal encounter cleaned</green>"));
+        if (encounters.cleanup(id)) {
+            sender.sendMessage(MiniMessageUtils.miniMessage("<green>[PASS] boss and portal encounter cleaned</green>"));
+        } else {
+            sender.sendMessage(MiniMessageUtils.miniMessage("<red>[FAIL] no portal encounter registered for instance " + id + "</red>"));
+        }
     }
 
     private UUID parse(CommandSender sender, String value) {

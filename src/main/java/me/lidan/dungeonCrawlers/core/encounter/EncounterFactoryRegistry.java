@@ -30,6 +30,12 @@ public final class EncounterFactoryRegistry {
     public static EncounterFactoryRegistry withBasic() {
         EncounterFactoryRegistry registry = new EncounterFactoryRegistry();
         registry.register("basic", BasicBossEncounter::new);
+        return registry;
+    }
+
+    /** Builder for integration tests and human-gate fault injection scenarios. */
+    public static EncounterFactoryRegistry withTestFactories() {
+        EncounterFactoryRegistry registry = withBasic();
         registry.register("multistage_test", MultistageTestEncounter::new);
         registry.register("factory_failure_test", ignored -> {
             throw new IllegalStateException("factory failure test");

@@ -1,6 +1,7 @@
 # Phase 9 Human Gate
 
-Status: BLOCKED pending the deferred simultaneous portal-entry concurrency check.
+Status: BLOCKED pending cleanup re-verification on the callback-identity fix and the deferred
+simultaneous portal-entry concurrency check.
 
 ## Required checks
 
@@ -15,14 +16,14 @@ Status: BLOCKED pending the deferred simultaneous portal-entry concurrency check
 - [x] Confirm completion enters `COMPLETION_PENDING`, identifies the Lime marker as the reward location,
   and never conflates the Red boss spawn with the Lime reward location.
 - [x] Exercise `/dungeon portal start|abort|status` and `/dungeon boss info|start|kill|cleanup`.
-- [x] Configure `boss.encounter: multistage_test` in a test floor and run the built-in custom multistage
-  encounter; verify each stage requires the exact active entity.
+- [x] In the test-only encounter-factory harness, configure `boss.encounter: multistage_test` and run
+  the built-in custom multistage encounter; verify each stage requires the exact active entity.
 - [x] Trigger a boss start failure with a missing MythicMob and verify the encounter reports `FAILED`.
 - [x] Remove an active boss without a death event and verify the tick path reports `FAILED`.
-- [x] Set `boss.encounter: factory_failure_test`, exercise the factory-creation failure, and verify the
-  run fails closed without spawning a boss.
-- [x] Clean up during the countdown and during an active boss encounter; verify no entity, callback, or
-  portal state remains.
+- [x] In the test-only encounter-factory harness, set `boss.encounter: factory_failure_test`, exercise
+  the factory-creation failure, and verify the run fails closed without spawning a boss.
+- [ ] Re-run cleanup during the countdown and during an active boss encounter after the callback-identity
+  fix; verify no entity, callback, or portal state remains.
 
 ## Deferred concurrency check
 
@@ -42,8 +43,10 @@ Evidence (staging run):
 - Multistage evidence: `boss encounter active encounter=multistage_test` followed by
   `status=BOSS reward=Point[x=5005, y=65, z=8005]`.
 - Completion evidence: `status=COMPLETION_PENDING reward=Point[x=5005, y=65, z=8005]`.
-- Cleanup evidence: countdown and active-boss cleanup both completed successfully.
+- Cleanup evidence (prior build): countdown and active-boss cleanup completed successfully; re-run is
+  required after the callback-identity fix.
 - Failure evidence: missing `CryptGuardianNO` produced `status=FAILED`; removing the active multistage
   entity produced `multistage test entity disappeared at stage 1` and `status=FAILED`.
 - Factory evidence: `IllegalStateException: factory failure test` with `status=FAILED` and no boss spawned.
-- Pending: the deferred simultaneous two-player portal-entry race.
+- Pending: cleanup re-verification on the callback-identity fix and the deferred simultaneous two-player
+  portal-entry race.

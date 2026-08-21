@@ -126,6 +126,7 @@ public final class DungeonCrawlersCommand {
         }
         sendReloadMessage(sender, "<yellow>Force reload: cancelling all running dungeons before reloading...</yellow>");
         plugin.getServer().getScheduler().runTask(plugin, () -> {
+            reservations.pauseAdmission();
             List<UUID> active = generation.instances().stream()
                     .filter(instance -> instance.status() != GenerationService.InstanceStatus.DESTROYED)
                     .map(GenerationService.InstanceSnapshot::instanceId).toList();
@@ -141,10 +142,11 @@ public final class DungeonCrawlersCommand {
 
     private void awaitForceReload(CommandSender sender, int polls) {
         if (reservations.activeReservationCount() == 0) {
-            reloadAsync(sender);
+            reloadAsync(sender, reservations::resumeAdmission);
             return;
         }
         if (polls >= FORCE_RELOAD_MAX_POLLS) {
+            reservations.resumeAdmission();
             sendReloadMessage(sender, "<red>[FAIL] force reload timed out while waiting for dungeon cleanup</red>");
             return;
         }
@@ -152,13 +154,22 @@ public final class DungeonCrawlersCommand {
     }
 
     private void reloadAsync(CommandSender sender) {
+        reloadAsync(sender, null);
+    }
+
+    private void reloadAsync(CommandSender sender, Runnable completion) {
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 ConfigRegistryService.ReloadResult result = reservations.withAdmissionPaused(configRegistry::reload);
-                plugin.getServer().getScheduler().runTask(plugin, () -> reportReload(sender, result));
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    reportReload(sender, result);
+                    if (completion != null) completion.run();
+                });
             } catch (RuntimeException exception) {
-                plugin.getServer().getScheduler().runTask(plugin, () -> sendReloadMessage(sender,
-                        "<red>[FAIL] reload: " + exception.getMessage() + "</red>"));
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    sendReloadMessage(sender, "<red>[FAIL] reload: " + exception.getMessage() + "</red>");
+                    if (completion != null) completion.run();
+                });
             }
         });
     }

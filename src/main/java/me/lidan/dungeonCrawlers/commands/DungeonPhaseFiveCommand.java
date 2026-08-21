@@ -131,6 +131,17 @@ public final class DungeonPhaseFiveCommand {
                                    DungeonActionBar actionBar, CombatRoomService combat,
                                    ProgressBarService progressBars, SecretDiscoveryService phaseSeven,
                                    PlayerLifecycleService lifecycle, PortalEncounterService phaseNine) {
+        this(configRegistry, parties, generation, runs, snapshots, permits, server, plugin, clock,
+                generationWorldName, actionBar,
+                new PhaseServices(combat, progressBars, phaseSeven, lifecycle, phaseNine));
+    }
+
+    /** Named optional phase dependencies used by the fully wired command. */
+    public DungeonPhaseFiveCommand(ConfigRegistryService configRegistry, PartyProvider parties,
+                                   GenerationService generation, RunPreparationService runs,
+                                   PlayerSnapshotService snapshots, TeleportPermitService permits,
+                                   Server server, Plugin plugin, Clock clock, String generationWorldName,
+                                   DungeonActionBar actionBar, PhaseServices services) {
         this.configRegistry = Objects.requireNonNull(configRegistry, "configRegistry");
         this.parties = Objects.requireNonNull(parties, "parties");
         this.generation = Objects.requireNonNull(generation, "generation");
@@ -141,13 +152,18 @@ public final class DungeonPhaseFiveCommand {
         this.clock = Objects.requireNonNull(clock, "clock");
         this.generationWorldName = Objects.requireNonNull(generationWorldName, "generationWorldName");
         this.actionBar = Objects.requireNonNull(actionBar, "actionBar");
-        this.combat = combat;
-        this.progressBars = progressBars;
-        this.phaseSeven = phaseSeven;
-        this.lifecycle = lifecycle;
-        this.phaseNine = phaseNine;
+        PhaseServices phases = Objects.requireNonNull(services, "services");
+        this.combat = phases.combat();
+        this.progressBars = phases.progressBars();
+        this.phaseSeven = phases.phaseSeven();
+        this.lifecycle = phases.lifecycle();
+        this.phaseNine = phases.phaseNine();
         this.mainThread = callback -> server.getScheduler().runTask(plugin, callback);
     }
+
+    public record PhaseServices(CombatRoomService combat, ProgressBarService progressBars,
+                                SecretDiscoveryService phaseSeven, PlayerLifecycleService lifecycle,
+                                PortalEncounterService phaseNine) { }
 
     @Subcommand("start")
     @CommandPermission("dungeoncrawlers.use")
@@ -400,10 +416,13 @@ public final class DungeonPhaseFiveCommand {
                     return;
                 }
             }
-            if (phaseSeven != null) {
-                GenerationService.LayoutContext context = generation.layoutContext(instanceId)
+            GenerationService.LayoutContext layoutContext = null;
+            if (phaseSeven != null || phaseNine != null) {
+                layoutContext = generation.layoutContext(instanceId)
                         .orElseThrow(() -> new IllegalStateException("generated layout context is unavailable"));
-                var registration = phaseSeven.register(instanceId, context.seed(), floor, context.plan(),
+            }
+            if (phaseSeven != null) {
+                var registration = phaseSeven.register(instanceId, layoutContext.seed(), floor, layoutContext.plan(),
                         Set.copyOf(party.onlineMembers()));
                 if (!registration.successful()) {
                     abort(instanceId, registration.detail());
@@ -411,9 +430,7 @@ public final class DungeonPhaseFiveCommand {
                 }
             }
             if (phaseNine != null) {
-                GenerationService.LayoutContext context = generation.layoutContext(instanceId)
-                        .orElseThrow(() -> new IllegalStateException("generated layout context is unavailable"));
-                var registration = phaseNine.register(instanceId, floor, context.plan());
+                var registration = phaseNine.register(instanceId, floor, layoutContext.plan());
                 if (!registration.successful()) {
                     abort(instanceId, registration.detail());
                     return;

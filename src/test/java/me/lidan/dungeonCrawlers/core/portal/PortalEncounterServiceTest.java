@@ -31,6 +31,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PortalEncounterServiceTest {
@@ -61,6 +62,10 @@ class PortalEncounterServiceTest {
         assertEquals("<red><bold>Boss Aborted</bold></red>|<yellow>by <white>LidanTheGamer</white></yellow>",
                 participants.titles.getLast());
         assertEquals(PortalEncounterService.Status.IDLE, service.info(instance).orElseThrow().status());
+        assertEquals(1, updates.callbackCount(instance), "aborting must remove the portal supplemental callback");
+        updates.tick(START.plusSeconds(5));
+        assertEquals(PortalEncounterService.Status.IDLE, service.info(instance).orElseThrow().status());
+        assertEquals(0, entities.spawnCount);
 
         assertTrue(service.enterPortal(instance, player).successful());
         updates.tick(START.plusSeconds(1));
@@ -98,11 +103,15 @@ class PortalEncounterServiceTest {
         assertTrue(service.startBoss(instance).successful());
         UUID boss = service.info(instance).orElseThrow().bossEntity();
         assertTrue(service.onBossDeath(instance, boss).accepted());
+        assertEquals(PortalEncounterService.Status.BOSS, service.info(instance).orElseThrow().status());
+        UUID secondBoss = service.info(instance).orElseThrow().bossEntity();
+        assertNotEquals(boss, secondBoss);
+        assertTrue(service.onBossDeath(instance, secondBoss).accepted());
         assertEquals(PortalEncounterService.Status.COMPLETION_PENDING, service.info(instance).orElseThrow().status());
-        assertTrue(service.info(instance).orElseThrow().bossSpawn()
-                .equals(service.info(instance).orElseThrow().rewardChest()) == false);
+        var snapshot = service.info(instance).orElseThrow();
+        assertNotEquals(snapshot.bossSpawn(), snapshot.rewardChest());
         service.cleanup(instance);
-        assertTrue(entities.removed.contains(boss));
+        assertTrue(entities.removed.contains(secondBoss));
         assertTrue(service.info(instance).isEmpty());
     }
 
@@ -115,7 +124,7 @@ class PortalEncounterServiceTest {
         RunPreparationService runs = runningRun(instance, player, updates, clock);
         FakeEntities entities = new FakeEntities();
         PortalEncounterService service = service(updates, runs, clock, entities,
-                new FakeParticipants(player), EncounterFactoryRegistry.withBasic());
+                new FakeParticipants(player), EncounterFactoryRegistry.withTestFactories());
 
         assertTrue(service.register(instance, floor("factory_failure_test"), plan(instance)).successful());
         var result = service.startBoss(instance);
@@ -177,7 +186,6 @@ class PortalEncounterServiceTest {
     }
 
     private static final class FakeEntities implements BossEntityGateway {
-        private final UUID boss = UUID.randomUUID();
         private final Set<UUID> valid = new HashSet<>();
         private final Set<UUID> removed = new HashSet<>();
         private int spawnCount;
@@ -185,6 +193,7 @@ class PortalEncounterServiceTest {
         @Override
         public SpawnResult spawn(UUID instanceId, String mobId, Point point) {
             spawnCount++;
+            UUID boss = UUID.randomUUID();
             valid.add(boss);
             return SpawnResult.success(boss, "spawned");
         }
@@ -231,6 +240,7 @@ class PortalEncounterServiceTest {
     private static final class TwoStageEncounter implements EncounterFactory.Encounter {
         private final EncounterFactory.EncounterContext context;
         private UUID entity;
+        private boolean stageTwo;
         private boolean complete;
 
         private TwoStageEncounter(EncounterFactory.EncounterContext context) { this.context = context; }
@@ -252,6 +262,13 @@ class PortalEncounterServiceTest {
         @Override
         public EncounterFactory.DeathResult onDeath(UUID entityId) {
             if (!Objects.equals(entity, entityId)) return EncounterFactory.DeathResult.ignored("wrong entity");
+            if (!stageTwo) {
+                var next = context.entities().spawn(context.instanceId(), context.bossMob(), context.bossSpawn());
+                if (!next.successful()) return EncounterFactory.DeathResult.accepted(true, next.detail());
+                entity = next.entityId();
+                stageTwo = true;
+                return EncounterFactory.DeathResult.accepted(false, "stage two started");
+            }
             complete = true;
             return EncounterFactory.DeathResult.accepted(true, "stage two complete");
         }

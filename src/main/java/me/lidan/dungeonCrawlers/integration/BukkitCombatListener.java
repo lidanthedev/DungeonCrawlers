@@ -33,21 +33,6 @@ public final class BukkitCombatListener implements Listener {
     private final Set<UUID> unloadingWorlds = ConcurrentHashMap.newKeySet();
 
     public BukkitCombatListener(CombatRoomService combat, BukkitEntityIdentity identity,
-                                String generationWorldName) {
-        this(combat, identity, generationWorldName, () -> false);
-    }
-
-    public BukkitCombatListener(CombatRoomService combat, BukkitEntityIdentity identity,
-                                String generationWorldName, BooleanSupplier shuttingDown) {
-        this.combat = Objects.requireNonNull(combat, "combat");
-        this.identity = Objects.requireNonNull(identity, "identity");
-        this.generationWorldName = Objects.requireNonNull(generationWorldName, "generationWorldName");
-        this.shuttingDown = Objects.requireNonNull(shuttingDown, "shuttingDown");
-        this.bossIdentity = null;
-        this.encounters = null;
-    }
-
-    public BukkitCombatListener(CombatRoomService combat, BukkitEntityIdentity identity,
                                 String generationWorldName, BooleanSupplier shuttingDown,
                                 BukkitBossIdentity bossIdentity, PortalEncounterService encounters) {
         this.combat = Objects.requireNonNull(combat, "combat");
