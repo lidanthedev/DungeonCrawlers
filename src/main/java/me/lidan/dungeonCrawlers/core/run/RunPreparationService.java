@@ -196,6 +196,16 @@ public final class RunPreparationService {
         return run == null ? Optional.empty() : Optional.of(run.snapshot());
     }
 
+    /** Removes a participant after an escape; removed players cannot be selected or teleported later. */
+    public synchronized PreparationResult removeParticipant(UUID instanceId, UUID playerId) {
+        MutableRun run = runs.get(Objects.requireNonNull(instanceId, "instanceId"));
+        Objects.requireNonNull(playerId, "playerId");
+        if (run == null) return PreparationResult.failure("unknown preparation " + instanceId);
+        if (!run.participants.remove(playerId)) return PreparationResult.failure("player is not in this run");
+        run.selectedClasses.remove(playerId);
+        return PreparationResult.success("participant removed", run.snapshot());
+    }
+
     public synchronized List<RunSnapshot> snapshots() {
         return runs.values().stream().map(MutableRun::snapshot).toList();
     }
@@ -309,7 +319,7 @@ public final class RunPreparationService {
                            Map<String, ClassDefinition> classes, DoorService.DoorSnapshot door,
                            Instant preparationDeadline) {
             this.instanceId = instanceId;
-            this.participants = List.copyOf(party.onlineMembers());
+            this.participants = new ArrayList<>(party.onlineMembers());
             this.allowedClasses = List.copyOf(allowedClasses);
             this.classes = Map.copyOf(classes);
             this.door = door;

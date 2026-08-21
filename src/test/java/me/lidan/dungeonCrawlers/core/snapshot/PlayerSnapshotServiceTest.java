@@ -11,7 +11,9 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -79,9 +81,22 @@ class PlayerSnapshotServiceTest {
         assertTrue(submission.runtimeAck().join() != null);
     }
 
+    @Test
+    void aFreshServiceCanReadAnOfflineRecoverySnapshotAfterRestart() {
+        FakeRepository repository = new FakeRepository();
+        UUID player = UUID.randomUUID();
+        PlayerRecoverySnapshot snapshot = new PlayerRecoverySnapshot(player, UUID.randomUUID(), "world",
+                10, 64, -4, 90, 0, "SURVIVAL", 20, 20, 0, 0, 0, 300, 400, Instant.EPOCH);
+
+        assertTrue(new PlayerSnapshotService(repository).save(snapshot).accepted());
+
+        assertEquals(snapshot, new PlayerSnapshotService(repository).read(player).join().orElseThrow());
+        assertTrue(new PlayerSnapshotService(repository).read(UUID.randomUUID()).join().isEmpty());
+    }
+
     private static final class FakeRepository implements DurableRepository {
         private DurableWrite lastWrite;
-        private byte[] payload;
+        private final Map<Key, DurableRecord> records = new HashMap<>();
         private long persistedVersion = -1;
         private String persistedKey;
 
@@ -95,9 +110,12 @@ class PlayerSnapshotServiceTest {
                 return new DurableSubmission(true, CompletableFuture.failedFuture(failure),
                         CompletableFuture.failedFuture(failure), "accepted");
             }
-            lastWrite = write; payload = write.payload();
+            lastWrite = write;
             persistedVersion = write.recordVersion();
             persistedKey = write.idempotencyKey();
+            records.put(new Key(write.namespace(), write.recordId()),
+                    new DurableRecord(write.namespace(), write.recordId(), write.payload(), "checksum",
+                            Path.of("snapshot.bin")));
             var receipt = new DurableWriteReceipt(write.operationId(), write.idempotencyKey(), write.recordVersion(),
                     "checksum", Path.of("snapshot.bin"), Instant.EPOCH);
             return new DurableSubmission(true, CompletableFuture.completedFuture(receipt),
@@ -105,17 +123,18 @@ class PlayerSnapshotServiceTest {
         }
         @Override public DurableSubmission submitTerminal(DurableWrite write) { return submit(write); }
         @Override public CompletableFuture<Optional<DurableRecord>> read(String namespace, String recordId) {
-            return CompletableFuture.completedFuture(payload == null ? Optional.empty()
-                    : Optional.of(new DurableRecord(namespace, recordId, payload, "checksum", Path.of("snapshot.bin"))));
+            return CompletableFuture.completedFuture(Optional.ofNullable(records.get(new Key(namespace, recordId))));
         }
         @Override public CompletableFuture<List<DurableRecord>> list(String namespace) { return CompletableFuture.completedFuture(List.of()); }
         @Override public CompletableFuture<Void> delete(String namespace, String recordId) {
-            payload = null;
+            records.remove(new Key(namespace, recordId));
             persistedVersion = -1;
             persistedKey = null;
             return CompletableFuture.completedFuture(null);
         }
         @Override public RepositoryDiagnostics diagnostics() { return new RepositoryDiagnostics(1, 0, 0, 0, 0, false); }
         @Override public void close() { }
+
+        private record Key(String namespace, String recordId) { }
     }
 }

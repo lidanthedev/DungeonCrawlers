@@ -2,6 +2,7 @@ package me.lidan.dungeonCrawlers;
 
 import dev.triumphteam.gui.guis.BaseGui;
 import me.lidan.cavecrawlers.utils.MiniMessageUtils;
+import me.lidan.cavecrawlers.stats.StatsManager;
 import me.lidan.dungeonCrawlers.commands.DungeonCrawlersCommand;
 import me.lidan.dungeonCrawlers.commands.DungeonAuthoringCommand;
 import me.lidan.dungeonCrawlers.commands.DungeonGenerationCommand;
@@ -10,6 +11,7 @@ import me.lidan.dungeonCrawlers.commands.DungeonPhaseSixCommand;
 import me.lidan.dungeonCrawlers.commands.ClassIdSuggestionProvider;
 import me.lidan.dungeonCrawlers.commands.FloorIdSuggestionProvider;
 import me.lidan.dungeonCrawlers.commands.InstanceIdSuggestionProvider;
+import me.lidan.dungeonCrawlers.commands.OfflinePlayerSuggestionProvider;
 import me.lidan.dungeonCrawlers.commands.RoomIdSuggestionProvider;
 import me.lidan.dungeonCrawlers.authoring.TemplateAuthoringService;
 import me.lidan.dungeonCrawlers.authoring.TemplateCatalogLoader;
@@ -26,6 +28,7 @@ import me.lidan.dungeonCrawlers.core.generation.GenerationPreparationProvider;
 import me.lidan.dungeonCrawlers.core.generation.GenerationService;
 import me.lidan.dungeonCrawlers.core.generation.SlotAllocator;
 import me.lidan.dungeonCrawlers.core.layout.LayoutPlanner;
+import me.lidan.dungeonCrawlers.core.lifecycle.PlayerLifecycleService;
 import me.lidan.dungeonCrawlers.core.protection.TeleportPermitService;
 import me.lidan.dungeonCrawlers.core.protection.WorldProtectionService;
 import me.lidan.dungeonCrawlers.core.snapshot.PlayerSnapshotService;
@@ -37,6 +40,7 @@ import me.lidan.dungeonCrawlers.core.template.TemplateModels.EmeraldPolicy;
 import me.lidan.dungeonCrawlers.core.template.TemplateValidator;
 import me.lidan.dungeonCrawlers.commands.DungeonPhaseFourCommand;
 import me.lidan.dungeonCrawlers.commands.DungeonPhaseSevenCommand;
+import me.lidan.dungeonCrawlers.commands.DungeonPhaseEightCommand;
 import me.lidan.dungeonCrawlers.commands.BlessingIdSuggestionProvider;
 import me.lidan.dungeonCrawlers.integration.BukkitChunkTicketService;
 import me.lidan.dungeonCrawlers.integration.BukkitCombatListener;
@@ -46,7 +50,9 @@ import me.lidan.dungeonCrawlers.integration.BukkitProgressBarService;
 import me.lidan.dungeonCrawlers.integration.ThrottledDungeonActionBar;
 import me.lidan.dungeonCrawlers.integration.BukkitWorldProtectionListener;
 import me.lidan.dungeonCrawlers.integration.BukkitDungeonRunListener;
+import me.lidan.dungeonCrawlers.integration.BukkitDungeonLifecycleListener;
 import me.lidan.dungeonCrawlers.integration.BukkitDungeonActionBar;
+import me.lidan.dungeonCrawlers.integration.BukkitGhostState;
 import me.lidan.dungeonCrawlers.integration.mythic.MythicMobsAdapter;
 import me.lidan.dungeonCrawlers.integration.cave.CaveActionBarAdapter;
 import me.lidan.dungeonCrawlers.integration.parties.PartyProviders;
@@ -56,7 +62,9 @@ import me.lidan.dungeonCrawlers.persistence.DurableRepository;
 import me.lidan.dungeonCrawlers.persistence.FileDurableRepository;
 import org.bukkit.Bukkit;
 import org.bukkit.event.Listener;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
+import net.kyori.adventure.title.Title;
 import revxrsal.commands.Lamp;
 import revxrsal.commands.annotation.SuggestWith;
 import revxrsal.commands.bukkit.BukkitLamp;
@@ -70,6 +78,7 @@ import java.math.BigDecimal;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.Locale;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -97,6 +106,7 @@ public final class DungeonCrawlers extends JavaPlugin {
     private DungeonPhaseFiveCommand phaseFiveCommand;
     private BukkitProgressBarService progressBars;
     private SecretDiscoveryService phaseSeven;
+    private PlayerLifecycleService lifecycle;
     private volatile boolean disabling;
 
     @Override
@@ -228,11 +238,13 @@ public final class DungeonCrawlers extends JavaPlugin {
                     }
                     getLogger().info("instance=" + instanceId + " first room activated");
                 }, getLogger()::warning, instanceId -> {
+                    if (lifecycle != null) lifecycle.cleanup(instanceId);
                     if (phaseSeven != null) phaseSeven.cleanup(instanceId);
                     combat.cleanup(instanceId);
                     generation.cancel(instanceId);
                 }, true);
         phaseSeven = new SecretDiscoveryService(configRegistry::snapshot);
+        lifecycle = new PlayerLifecycleService(centralUpdates, phaseClock(), this::handleLifecycleNotice);
     }
 
     private int configuredBackupRetention() {
@@ -322,11 +334,16 @@ public final class DungeonCrawlers extends JavaPlugin {
             return new BlessingIdSuggestionProvider<BukkitCommandActor>(
                     () -> configRegistry.snapshot().blessings().keySet());
         });
+        commandHandlerBuilder.suggestionProviders().addProviderForAnnotation(SuggestWith.class, annotation -> {
+            if (annotation.value() != OfflinePlayerSuggestionProvider.class) return null;
+            return new OfflinePlayerSuggestionProvider<BukkitCommandActor>(() -> Bukkit.getOnlinePlayers().stream()
+                    .map(Player::getName).filter(java.util.Objects::nonNull).toList());
+        });
         phaseFiveCommand = new DungeonPhaseFiveCommand(configRegistry, PartyProviders.forServer(getServer()),
                 generation, runPreparation, playerSnapshots, teleportPermits, getServer(), this, phaseClock(),
                 generationWorldName,
                 new ThrottledDungeonActionBar(new BukkitDungeonActionBar(new CaveActionBarAdapter()), phaseClock()),
-                combat, progressBars, phaseSeven);
+                combat, progressBars, phaseSeven, lifecycle);
         Lamp<BukkitCommandActor> commandHandler = commandHandlerBuilder.build();
         commandHandler.register(new DungeonCrawlersCommand(this,
                 new CompatibilityService(this, mainConfig, configRegistry), mainConfig, configRegistry,
@@ -336,14 +353,16 @@ public final class DungeonCrawlers extends JavaPlugin {
         commandHandler.register(new DungeonGenerationCommand(configRegistry,
                 PartyProviders.forServer(getServer()), generation, getServer(),
                 generationWorldName,
-                teleportPermits, phaseClock(), phaseFiveCommand::cancelFromAdmin));
+                teleportPermits, phaseClock(), phaseFiveCommand::cancelFromAdmin, runPreparation));
         commandHandler.register(phaseFiveCommand);
-        commandHandler.register(new DungeonPhaseSixCommand(combat));
+        commandHandler.register(new DungeonPhaseSixCommand(combat, runPreparation));
         commandHandler.register(new DungeonPhaseSevenCommand(phaseSeven, runPreparation));
+        commandHandler.register(new DungeonPhaseEightCommand(lifecycle, runPreparation, phaseFiveCommand));
         commandHandler.register(new DungeonPhaseFourCommand(centralUpdates, doors, protectionPolicy,
                 teleportPermits, playerSnapshots, getServer(), this, phaseClock(),
                 generationWorldName,
-                () -> generation.protectionRegions().stream().map(WorldProtectionService.InstanceRegion::from).toList()));
+                () -> generation.protectionRegions().stream().map(WorldProtectionService.InstanceRegion::from).toList(),
+                runPreparation));
     }
 
     private void registerEvents() {
@@ -351,7 +370,12 @@ public final class DungeonCrawlers extends JavaPlugin {
                 () -> generation.protectionRegions().stream().map(WorldProtectionService.InstanceRegion::from).toList(),
                 teleportPermits, phaseClock()));
         registerEvent(new BukkitDungeonRunListener(phaseFiveCommand, runPreparation, generationWorldName, phaseSeven));
+        registerEvent(new BukkitDungeonLifecycleListener(lifecycle, runPreparation, this, phaseClock(),
+                phaseFiveCommand::recoverOnJoin, phaseFiveCommand::leaveFromSpawn));
         registerEvent(new BukkitCombatListener(combat, entityIdentity, generationWorldName, () -> disabling));
+        // PlugMan-style reloads do not emit PlayerJoinEvent; repair any durable snapshots for players
+        // who stayed online while the plugin was restarted.
+        Bukkit.getOnlinePlayers().forEach(phaseFiveCommand::recoverOnJoin);
     }
 
     private org.bukkit.World generationWorld() {
@@ -373,6 +397,78 @@ public final class DungeonCrawlers extends JavaPlugin {
         }));
     }
 
+    private void handleLifecycleNotice(PlayerLifecycleService.Notice notice) {
+        Player player = notice.playerId() == null ? null : getServer().getPlayer(notice.playerId());
+        switch (notice.event()) {
+            case GHOSTED -> {
+                if (player == null) return;
+                BukkitGhostState.enter(player);
+                showLifecycleTitle(player, "", "<yellow>" + notice.detail() + "</yellow>", 0, 30, 5);
+                player.sendMessage(MiniMessageUtils.miniMessage(
+                        "<gray>You are a ghost. You will revive in 60 seconds if the run remains active.</gray>"));
+            }
+            case GHOST_COUNTDOWN, RECONNECTED -> {
+                if (player == null || notice.reviveAt() == null) return;
+                BukkitGhostState.refresh(player);
+                showLifecycleTitle(player, "", "<yellow>" + notice.detail() + "</yellow>", 0, 25, 5);
+            }
+            case REVIVED -> {
+                if (player == null) {
+                    getLogger().warning("REVIVED player is offline or unknown: " + notice.playerId());
+                    return;
+                }
+                Player target = notice.reviveTarget() == null ? null : getServer().getPlayer(notice.reviveTarget());
+                if (target != null && !player.teleport(target.getLocation().clone().add(0, 1, 0))) {
+                    getLogger().warning("Unable to teleport revived player " + player.getName()
+                            + " near target " + target.getName());
+                    return;
+                }
+                healToFull(player);
+                BukkitGhostState.exit(player);
+                scheduleReviveHeal(notice.instanceId(), player, 1L);
+                scheduleReviveHeal(notice.instanceId(), player, 20L);
+                showLifecycleTitle(player, "<green>Revived</green>", "<white>Welcome back</white>", 5, 40, 10);
+                player.sendMessage(MiniMessageUtils.miniMessage("<green>You have been revived.</green>"));
+            }
+            case REMOVED -> {
+                if (player != null) BukkitGhostState.exit(player);
+                if (phaseFiveCommand != null && notice.playerId() != null) {
+                    phaseFiveCommand.restoreRemovedPlayer(notice.instanceId(), notice.playerId());
+                }
+            }
+            case WIPED -> {
+                lifecycle.info(notice.instanceId()).ifPresent(snapshot -> snapshot.players().stream()
+                        .filter(value -> value.state() == PlayerLifecycleService.PlayerState.GHOST)
+                        .map(value -> getServer().getPlayer(value.playerId()))
+                        .filter(java.util.Objects::nonNull)
+                        .forEach(BukkitGhostState::exit));
+                if (phaseFiveCommand != null) {
+                    phaseFiveCommand.wipeFromLifecycle(notice.instanceId(), notice.detail());
+                }
+            }
+            default -> { }
+        }
+    }
+
+    private static void showLifecycleTitle(Player player, String title, String subtitle,
+                                           int fadeIn, int stay, int fadeOut) {
+        player.showTitle(Title.title(MiniMessageUtils.miniMessage(title),
+                MiniMessageUtils.miniMessage(subtitle), fadeIn, stay, fadeOut));
+    }
+
+    private void healToFull(Player player) {
+        StatsManager.healPlayerPercent(player, 100D);
+    }
+
+    private void scheduleReviveHeal(UUID instanceId, Player player, long delay) {
+        getServer().getScheduler().runTaskLater(this, () -> {
+            if (player.isOnline() && lifecycle.player(instanceId, player.getUniqueId())
+                    .map(value -> value.state() == PlayerLifecycleService.PlayerState.ALIVE).orElse(false)) {
+                healToFull(player);
+            }
+        }, delay);
+    }
+
     private void startTasks() {
         getServer().getScheduler().runTaskTimer(this, (Runnable) centralUpdates::tick, 1L, 1L);
     }
@@ -382,6 +478,15 @@ public final class DungeonCrawlers extends JavaPlugin {
         // Plugin shutdown logic
         disabling = true;
         if (progressBars != null) progressBars.cancelAll();
+        if (lifecycle != null) {
+            lifecycle.instances().stream()
+                    .flatMap(instance -> instance.players().stream())
+                    .filter(value -> value.state() == PlayerLifecycleService.PlayerState.GHOST)
+                    .map(value -> getServer().getPlayer(value.playerId()))
+                    .filter(java.util.Objects::nonNull)
+                    .forEach(BukkitGhostState::exit);
+            lifecycle.cleanupAll();
+        }
         if (phaseSeven != null) phaseSeven.cleanupAll();
         if (combat != null) combat.cleanupAll();
         if (generation != null) generation.freezeForDisable();

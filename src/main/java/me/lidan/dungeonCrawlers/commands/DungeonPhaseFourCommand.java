@@ -5,6 +5,7 @@ import me.lidan.dungeonCrawlers.core.protection.TeleportPermitService;
 import me.lidan.dungeonCrawlers.core.protection.WorldProtectionService;
 import me.lidan.dungeonCrawlers.core.snapshot.PlayerSnapshotService;
 import me.lidan.dungeonCrawlers.core.update.CentralUpdateService;
+import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Facing;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
 import me.lidan.dungeonCrawlers.integration.BukkitPlayerRecovery;
@@ -42,12 +43,14 @@ public final class DungeonPhaseFourCommand {
     private final String generationWorldName;
     private final BukkitDoorBlockService doorBlocks = new BukkitDoorBlockService();
     private final Supplier<List<WorldProtectionService.InstanceRegion>> regions;
+    private final RunPreparationService runs;
 
     public DungeonPhaseFourCommand(CentralUpdateService updates, DoorService doors,
                                    WorldProtectionService protection, TeleportPermitService permits,
                                    PlayerSnapshotService snapshots, Server server, Plugin plugin, Clock clock,
                                    String generationWorldName,
-                                   Supplier<List<WorldProtectionService.InstanceRegion>> regions) {
+                                   Supplier<List<WorldProtectionService.InstanceRegion>> regions,
+                                   RunPreparationService runs) {
         this.updates = java.util.Objects.requireNonNull(updates);
         this.doors = java.util.Objects.requireNonNull(doors);
         this.protection = java.util.Objects.requireNonNull(protection);
@@ -59,6 +62,7 @@ public final class DungeonPhaseFourCommand {
         this.generationWorldName = java.util.Objects.requireNonNull(generationWorldName);
         if (this.generationWorldName.isBlank()) throw new IllegalArgumentException("generation world name is blank");
         this.regions = java.util.Objects.requireNonNull(regions);
+        this.runs = java.util.Objects.requireNonNull(runs);
     }
 
     @Subcommand("tick advance-test")
@@ -78,7 +82,7 @@ public final class DungeonPhaseFourCommand {
     public void registerDoor(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
                               int x, int y, int z, String facing) {
         try {
-            DoorService.DoorSnapshot door = doors.register(UUID.fromString(instanceId), new Point(x, y, z),
+            DoorService.DoorSnapshot door = doors.register(resolve(sender, instanceId), new Point(x, y, z),
                     Facing.valueOf(facing.toUpperCase(Locale.ROOT)));
             doorBlocks.render(generationWorld(), door);
             sender.sendMessage("[PASS] " + door + " blocks=" + door.blocks().size());
@@ -91,7 +95,7 @@ public final class DungeonPhaseFourCommand {
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void doorInfo(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
         try {
-            doors.info(UUID.fromString(instanceId)).ifPresentOrElse(
+            doors.info(resolve(sender, instanceId)).ifPresentOrElse(
                     door -> sender.sendMessage("[PASS] " + door + " blocks=" + door.blocks().size()),
                     () -> sender.sendMessage("[FAIL] unknown door " + instanceId));
         } catch (RuntimeException exception) { sender.sendMessage("[FAIL] " + message(exception)); }
@@ -102,7 +106,7 @@ public final class DungeonPhaseFourCommand {
     public void doorSet(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
                         String state) {
         try {
-            UUID id = UUID.fromString(instanceId);
+            UUID id = resolve(sender, instanceId);
             DoorService.DoorSnapshot result = switch (state.toUpperCase(Locale.ROOT)) {
                 case "LOCKED" -> doors.setLocked(id);
                 case "READY" -> doors.setReady(id);
@@ -117,9 +121,10 @@ public final class DungeonPhaseFourCommand {
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void doorOpen(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
         try {
-            DoorService.OpenResult result = doors.open(UUID.fromString(instanceId),
+            UUID id = resolve(sender, instanceId);
+            DoorService.OpenResult result = doors.open(id,
                 () -> {
-                        doorBlocks.render(generationWorld(), doors.info(UUID.fromString(instanceId)).orElseThrow());
+                        doorBlocks.render(generationWorld(), doors.info(id).orElseThrow());
                         sender.sendMessage("[PASS] door open callback invoked once");
                     });
             sender.sendMessage("[" + (result.opened() || result.alreadyOpen() ? "PASS" : "FAIL") + "] "
@@ -141,7 +146,7 @@ public final class DungeonPhaseFourCommand {
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void playerSnapshot(Player player, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
         try {
-            var snapshot = BukkitPlayerRecovery.capture(player, UUID.fromString(instanceId), clock);
+            var snapshot = BukkitPlayerRecovery.capture(player, resolve(player, instanceId), clock);
             var submission = snapshots.save(snapshot);
             if (!submission.accepted()) {
                 player.sendMessage("[FAIL] snapshot rejected: " + submission.detail());
@@ -196,5 +201,9 @@ public final class DungeonPhaseFourCommand {
         while (current.getCause() != null && (current instanceof java.util.concurrent.CompletionException
                 || current instanceof java.util.concurrent.ExecutionException)) current = current.getCause();
         return current.getMessage() == null ? current.getClass().getSimpleName() : current.getMessage();
+    }
+
+    private UUID resolve(CommandSender sender, String value) {
+        return DungeonInstanceResolver.require(sender, value, runs);
     }
 }

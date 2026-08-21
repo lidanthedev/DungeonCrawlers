@@ -1,6 +1,7 @@
 package me.lidan.dungeonCrawlers.commands;
 
 import me.lidan.dungeonCrawlers.core.combat.CombatRoomService;
+import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
 import org.bukkit.command.CommandSender;
 import revxrsal.commands.annotation.Command;
 import revxrsal.commands.annotation.Optional;
@@ -14,9 +15,11 @@ import java.util.UUID;
 @Command("dungeon")
 public final class DungeonPhaseSixCommand {
     private final CombatRoomService combat;
+    private final RunPreparationService runs;
 
-    public DungeonPhaseSixCommand(CombatRoomService combat) {
+    public DungeonPhaseSixCommand(CombatRoomService combat, RunPreparationService runs) {
         this.combat = combat;
+        this.runs = runs;
     }
 
     @Subcommand("room activate")
@@ -101,20 +104,11 @@ public final class DungeonPhaseSixCommand {
         if (id != null) send(sender, combat.reconcile(id));
     }
 
-    private static UUID parse(CommandSender sender, String value) {
-        try {
-            return UUID.fromString(value);
-        } catch (IllegalArgumentException exception) {
-            sender.sendMessage("[FAIL] instance id must be a UUID");
-            return null;
-        }
+    private UUID parse(CommandSender sender, String value) {
+        return DungeonInstanceResolver.resolveOrNotify(sender, value, runs);
     }
 
     private static void send(CommandSender sender, Object result) {
-        if (result == null) {
-            sender.sendMessage("[FAIL] instance id must be a UUID");
-            return;
-        }
         boolean successful = switch (result) {
             case CombatRoomService.ActivationResult value -> value.successful();
             case CombatRoomService.ClearResult value -> value.successful();

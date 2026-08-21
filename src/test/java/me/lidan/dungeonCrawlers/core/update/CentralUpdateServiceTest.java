@@ -68,4 +68,37 @@ class CentralUpdateServiceTest {
         assertEquals(List.of(failing), report.failures());
         assertEquals(List.of(Instant.EPOCH), observed);
     }
+
+    @Test
+    void supplementalCallbacksRunAlongsidePrimaryCallback() {
+        Instant start = Instant.parse("2026-01-01T00:00:00Z");
+        List<String> calls = new ArrayList<>();
+        CentralUpdateService service = new CentralUpdateService(Clock.fixed(start, ZoneOffset.UTC), ignored -> { });
+        UUID instance = UUID.randomUUID();
+        assertTrue(service.register(instance, ignored -> calls.add("primary")));
+        assertTrue(service.registerSupplemental(instance, ignored -> calls.add("supplemental")));
+
+        CentralUpdateService.TickReport report = service.tick(start.plusSeconds(1));
+
+        assertTrue(report.successful());
+        assertEquals(List.of("primary", "supplemental"), calls);
+    }
+
+    @Test
+    void supplementalRegistrationAndRemovalPreserveThePrimaryCallback() {
+        CentralUpdateService service = new CentralUpdateService(Clock.systemUTC(), ignored -> { });
+        UUID instance = UUID.randomUUID();
+        List<String> calls = new ArrayList<>();
+        var primary = (java.util.function.Consumer<Instant>) ignored -> calls.add("primary");
+        var supplemental = (java.util.function.Consumer<Instant>) ignored -> calls.add("supplemental");
+
+        assertFalse(service.registerSupplemental(UUID.randomUUID(), supplemental));
+        assertTrue(service.register(instance, primary));
+        assertTrue(service.registerSupplemental(instance, supplemental));
+        assertTrue(service.removeSupplemental(instance, supplemental));
+        assertFalse(service.removeSupplemental(instance, primary));
+
+        service.tick(Instant.EPOCH);
+        assertEquals(List.of("primary"), calls);
+    }
 }

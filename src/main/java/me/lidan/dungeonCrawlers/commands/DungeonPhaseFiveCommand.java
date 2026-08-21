@@ -12,6 +12,7 @@ import me.lidan.dungeonCrawlers.core.protection.TeleportPermitService;
 import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
 import me.lidan.dungeonCrawlers.core.secret.SecretDiscoveryService;
 import me.lidan.dungeonCrawlers.core.snapshot.PlayerSnapshotService;
+import me.lidan.dungeonCrawlers.core.lifecycle.PlayerLifecycleService;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
 import me.lidan.dungeonCrawlers.integration.BukkitDoorBlockService;
 import me.lidan.dungeonCrawlers.integration.BukkitPlayerRecovery;
@@ -33,6 +34,7 @@ import revxrsal.commands.annotation.SuggestWith;
 import revxrsal.commands.bukkit.annotation.CommandPermission;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -47,6 +49,8 @@ import java.util.concurrent.Executor;
 /** Player-facing start, class selection, and preparation-door commands. */
 @Command("dungeon")
 public final class DungeonPhaseFiveCommand {
+    private static final Duration PENDING_RECOVERY_MAX_AGE = Duration.ofHours(24);
+
     private final ConfigRegistryService configRegistry;
     private final PartyProvider parties;
     private final PartySnapshotPolicy partyPolicy = new PartySnapshotPolicy();
@@ -61,9 +65,12 @@ public final class DungeonPhaseFiveCommand {
     private final CombatRoomService combat;
     private final ProgressBarService progressBars;
     private final SecretDiscoveryService phaseSeven;
+    private final PlayerLifecycleService lifecycle;
     private final Executor mainThread;
     private final BukkitDoorBlockService doorBlocks = new BukkitDoorBlockService();
     private final Map<UUID, Map<UUID, me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot>> captured
+            = new LinkedHashMap<>();
+    private final Map<UUID, me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot> pendingRecovery
             = new LinkedHashMap<>();
 
     public DungeonPhaseFiveCommand(ConfigRegistryService configRegistry, PartyProvider parties,
@@ -100,6 +107,17 @@ public final class DungeonPhaseFiveCommand {
                                    Server server, Plugin plugin, Clock clock, String generationWorldName,
                                    DungeonActionBar actionBar, CombatRoomService combat,
                                    ProgressBarService progressBars, SecretDiscoveryService phaseSeven) {
+        this(configRegistry, parties, generation, runs, snapshots, permits, server, plugin, clock,
+                generationWorldName, actionBar, combat, progressBars, phaseSeven, null);
+    }
+
+    public DungeonPhaseFiveCommand(ConfigRegistryService configRegistry, PartyProvider parties,
+                                   GenerationService generation, RunPreparationService runs,
+                                   PlayerSnapshotService snapshots, TeleportPermitService permits,
+                                   Server server, Plugin plugin, Clock clock, String generationWorldName,
+                                   DungeonActionBar actionBar, CombatRoomService combat,
+                                   ProgressBarService progressBars, SecretDiscoveryService phaseSeven,
+                                   PlayerLifecycleService lifecycle) {
         this.configRegistry = Objects.requireNonNull(configRegistry, "configRegistry");
         this.parties = Objects.requireNonNull(parties, "parties");
         this.generation = Objects.requireNonNull(generation, "generation");
@@ -113,6 +131,7 @@ public final class DungeonPhaseFiveCommand {
         this.combat = combat;
         this.progressBars = progressBars;
         this.phaseSeven = phaseSeven;
+        this.lifecycle = lifecycle;
         this.mainThread = callback -> server.getScheduler().runTask(plugin, callback);
     }
 
@@ -204,6 +223,18 @@ public final class DungeonPhaseFiveCommand {
     public void cancelFromAdmin(UUID instanceId) {
         if (runs.info(instanceId).isPresent()) abort(instanceId, "preparation cancelled");
         else {
+            if (lifecycle != null) lifecycle.cleanup(instanceId);
+            if (phaseSeven != null) phaseSeven.cleanup(instanceId);
+            if (combat != null) combat.cleanup(instanceId);
+        }
+    }
+
+    /** Completes cleanup after the running-player lifecycle wipes an active instance. */
+    public void wipeFromLifecycle(UUID instanceId, String reason) {
+        if (runs.info(instanceId).isPresent()) {
+            abort(instanceId, reason, "run wiped");
+        } else {
+            if (lifecycle != null) lifecycle.cleanup(instanceId);
             if (phaseSeven != null) phaseSeven.cleanup(instanceId);
             if (combat != null) combat.cleanup(instanceId);
         }
@@ -218,7 +249,14 @@ public final class DungeonPhaseFiveCommand {
             render(result.door());
             player.sendMessage("[PASS] " + result.detail() + " state=" + result.door().state());
             if (result.snapshot().state() == RunPreparationService.RunState.RUNNING) {
-                captured.remove(result.snapshot().instanceId());
+                if (lifecycle != null) {
+                    var started = lifecycle.start(result.snapshot().instanceId());
+                    if (!started.successful()) {
+                        abort(result.snapshot().instanceId(), started.detail());
+                        player.sendMessage("[FAIL] " + started.detail());
+                        return;
+                    }
+                }
                 actionBar.show(player, Component.text("Dungeon started — first room active"));
             }
         } else {
@@ -229,6 +267,107 @@ public final class DungeonPhaseFiveCommand {
 
     public java.util.Optional<ClassDefinition> selectedClass(UUID playerId) {
         return runs.selectedClass(playerId);
+    }
+
+    /** Removes an escaped player from the preparation index and restores their saved location immediately. */
+    public void restoreRemovedPlayer(UUID instanceId, UUID playerId) {
+        runs.removeParticipant(instanceId, playerId);
+        Map<UUID, me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot> saved = captured.get(instanceId);
+        me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot snapshot = saved == null
+                ? null : saved.remove(playerId);
+        if (saved != null && saved.isEmpty()) captured.remove(instanceId);
+        Player player = server.getPlayer(playerId);
+        if (snapshot == null || player == null) {
+            cancelEmptyPreparation(instanceId);
+            return;
+        }
+        SpawnProvider fallback = new BukkitSpawnProvider(server, "");
+        authorizeRestore(playerId, snapshot, fallback);
+        var restored = BukkitPlayerRecovery.restore(player, snapshot, server, fallback);
+        if (restored.successful()) {
+            snapshots.delete(playerId);
+        } else {
+            pendingRecovery.put(playerId, snapshot);
+        }
+        player.sendMessage(MiniMessageUtils.miniMessage("<" + (restored.successful() ? "green" : "red")
+                + ">[" + (restored.successful() ? "PASS" : "FAIL") + "] escape restore="
+                + restored.detail() + "</" + (restored.successful() ? "green" : "red") + ">"));
+        cancelEmptyPreparation(instanceId);
+    }
+
+    /** Handles the server's /spawn command as a dungeon leave request. */
+    public void leaveFromSpawn(Player player) {
+        UUID playerId = player.getUniqueId();
+        UUID instanceId = runs.instanceFor(playerId).orElse(null);
+        if (instanceId == null) return;
+        if (lifecycle != null && lifecycle.player(instanceId, playerId).isPresent()) {
+            var result = lifecycle.escape(instanceId, playerId);
+            player.sendMessage(MiniMessageUtils.miniMessage("<" + (result.successful() ? "green" : "red")
+                    + ">[" + (result.successful() ? "PASS" : "FAIL") + "] " + result.detail()
+                    + "</" + (result.successful() ? "green" : "red") + ">"));
+            return;
+        }
+        restoreRemovedPlayer(instanceId, playerId);
+    }
+
+    private void cancelEmptyPreparation(UUID instanceId) {
+        if (runs.info(instanceId).map(snapshot -> snapshot.state() == RunPreparationService.RunState.PREPARING
+                && snapshot.participants().isEmpty()).orElse(false)) {
+            cancelFromAdmin(instanceId);
+        }
+    }
+
+    /** Completes a wipe/escape restore when a participant reconnects after being offline or after a restart. */
+    public void recoverOnJoin(Player player) {
+        UUID playerId = player.getUniqueId();
+        if (runs.instanceFor(playerId).isPresent()) return;
+        prunePendingRecovery();
+        me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot pending = pendingRecovery.get(playerId);
+        if (pending != null) {
+            restoreAfterJoin(player, pending, true);
+            return;
+        }
+        snapshots.read(playerId).whenCompleteAsync((stored, failure) -> {
+            if (failure != null || stored.isEmpty()) return;
+            if (runs.instanceFor(playerId).isPresent() || !player.isOnline()) return;
+            restoreAfterJoin(player, stored.orElseThrow(), false);
+        }, mainThread);
+    }
+
+    private void prunePendingRecovery() {
+        Instant cutoff = clock.instant().minus(PENDING_RECOVERY_MAX_AGE);
+        pendingRecovery.entrySet().removeIf(entry -> entry.getValue().capturedAt().isBefore(cutoff));
+    }
+
+    private void restoreAfterJoin(Player player,
+                                  me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot snapshot,
+                                  boolean pending) {
+        SpawnProvider fallback = new BukkitSpawnProvider(server, "");
+        authorizeRestore(player.getUniqueId(), snapshot, fallback);
+        var restored = BukkitPlayerRecovery.restore(player, snapshot, server, fallback);
+        if (restored.successful()) {
+            if (pending) pendingRecovery.remove(player.getUniqueId(), snapshot);
+            snapshots.delete(player.getUniqueId());
+        } else {
+            pendingRecovery.put(player.getUniqueId(), snapshot);
+        }
+        player.sendMessage(MiniMessageUtils.miniMessage("<" + (restored.successful() ? "green" : "red")
+                + ">[" + (restored.successful() ? "PASS" : "FAIL") + "] recovery restore="
+                + restored.detail() + "</" + (restored.successful() ? "green" : "red") + ">"));
+    }
+
+    private void authorizeRestore(UUID playerId,
+                                  me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot snapshot,
+                                  SpawnProvider fallback) {
+        Set<TeleportPermitService.Destination> destinations = new LinkedHashSet<>();
+        destinations.add(new TeleportPermitService.Destination(snapshot.world(),
+                new Point((int) Math.floor(snapshot.x()), (int) Math.floor(snapshot.y()),
+                        (int) Math.floor(snapshot.z()))));
+        fallback.spawn().map(Location::clone).filter(location -> location.getWorld() != null).ifPresent(location ->
+                destinations.add(new TeleportPermitService.Destination(location.getWorld().getName(),
+                        new Point(location.getBlockX(), location.getBlockY(), location.getBlockZ()))));
+        permits.authorize(playerId, destinations,
+                clock.instant().plus(DungeonGenerationCommand.TELEPORT_PERMIT_DURATION));
     }
 
     private void preparePlayers(UUID instanceId, me.lidan.dungeonCrawlers.core.party.PartySnapshot party,
@@ -260,6 +399,13 @@ public final class DungeonPhaseFiveCommand {
             if (!registration.successful()) {
                 abort(instanceId, registration.detail());
                 return;
+            }
+            if (lifecycle != null) {
+                var lifecycleRegistration = lifecycle.register(instanceId, party.onlineMembers());
+                if (!lifecycleRegistration.successful()) {
+                    abort(instanceId, lifecycleRegistration.detail());
+                    return;
+                }
             }
             render(registration.snapshot().door());
             Map<UUID, me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot> saved = new LinkedHashMap<>();
@@ -317,6 +463,11 @@ public final class DungeonPhaseFiveCommand {
     }
 
     private void abort(UUID instanceId, String reason) {
+        abort(instanceId, reason, "preparation cancelled");
+    }
+
+    private void abort(UUID instanceId, String reason, String outcome) {
+        if (lifecycle != null) lifecycle.cleanup(instanceId);
         if (phaseSeven != null) phaseSeven.cleanup(instanceId);
         if (combat != null) combat.cleanup(instanceId);
         runs.cleanup(instanceId);
@@ -327,19 +478,20 @@ public final class DungeonPhaseFiveCommand {
         saved.forEach((playerId, snapshot) -> {
             Player player = server.getPlayer(playerId);
             if (player != null) {
-                Set<TeleportPermitService.Destination> destinations = new LinkedHashSet<>();
-                destinations.add(new TeleportPermitService.Destination(snapshot.world(),
-                        new Point((int) Math.floor(snapshot.x()), (int) Math.floor(snapshot.y()),
-                                (int) Math.floor(snapshot.z()))));
-                fallback.spawn().map(Location::clone).ifPresent(location -> destinations.add(
-                        new TeleportPermitService.Destination(location.getWorld().getName(),
-                                new Point(location.getBlockX(), location.getBlockY(), location.getBlockZ()))));
-                permits.authorize(playerId, destinations,
-                        clock.instant().plus(DungeonGenerationCommand.TELEPORT_PERMIT_DURATION));
-                BukkitPlayerRecovery.restore(player, snapshot, server, fallback);
-                player.sendMessage("[FAIL] " + reason + "; preparation cancelled and player restored");
+                authorizeRestore(playerId, snapshot, fallback);
+                var restored = BukkitPlayerRecovery.restore(player, snapshot, server, fallback);
+                if (restored.successful()) {
+                    snapshots.delete(playerId);
+                    player.sendMessage(MiniMessageUtils.miniMessage("<red>[FAIL] " + reason + "; "
+                            + outcome + " and player restored</red>"));
+                } else {
+                    pendingRecovery.put(playerId, snapshot);
+                    player.sendMessage(MiniMessageUtils.miniMessage("<red>[FAIL] " + reason + "; "
+                            + outcome + "; recovery pending: " + restored.detail() + "</red>"));
+                }
+            } else {
+                pendingRecovery.put(playerId, snapshot);
             }
-            snapshots.delete(playerId);
         });
     }
 

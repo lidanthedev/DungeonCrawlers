@@ -5,20 +5,21 @@ import revxrsal.commands.command.CommandActor;
 import revxrsal.commands.node.ExecutionContext;
 
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.Objects;
 import java.util.function.Supplier;
-import java.util.stream.Stream;
 
-/** Supplies currently active generation instance IDs to Lamp command completion. */
-public final class InstanceIdSuggestionProvider<A extends CommandActor> implements SuggestionProvider<A> {
+/** Supplies known Bukkit player names for admin OfflinePlayer arguments. */
+public final class OfflinePlayerSuggestionProvider<A extends CommandActor> implements SuggestionProvider<A> {
     private final Supplier<? extends Collection<String>> source;
 
-    public InstanceIdSuggestionProvider(Supplier<? extends Collection<String>> source) {
+    public OfflinePlayerSuggestionProvider(Supplier<? extends Collection<String>> source) {
         this.source = Objects.requireNonNull(source, "source");
     }
 
     @Override
     public Collection<String> getSuggestions(ExecutionContext<A> context) {
-        return Stream.concat(Stream.of("this"), source.get().stream()).sorted().toList();
+        return source.get().stream().filter(Objects::nonNull).filter(value -> !value.isBlank()).distinct()
+                .sorted(String.CASE_INSENSITIVE_ORDER.thenComparing(Comparator.naturalOrder())).toList();
     }
 }

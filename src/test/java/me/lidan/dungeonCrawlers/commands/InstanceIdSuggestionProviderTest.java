@@ -15,7 +15,7 @@ final class InstanceIdSuggestionProviderTest {
         InstanceIdSuggestionProvider<?> provider =
                 new InstanceIdSuggestionProvider<>(() -> List.of(first.toString(), second.toString()));
 
-        assertEquals(List.of(second.toString(), first.toString()),
+        assertEquals(List.of(second.toString(), first.toString(), "this"),
                 provider.getSuggestions(null).stream().toList());
     }
 
@@ -24,7 +24,7 @@ final class InstanceIdSuggestionProviderTest {
         InstanceIdSuggestionProvider<?> first = new InstanceIdSuggestionProvider<>(() -> List.of("first"));
         InstanceIdSuggestionProvider<?> second = new InstanceIdSuggestionProvider<>(() -> List.of("second"));
 
-        assertEquals(List.of("first"), first.getSuggestions(null).stream().toList());
-        assertEquals(List.of("second"), second.getSuggestions(null).stream().toList());
+        assertEquals(List.of("first", "this"), first.getSuggestions(null).stream().toList());
+        assertEquals(List.of("second", "this"), second.getSuggestions(null).stream().toList());
     }
 }
