@@ -68,4 +68,19 @@ class CentralUpdateServiceTest {
         assertEquals(List.of(failing), report.failures());
         assertEquals(List.of(Instant.EPOCH), observed);
     }
+
+    @Test
+    void supplementalCallbacksRunAlongsidePrimaryCallback() {
+        Instant start = Instant.parse("2026-01-01T00:00:00Z");
+        List<String> calls = new ArrayList<>();
+        CentralUpdateService service = new CentralUpdateService(Clock.fixed(start, ZoneOffset.UTC), ignored -> { });
+        UUID instance = UUID.randomUUID();
+        assertTrue(service.register(instance, ignored -> calls.add("primary")));
+        assertTrue(service.registerSupplemental(instance, ignored -> calls.add("supplemental")));
+
+        CentralUpdateService.TickReport report = service.tick(start.plusSeconds(1));
+
+        assertTrue(report.successful());
+        assertEquals(List.of("primary", "supplemental"), calls);
+    }
 }

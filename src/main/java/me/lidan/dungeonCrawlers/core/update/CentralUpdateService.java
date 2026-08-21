@@ -15,7 +15,7 @@ import java.util.function.Consumer;
 public final class CentralUpdateService {
     private final Clock clock;
     private final Consumer<String> diagnostics;
-    private final Map<UUID, Consumer<Instant>> updates = new LinkedHashMap<>();
+    private final Map<UUID, List<Consumer<Instant>>> updates = new LinkedHashMap<>();
 
     public CentralUpdateService(Clock clock, Consumer<String> diagnostics) {
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -26,8 +26,26 @@ public final class CentralUpdateService {
         Objects.requireNonNull(instanceId, "instanceId");
         Objects.requireNonNull(update, "update");
         if (updates.containsKey(instanceId)) return false;
-        updates.put(instanceId, update);
+        updates.put(instanceId, new ArrayList<>(List.of(update)));
         return true;
+    }
+
+    /** Adds a callback to an existing instance without replacing its primary update. */
+    public synchronized boolean registerSupplemental(UUID instanceId, Consumer<Instant> update) {
+        Objects.requireNonNull(instanceId, "instanceId");
+        Objects.requireNonNull(update, "update");
+        List<Consumer<Instant>> callbacks = updates.get(instanceId);
+        if (callbacks == null) return false;
+        callbacks.add(update);
+        return true;
+    }
+
+    /** Removes one supplemental callback while retaining the instance's primary update. */
+    public synchronized boolean removeSupplemental(UUID instanceId, Consumer<Instant> update) {
+        Objects.requireNonNull(instanceId, "instanceId");
+        Objects.requireNonNull(update, "update");
+        List<Consumer<Instant>> callbacks = updates.get(instanceId);
+        return callbacks != null && callbacks.size() > 1 && callbacks.remove(update);
     }
 
     public synchronized boolean remove(UUID instanceId) {
@@ -40,23 +58,28 @@ public final class CentralUpdateService {
 
     public TickReport tick(Instant now) {
         Objects.requireNonNull(now, "now");
-        List<Map.Entry<UUID, Consumer<Instant>>> snapshot;
+        Map<UUID, List<Consumer<Instant>>> snapshot;
         synchronized (this) {
-            snapshot = new ArrayList<>(updates.entrySet());
+            snapshot = new LinkedHashMap<>();
+            updates.forEach((instanceId, callbacks) -> snapshot.put(instanceId, List.copyOf(callbacks)));
         }
         List<UUID> failures = new ArrayList<>();
-        for (Map.Entry<UUID, Consumer<Instant>> entry : snapshot) {
-            try {
-                entry.getValue().accept(now);
-            } catch (RuntimeException exception) {
-                failures.add(entry.getKey());
+        for (Map.Entry<UUID, List<Consumer<Instant>>> entry : snapshot.entrySet()) {
+            boolean failed = false;
+            for (Consumer<Instant> callback : entry.getValue()) {
                 try {
-                    diagnostics.accept("instance=" + entry.getKey() + " central update failed: "
-                            + message(exception));
-                } catch (RuntimeException ignored) {
-                    // Diagnostics are best-effort; one consumer must not stop the update loop.
+                    callback.accept(now);
+                } catch (RuntimeException exception) {
+                    failed = true;
+                    try {
+                        diagnostics.accept("instance=" + entry.getKey() + " central update failed: "
+                                + message(exception));
+                    } catch (RuntimeException ignored) {
+                        // Diagnostics are best-effort; one consumer must not stop the update loop.
+                    }
                 }
             }
+            if (failed) failures.add(entry.getKey());
         }
         return new TickReport(now, snapshot.size(), failures);
     }

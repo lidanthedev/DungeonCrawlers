@@ -1,0 +1,4 @@
+interface:
+  display_name: "DungeonCrawlers Player Testing"
+  short_description: "Test player commands through the development server"
+  default_prompt: "Use /sudo LidanTheGamer when player-command testing is needed."

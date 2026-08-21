@@ -8,12 +8,13 @@ import me.lidan.dungeonCrawlers.config.registry.ConfigModels.ClassDefinition;
 import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
 import me.lidan.dungeonCrawlers.core.secret.SecretDiscoveryService;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
+import org.bukkit.GameMode;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
-import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.inventory.EquipmentSlot;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -40,7 +41,7 @@ public final class BukkitDungeonRunListener implements Listener {
         this.phaseSeven = phaseSeven;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPreparationDoor(PlayerInteractEvent event) {
         if (event.getHand() == EquipmentSlot.OFF_HAND) return;
         if (event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getClickedBlock() == null
@@ -69,7 +70,7 @@ public final class BukkitDungeonRunListener implements Listener {
         aggregated.forEach((type, value) -> event.getStats().set(type, value));
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onSecretInteract(PlayerInteractEvent event) {
         if (phaseSeven == null || event.getHand() == EquipmentSlot.OFF_HAND
                 || event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getClickedBlock() == null
@@ -78,6 +79,10 @@ public final class BukkitDungeonRunListener implements Listener {
         if (material != org.bukkit.Material.CHEST && material != org.bukkit.Material.TRAPPED_CHEST) return;
         UUID instanceId = runs.instanceFor(event.getPlayer().getUniqueId()).orElse(null);
         if (instanceId == null) return;
+        if (event.getPlayer().getGameMode() == GameMode.SPECTATOR) {
+            event.setCancelled(true);
+            return;
+        }
         Point point = new Point(event.getClickedBlock().getX(), event.getClickedBlock().getY(),
                 event.getClickedBlock().getZ());
         var result = phaseSeven.discover(instanceId, event.getPlayer().getUniqueId(), point);

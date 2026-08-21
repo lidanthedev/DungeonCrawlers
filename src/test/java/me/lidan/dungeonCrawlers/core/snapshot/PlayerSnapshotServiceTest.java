@@ -79,6 +79,18 @@ class PlayerSnapshotServiceTest {
         assertTrue(submission.runtimeAck().join() != null);
     }
 
+    @Test
+    void aFreshServiceCanReadAnOfflineRecoverySnapshotAfterRestart() {
+        FakeRepository repository = new FakeRepository();
+        UUID player = UUID.randomUUID();
+        PlayerRecoverySnapshot snapshot = new PlayerRecoverySnapshot(player, UUID.randomUUID(), "world",
+                10, 64, -4, 90, 0, "SURVIVAL", 20, 20, 0, 0, 0, 300, 400, Instant.EPOCH);
+
+        assertTrue(new PlayerSnapshotService(repository).save(snapshot).accepted());
+
+        assertEquals(snapshot, new PlayerSnapshotService(repository).read(player).join().orElseThrow());
+    }
+
     private static final class FakeRepository implements DurableRepository {
         private DurableWrite lastWrite;
         private byte[] payload;

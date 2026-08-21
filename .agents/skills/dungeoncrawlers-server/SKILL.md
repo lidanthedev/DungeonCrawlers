@@ -7,6 +7,13 @@ description: Deploy and live-test DungeonCrawlers on its Pterodactyl development
 
 Use the repository root as the working directory.
 
+For Gradle commands, use the installed Temurin 21 JDK. In PowerShell, set it
+for the command (elevated execution may be required):
+
+```powershell
+$env:JAVA_HOME='C:\Users\Lidan\.jdks\temurin-21.0.11'; .\gradlew.bat test build
+```
+
 1. Complete the relevant automated tests and build the new JAR successfully.
 2. Record the built JAR path and SHA-256 checksum.
 3. Run `python deploy.py` to upload the JAR. Verify that the command succeeds before continuing.

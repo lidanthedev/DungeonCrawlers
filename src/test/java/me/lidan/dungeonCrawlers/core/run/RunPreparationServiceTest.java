@@ -93,6 +93,23 @@ class RunPreparationServiceTest {
     }
 
     @Test
+    void escapedParticipantIsRemovedBeforeLaterClassSelectionAndDoorOpen() {
+        UUID escaped = UUID.randomUUID();
+        UUID remaining = UUID.randomUUID();
+        UUID instance = UUID.randomUUID();
+        RunPreparationService service = service(new AtomicInteger());
+        PartySnapshot party = new PartySnapshot(escaped, List.of(escaped, remaining), false);
+
+        assertTrue(service.registerGenerated(instance, party, List.of("tank"),
+                Map.of("tank", classDefinition("tank")), new Point(0, 64, 0), Facing.NORTH).successful());
+        assertTrue(service.markSnapshotsReady(instance).successful());
+        assertTrue(service.removeParticipant(instance, escaped).successful());
+        assertFalse(service.selectClass(instance, escaped, "tank").successful());
+        assertTrue(service.selectClass(instance, remaining, "tank").successful());
+        assertTrue(service.openDoor(instance, remaining).successful());
+    }
+
+    @Test
     void cleanupRemovesDoorAndCentralRegistration() {
         UUID player = UUID.randomUUID();
         UUID instance = UUID.randomUUID();
