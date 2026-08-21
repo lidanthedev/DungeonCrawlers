@@ -357,7 +357,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         commandHandler.register(phaseFiveCommand);
         commandHandler.register(new DungeonPhaseSixCommand(combat, runPreparation));
         commandHandler.register(new DungeonPhaseSevenCommand(phaseSeven, runPreparation));
-        commandHandler.register(new DungeonPhaseEightCommand(lifecycle, runPreparation));
+        commandHandler.register(new DungeonPhaseEightCommand(lifecycle, runPreparation, phaseFiveCommand));
         commandHandler.register(new DungeonPhaseFourCommand(centralUpdates, doors, protectionPolicy,
                 teleportPermits, playerSnapshots, getServer(), this, phaseClock(),
                 generationWorldName,
@@ -417,9 +417,13 @@ public final class DungeonCrawlers extends JavaPlugin {
                     getLogger().warning("REVIVED player is offline or unknown: " + notice.playerId());
                     return;
                 }
-                healToFull(player);
                 Player target = notice.reviveTarget() == null ? null : getServer().getPlayer(notice.reviveTarget());
-                if (target != null) player.teleport(target.getLocation().clone().add(0, 1, 0));
+                if (target != null && !player.teleport(target.getLocation().clone().add(0, 1, 0))) {
+                    getLogger().warning("Unable to teleport revived player " + player.getName()
+                            + " near target " + target.getName());
+                    return;
+                }
+                healToFull(player);
                 BukkitGhostState.exit(player);
                 scheduleReviveHeal(notice.instanceId(), player, 1L);
                 scheduleReviveHeal(notice.instanceId(), player, 20L);

@@ -146,11 +146,6 @@ public final class DungeonPhaseSevenCommand {
     }
 
     private UUID parse(CommandSender sender, String value) {
-        try {
-            return DungeonInstanceResolver.require(sender, value, runs);
-        } catch (IllegalArgumentException exception) {
-            sender.sendMessage("[FAIL] " + exception.getMessage());
-            return null;
-        }
+        return DungeonInstanceResolver.resolveOrNotify(sender, value, runs);
     }
 }

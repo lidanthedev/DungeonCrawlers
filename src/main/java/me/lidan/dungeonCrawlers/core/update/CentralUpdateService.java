@@ -45,7 +45,9 @@ public final class CentralUpdateService {
         Objects.requireNonNull(instanceId, "instanceId");
         Objects.requireNonNull(update, "update");
         List<Consumer<Instant>> callbacks = updates.get(instanceId);
-        return callbacks != null && callbacks.size() > 1 && callbacks.remove(update);
+        if (callbacks == null) return false;
+        int index = callbacks.indexOf(update);
+        return index >= 1 && callbacks.remove(index) != null;
     }
 
     public synchronized boolean remove(UUID instanceId) {

@@ -11,6 +11,7 @@ import revxrsal.commands.annotation.Subcommand;
 import revxrsal.commands.annotation.SuggestWith;
 import revxrsal.commands.bukkit.annotation.CommandPermission;
 
+import java.util.Objects;
 import java.util.UUID;
 
 /** Phase 8 death, ghost, rejoin, escape, and wipe diagnostics. */
@@ -18,22 +19,23 @@ import java.util.UUID;
 public final class DungeonPhaseEightCommand {
     private final PlayerLifecycleService lifecycle;
     private final RunPreparationService runs;
+    private final DungeonPhaseFiveCommand phaseFive;
 
-    public DungeonPhaseEightCommand(PlayerLifecycleService lifecycle, RunPreparationService runs) {
-        this.lifecycle = lifecycle;
-        this.runs = runs;
+    public DungeonPhaseEightCommand(PlayerLifecycleService lifecycle, RunPreparationService runs,
+                                    DungeonPhaseFiveCommand phaseFive) {
+        this.lifecycle = Objects.requireNonNull(lifecycle, "lifecycle");
+        this.runs = Objects.requireNonNull(runs, "runs");
+        this.phaseFive = Objects.requireNonNull(phaseFive, "phaseFive");
     }
 
     @Subcommand("escape")
     @CommandPermission("dungeoncrawlers.use")
     public void escape(Player player) {
-        UUID instanceId = runs.instanceFor(player.getUniqueId()).orElse(null);
-        if (instanceId == null) {
+        if (runs.instanceFor(player.getUniqueId()).isEmpty()) {
             send(player, "<red>[FAIL] you are not in a running dungeon</red>");
             return;
         }
-        var result = lifecycle.escape(instanceId, player.getUniqueId());
-        sendResult(player, result.successful(), result.detail());
+        phaseFive.leaveFromSpawn(player);
     }
 
     @Subcommand("leave")
@@ -49,7 +51,7 @@ public final class DungeonPhaseEightCommand {
         UUID id = parse(sender, instanceId);
         if (id == null) return;
         lifecycle.player(id, player.getUniqueId()).ifPresentOrElse(value -> send(sender, "<green>[PASS] instance=" + id
-                        + " player=" + playerLabel(player) + " state=" + value + "</green>"),
+                        + " player=" + playerLabel(player) + " state=" + value.state() + "</green>"),
                 () -> send(sender, "<red>[FAIL] unknown lifecycle player</red>"));
     }
 

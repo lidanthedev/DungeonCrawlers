@@ -5,6 +5,7 @@ import revxrsal.commands.command.CommandActor;
 import revxrsal.commands.node.ExecutionContext;
 
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.Objects;
 import java.util.function.Supplier;
 
@@ -19,6 +20,6 @@ public final class OfflinePlayerSuggestionProvider<A extends CommandActor> imple
     @Override
     public Collection<String> getSuggestions(ExecutionContext<A> context) {
         return source.get().stream().filter(Objects::nonNull).filter(value -> !value.isBlank()).distinct()
-                .sorted(String.CASE_INSENSITIVE_ORDER).toList();
+                .sorted(String.CASE_INSENSITIVE_ORDER.thenComparing(Comparator.naturalOrder())).toList();
     }
 }

@@ -28,4 +28,13 @@ public final class DungeonInstanceResolver {
             throw new IllegalArgumentException("instance id must be a UUID or 'this'");
         }
     }
+
+    public static UUID resolveOrNotify(CommandSender sender, String value, RunPreparationService runs) {
+        try {
+            return require(sender, value, runs);
+        } catch (IllegalArgumentException exception) {
+            sender.sendMessage("[FAIL] " + exception.getMessage());
+            return null;
+        }
+    }
 }

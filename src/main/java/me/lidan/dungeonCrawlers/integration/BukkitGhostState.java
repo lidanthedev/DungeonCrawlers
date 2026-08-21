@@ -6,6 +6,8 @@ import org.bukkit.entity.Player;
 
 /** Applies the server-side presentation and protections for a ghost player. */
 public final class BukkitGhostState {
+    private static final double TARGET_CLEAR_RADIUS = 32.0D;
+
     private BukkitGhostState() { }
 
     public static void enter(Player player) {
@@ -32,7 +34,7 @@ public final class BukkitGhostState {
     }
 
     public static void clearMobTargets(Player player) {
-        player.getWorld().getEntities().stream()
+        player.getNearbyEntities(TARGET_CLEAR_RADIUS, TARGET_CLEAR_RADIUS, TARGET_CLEAR_RADIUS).stream()
                 .filter(Mob.class::isInstance)
                 .map(Mob.class::cast)
                 .filter(mob -> player.equals(mob.getTarget()))

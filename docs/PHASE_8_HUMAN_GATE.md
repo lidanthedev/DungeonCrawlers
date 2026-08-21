@@ -6,7 +6,7 @@ Use the development server `fa696721` (Modern Cave Crawl). For player-only check
 
 ## Gate status
 
-PASS for the required single-player/admin checks. The two-player concurrency race remains deferred to the final phase.
+PASS for the required non-concurrent lifecycle/admin checks, including multi-participant behavior exercised serially. The two-player concurrency race remains deferred to the final phase.
 
 ## Gate checklist
 

@@ -105,19 +105,10 @@ public final class DungeonPhaseSixCommand {
     }
 
     private UUID parse(CommandSender sender, String value) {
-        try {
-            return DungeonInstanceResolver.require(sender, value, runs);
-        } catch (IllegalArgumentException exception) {
-            sender.sendMessage("[FAIL] " + exception.getMessage());
-            return null;
-        }
+        return DungeonInstanceResolver.resolveOrNotify(sender, value, runs);
     }
 
     private static void send(CommandSender sender, Object result) {
-        if (result == null) {
-            sender.sendMessage("[FAIL] instance id must be a UUID");
-            return;
-        }
         boolean successful = switch (result) {
             case CombatRoomService.ActivationResult value -> value.successful();
             case CombatRoomService.ClearResult value -> value.successful();

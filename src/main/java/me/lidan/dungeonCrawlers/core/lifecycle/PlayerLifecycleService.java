@@ -105,7 +105,10 @@ public final class PlayerLifecycleService {
         player.online = true;
         Instant now = clock.instant();
         if (player.state == PlayerState.GHOST && player.reviveAt != null && !now.isBefore(player.reviveAt)) {
-            return revive(state, player, now, "revive timer elapsed while offline");
+            TransitionResult revived = revive(state, player, now, "revive timer elapsed while offline");
+            if (revived.successful()) return revived;
+            return TransitionResult.success(Event.RECONNECTED,
+                    "player reconnected; revive pending: " + revived.detail(), snapshot(state), player.id);
         }
         if (player.state == PlayerState.GHOST && player.reviveAt != null) {
             player.lastCountdownSeconds = -1;
@@ -194,7 +197,7 @@ public final class PlayerLifecycleService {
         new ArrayList<>(instances.keySet()).forEach(this::cleanup);
     }
 
-    private void tick(UUID instanceId, Instant now) {
+    private synchronized void tick(UUID instanceId, Instant now) {
         MutableInstance state = instances.get(instanceId);
         if (state == null || !state.running || state.wiped) return;
         for (MutablePlayer player : state.players.values()) {

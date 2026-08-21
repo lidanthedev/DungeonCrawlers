@@ -7,11 +7,19 @@ description: Deploy and live-test DungeonCrawlers on its Pterodactyl development
 
 Use the repository root as the working directory.
 
-For Gradle commands, use the installed Temurin 21 JDK. In PowerShell, set it
-for the command (elevated execution may be required):
+For Gradle commands, use an installed Java 21 JDK. Before invoking Gradle,
+resolve the configured `JAVA_HOME` (or the `java.exe` on `PATH`) and validate
+that it reports Java 21. In PowerShell (elevated execution may be required):
 
 ```powershell
-$env:JAVA_HOME='C:\Users\Lidan\.jdks\temurin-21.0.11'; .\gradlew.bat test build
+$javaExe = if ($env:JAVA_HOME) {
+    Join-Path $env:JAVA_HOME 'bin/java.exe'
+} else {
+    (Get-Command java.exe -ErrorAction Stop).Source
+}
+$javaVersion = (& $javaExe -version 2>&1 | Select-String 'version "21')
+if (-not $javaVersion) { throw "Java 21 is required; selected java.exe reported: $javaVersion" }
+& .\gradlew.bat test build
 ```
 
 1. Complete the relevant automated tests and build the new JAR successfully.

@@ -96,7 +96,7 @@ public final class BukkitDungeonLifecycleListener implements Listener {
         event.setKeepInventory(true);
         event.getDrops().clear();
         event.setDroppedExp(0);
-        event.setDeathMessage(null);
+        event.deathMessage(null);
         lifecycle.lethal(instanceId, player.getUniqueId(), clock.instant());
     }
 
@@ -118,9 +118,7 @@ public final class BukkitDungeonLifecycleListener implements Listener {
         if (instanceId == null) return;
         var state = lifecycle.player(instanceId, player.getUniqueId()).orElse(null);
         if (state == null || state.state() != PlayerLifecycleService.PlayerState.GHOST) return;
-        plugin.getServer().getScheduler().runTask(plugin, () -> {
-            BukkitGhostState.enter(player);
-        });
+        scheduleGhostEnter(instanceId, player);
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
@@ -152,11 +150,18 @@ public final class BukkitDungeonLifecycleListener implements Listener {
                     lifecycle.reconnect(id, event.getPlayer().getUniqueId());
                     if (lifecycle.player(id, event.getPlayer().getUniqueId())
                             .map(value -> value.state() == PlayerLifecycleService.PlayerState.GHOST).orElse(false)) {
-                        plugin.getServer().getScheduler().runTask(plugin, () -> {
-                            BukkitGhostState.enter(event.getPlayer());
-                        });
+                        scheduleGhostEnter(id, event.getPlayer());
                     }
                 });
+    }
+
+    private void scheduleGhostEnter(UUID instanceId, Player player) {
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            if (player.isOnline() && lifecycle.player(instanceId, player.getUniqueId())
+                    .map(value -> value.state() == PlayerLifecycleService.PlayerState.GHOST).orElse(false)) {
+                BukkitGhostState.enter(player);
+            }
+        });
     }
 
     private boolean isGhost(Player player) {

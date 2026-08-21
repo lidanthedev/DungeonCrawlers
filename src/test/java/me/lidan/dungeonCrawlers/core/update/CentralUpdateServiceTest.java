@@ -83,4 +83,22 @@ class CentralUpdateServiceTest {
         assertTrue(report.successful());
         assertEquals(List.of("primary", "supplemental"), calls);
     }
+
+    @Test
+    void supplementalRegistrationAndRemovalPreserveThePrimaryCallback() {
+        CentralUpdateService service = new CentralUpdateService(Clock.systemUTC(), ignored -> { });
+        UUID instance = UUID.randomUUID();
+        List<String> calls = new ArrayList<>();
+        var primary = (java.util.function.Consumer<Instant>) ignored -> calls.add("primary");
+        var supplemental = (java.util.function.Consumer<Instant>) ignored -> calls.add("supplemental");
+
+        assertFalse(service.registerSupplemental(UUID.randomUUID(), supplemental));
+        assertTrue(service.register(instance, primary));
+        assertTrue(service.registerSupplemental(instance, supplemental));
+        assertTrue(service.removeSupplemental(instance, supplemental));
+        assertFalse(service.removeSupplemental(instance, primary));
+
+        service.tick(Instant.EPOCH);
+        assertEquals(List.of("primary"), calls);
+    }
 }

@@ -34,6 +34,7 @@ import revxrsal.commands.annotation.SuggestWith;
 import revxrsal.commands.bukkit.annotation.CommandPermission;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -48,6 +49,8 @@ import java.util.concurrent.Executor;
 /** Player-facing start, class selection, and preparation-door commands. */
 @Command("dungeon")
 public final class DungeonPhaseFiveCommand {
+    private static final Duration PENDING_RECOVERY_MAX_AGE = Duration.ofHours(24);
+
     private final ConfigRegistryService configRegistry;
     private final PartyProvider parties;
     private final PartySnapshotPolicy partyPolicy = new PartySnapshotPolicy();
@@ -299,9 +302,9 @@ public final class DungeonPhaseFiveCommand {
         if (instanceId == null) return;
         if (lifecycle != null && lifecycle.player(instanceId, playerId).isPresent()) {
             var result = lifecycle.escape(instanceId, playerId);
-            if (!result.successful()) {
-                player.sendMessage(MiniMessageUtils.miniMessage("<red>[FAIL] " + result.detail() + "</red>"));
-            }
+            player.sendMessage(MiniMessageUtils.miniMessage("<" + (result.successful() ? "green" : "red")
+                    + ">[" + (result.successful() ? "PASS" : "FAIL") + "] " + result.detail()
+                    + "</" + (result.successful() ? "green" : "red") + ">"));
             return;
         }
         restoreRemovedPlayer(instanceId, playerId);
@@ -318,6 +321,7 @@ public final class DungeonPhaseFiveCommand {
     public void recoverOnJoin(Player player) {
         UUID playerId = player.getUniqueId();
         if (runs.instanceFor(playerId).isPresent()) return;
+        prunePendingRecovery();
         me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot pending = pendingRecovery.get(playerId);
         if (pending != null) {
             restoreAfterJoin(player, pending, true);
@@ -328,6 +332,11 @@ public final class DungeonPhaseFiveCommand {
             if (runs.instanceFor(playerId).isPresent() || !player.isOnline()) return;
             restoreAfterJoin(player, stored.orElseThrow(), false);
         }, mainThread);
+    }
+
+    private void prunePendingRecovery() {
+        Instant cutoff = clock.instant().minus(PENDING_RECOVERY_MAX_AGE);
+        pendingRecovery.entrySet().removeIf(entry -> entry.getValue().capturedAt().isBefore(cutoff));
     }
 
     private void restoreAfterJoin(Player player,
@@ -469,15 +478,7 @@ public final class DungeonPhaseFiveCommand {
         saved.forEach((playerId, snapshot) -> {
             Player player = server.getPlayer(playerId);
             if (player != null) {
-                Set<TeleportPermitService.Destination> destinations = new LinkedHashSet<>();
-                destinations.add(new TeleportPermitService.Destination(snapshot.world(),
-                        new Point((int) Math.floor(snapshot.x()), (int) Math.floor(snapshot.y()),
-                                (int) Math.floor(snapshot.z()))));
-                fallback.spawn().map(Location::clone).ifPresent(location -> destinations.add(
-                        new TeleportPermitService.Destination(location.getWorld().getName(),
-                                new Point(location.getBlockX(), location.getBlockY(), location.getBlockZ()))));
-                permits.authorize(playerId, destinations,
-                        clock.instant().plus(DungeonGenerationCommand.TELEPORT_PERMIT_DURATION));
+                authorizeRestore(playerId, snapshot, fallback);
                 var restored = BukkitPlayerRecovery.restore(player, snapshot, server, fallback);
                 if (restored.successful()) {
                     snapshots.delete(playerId);
