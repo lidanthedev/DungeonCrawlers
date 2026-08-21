@@ -5,7 +5,7 @@ Phase 7 secret discovery and blessing checks are recorded during the live gate.
 ## Deferred verification
 
 - [ ] Two-player simultaneous secret discovery race (deferred to the final phase)
-  - Reason: only one player account was available during this gate.
+  - Reason: two-player synchronized interaction was not performed during this gate.
   - Setup: put two party members in the same run and have both right-click the same undiscovered secret at the same time.
   - Pass criteria: exactly one discovery/reward and one `Secret already found` response; the blessing level must not be applied twice.
 
