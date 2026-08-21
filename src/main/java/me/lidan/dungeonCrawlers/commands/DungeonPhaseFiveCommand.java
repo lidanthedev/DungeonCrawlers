@@ -13,6 +13,7 @@ import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
 import me.lidan.dungeonCrawlers.core.secret.SecretDiscoveryService;
 import me.lidan.dungeonCrawlers.core.snapshot.PlayerSnapshotService;
 import me.lidan.dungeonCrawlers.core.lifecycle.PlayerLifecycleService;
+import me.lidan.dungeonCrawlers.core.portal.PortalEncounterService;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
 import me.lidan.dungeonCrawlers.integration.BukkitDoorBlockService;
 import me.lidan.dungeonCrawlers.integration.BukkitPlayerRecovery;
@@ -66,6 +67,7 @@ public final class DungeonPhaseFiveCommand {
     private final ProgressBarService progressBars;
     private final SecretDiscoveryService phaseSeven;
     private final PlayerLifecycleService lifecycle;
+    private final PortalEncounterService phaseNine;
     private final Executor mainThread;
     private final BukkitDoorBlockService doorBlocks = new BukkitDoorBlockService();
     private final Map<UUID, Map<UUID, me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot>> captured
@@ -79,7 +81,7 @@ public final class DungeonPhaseFiveCommand {
                                    Server server, Plugin plugin, Clock clock, String generationWorldName,
                                    DungeonActionBar actionBar) {
         this(configRegistry, parties, generation, runs, snapshots, permits, server, plugin, clock,
-                generationWorldName, actionBar, null, null, null);
+                generationWorldName, actionBar, null, null, null, null, null);
     }
 
     public DungeonPhaseFiveCommand(ConfigRegistryService configRegistry, PartyProvider parties,
@@ -88,7 +90,7 @@ public final class DungeonPhaseFiveCommand {
                                    Server server, Plugin plugin, Clock clock, String generationWorldName,
                                    DungeonActionBar actionBar, CombatRoomService combat) {
         this(configRegistry, parties, generation, runs, snapshots, permits, server, plugin, clock,
-                generationWorldName, actionBar, combat, null, null);
+                generationWorldName, actionBar, combat, null, null, null, null);
     }
 
     public DungeonPhaseFiveCommand(ConfigRegistryService configRegistry, PartyProvider parties,
@@ -98,7 +100,7 @@ public final class DungeonPhaseFiveCommand {
                                    DungeonActionBar actionBar, CombatRoomService combat,
                                    ProgressBarService progressBars) {
         this(configRegistry, parties, generation, runs, snapshots, permits, server, plugin, clock,
-                generationWorldName, actionBar, combat, progressBars, null);
+                generationWorldName, actionBar, combat, progressBars, null, null, null);
     }
 
     public DungeonPhaseFiveCommand(ConfigRegistryService configRegistry, PartyProvider parties,
@@ -108,7 +110,7 @@ public final class DungeonPhaseFiveCommand {
                                    DungeonActionBar actionBar, CombatRoomService combat,
                                    ProgressBarService progressBars, SecretDiscoveryService phaseSeven) {
         this(configRegistry, parties, generation, runs, snapshots, permits, server, plugin, clock,
-                generationWorldName, actionBar, combat, progressBars, phaseSeven, null);
+                generationWorldName, actionBar, combat, progressBars, phaseSeven, null, null);
     }
 
     public DungeonPhaseFiveCommand(ConfigRegistryService configRegistry, PartyProvider parties,
@@ -118,6 +120,17 @@ public final class DungeonPhaseFiveCommand {
                                    DungeonActionBar actionBar, CombatRoomService combat,
                                    ProgressBarService progressBars, SecretDiscoveryService phaseSeven,
                                    PlayerLifecycleService lifecycle) {
+        this(configRegistry, parties, generation, runs, snapshots, permits, server, plugin, clock,
+                generationWorldName, actionBar, combat, progressBars, phaseSeven, lifecycle, null);
+    }
+
+    public DungeonPhaseFiveCommand(ConfigRegistryService configRegistry, PartyProvider parties,
+                                   GenerationService generation, RunPreparationService runs,
+                                   PlayerSnapshotService snapshots, TeleportPermitService permits,
+                                   Server server, Plugin plugin, Clock clock, String generationWorldName,
+                                   DungeonActionBar actionBar, CombatRoomService combat,
+                                   ProgressBarService progressBars, SecretDiscoveryService phaseSeven,
+                                   PlayerLifecycleService lifecycle, PortalEncounterService phaseNine) {
         this.configRegistry = Objects.requireNonNull(configRegistry, "configRegistry");
         this.parties = Objects.requireNonNull(parties, "parties");
         this.generation = Objects.requireNonNull(generation, "generation");
@@ -132,6 +145,7 @@ public final class DungeonPhaseFiveCommand {
         this.progressBars = progressBars;
         this.phaseSeven = phaseSeven;
         this.lifecycle = lifecycle;
+        this.phaseNine = phaseNine;
         this.mainThread = callback -> server.getScheduler().runTask(plugin, callback);
     }
 
@@ -223,6 +237,7 @@ public final class DungeonPhaseFiveCommand {
     public void cancelFromAdmin(UUID instanceId) {
         if (runs.info(instanceId).isPresent()) abort(instanceId, "preparation cancelled");
         else {
+            if (phaseNine != null) phaseNine.cleanup(instanceId);
             if (lifecycle != null) lifecycle.cleanup(instanceId);
             if (phaseSeven != null) phaseSeven.cleanup(instanceId);
             if (combat != null) combat.cleanup(instanceId);
@@ -234,6 +249,7 @@ public final class DungeonPhaseFiveCommand {
         if (runs.info(instanceId).isPresent()) {
             abort(instanceId, reason, "run wiped");
         } else {
+            if (phaseNine != null) phaseNine.cleanup(instanceId);
             if (lifecycle != null) lifecycle.cleanup(instanceId);
             if (phaseSeven != null) phaseSeven.cleanup(instanceId);
             if (combat != null) combat.cleanup(instanceId);
@@ -394,6 +410,15 @@ public final class DungeonPhaseFiveCommand {
                     return;
                 }
             }
+            if (phaseNine != null) {
+                GenerationService.LayoutContext context = generation.layoutContext(instanceId)
+                        .orElseThrow(() -> new IllegalStateException("generated layout context is unavailable"));
+                var registration = phaseNine.register(instanceId, floor, context.plan());
+                if (!registration.successful()) {
+                    abort(instanceId, registration.detail());
+                    return;
+                }
+            }
             var registration = runs.registerGenerated(instanceId, party, floor.allowedClasses(), config.classes(),
                     startDoor.center(), startDoor.outward());
             if (!registration.successful()) {
@@ -467,6 +492,7 @@ public final class DungeonPhaseFiveCommand {
     }
 
     private void abort(UUID instanceId, String reason, String outcome) {
+        if (phaseNine != null) phaseNine.cleanup(instanceId);
         if (lifecycle != null) lifecycle.cleanup(instanceId);
         if (phaseSeven != null) phaseSeven.cleanup(instanceId);
         if (combat != null) combat.cleanup(instanceId);

@@ -2,11 +2,13 @@ package me.lidan.dungeonCrawlers.commands;
 
 import me.lidan.cavecrawlers.CaveCrawlers;
 import me.lidan.cavecrawlers.utils.BoostedCustomConfig;
+import me.lidan.cavecrawlers.utils.MiniMessageUtils;
 import me.lidan.dungeonCrawlers.compatibility.CompatibilityReport;
 import me.lidan.dungeonCrawlers.compatibility.CompatibilityService;
 import me.lidan.dungeonCrawlers.compatibility.ProbeResult;
 import me.lidan.dungeonCrawlers.config.registry.ConfigLoadResult;
 import me.lidan.dungeonCrawlers.config.registry.ConfigRegistryService;
+import me.lidan.dungeonCrawlers.core.generation.GenerationService;
 import me.lidan.dungeonCrawlers.core.party.PartySnapshot;
 import me.lidan.dungeonCrawlers.core.reservation.PlayerReservationService;
 import me.lidan.dungeonCrawlers.core.score.ScoreService;
@@ -50,9 +52,11 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 
 @Command("dungeon")
 public final class DungeonCrawlersCommand {
+    private static final int FORCE_RELOAD_MAX_POLLS = 600;
     private final JavaPlugin plugin;
     private final CompatibilityService compatibility;
     private final CaveItemsGateway caveItems = new CaveItemsAdapter();
@@ -65,17 +69,30 @@ public final class DungeonCrawlersCommand {
     private final BoostedCustomConfig mainConfig;
     private final StateTransitionService transitions = new StateTransitionService();
     private final ScoreService scores = new ScoreService();
+    private final GenerationService generation;
+    private final Consumer<UUID> preparationCancel;
 
     public DungeonCrawlersCommand(JavaPlugin plugin, CompatibilityService compatibility,
                                   BoostedCustomConfig mainConfig,
                                   ConfigRegistryService configRegistry, PlayerReservationService reservations,
                                   DurableRepository durableRepository) {
+        this(plugin, compatibility, mainConfig, configRegistry, reservations, durableRepository,
+                null, ignored -> { });
+    }
+
+    public DungeonCrawlersCommand(JavaPlugin plugin, CompatibilityService compatibility,
+                                  BoostedCustomConfig mainConfig,
+                                  ConfigRegistryService configRegistry, PlayerReservationService reservations,
+                                  DurableRepository durableRepository, GenerationService generation,
+                                  Consumer<UUID> preparationCancel) {
         this.plugin = plugin;
         this.compatibility = compatibility;
         this.mainConfig = mainConfig;
         this.configRegistry = configRegistry;
         this.reservations = reservations;
         this.durableRepository = durableRepository;
+        this.generation = generation;
+        this.preparationCancel = preparationCancel;
         this.parties = PartyProviders.forServer(plugin.getServer());
     }
 
@@ -96,15 +113,70 @@ public final class DungeonCrawlersCommand {
     @Subcommand("reload")
     @CommandPermission("dungeoncrawlers.admin.reload")
     public void reload(CommandSender sender) {
-        sender.sendMessage("Reloading DungeonCrawlers configuration...");
-        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-            ConfigRegistryService.ReloadResult result = reservations.withAdmissionPaused(configRegistry::reload);
-            plugin.getServer().getScheduler().runTask(plugin, () -> {
-                result.warnings().forEach(warning -> sender.sendMessage("[WARN] " + warning));
-                result.errors().forEach(error -> sender.sendMessage("[FAIL] " + error));
-                if (result.swapped()) sender.sendMessage("[PASS] active hash=" + result.snapshot().hash());
+        sendReloadMessage(sender, "<yellow>Reloading DungeonCrawlers configuration...</yellow>");
+        reloadAsync(sender);
+    }
+
+    @Subcommand("reload force")
+    @CommandPermission("dungeoncrawlers.admin.reload")
+    public void reloadForce(CommandSender sender) {
+        if (generation == null) {
+            sendReloadMessage(sender, "<red>[FAIL] force reload is unavailable during bootstrap</red>");
+            return;
+        }
+        sendReloadMessage(sender, "<yellow>Force reload: cancelling all running dungeons before reloading...</yellow>");
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            List<UUID> active = generation.instances().stream()
+                    .filter(instance -> instance.status() != GenerationService.InstanceStatus.DESTROYED)
+                    .map(GenerationService.InstanceSnapshot::instanceId).toList();
+            active.forEach(instanceId -> {
+                preparationCancel.accept(instanceId);
+                generation.cancel(instanceId);
             });
+            sendReloadMessage(sender, "<yellow>Force reload requested for <white>" + active.size()
+                    + "</white> dungeon(s); waiting for cleanup...</yellow>");
+            awaitForceReload(sender, 0);
         });
+    }
+
+    private void awaitForceReload(CommandSender sender, int polls) {
+        if (reservations.activeReservationCount() == 0) {
+            reloadAsync(sender);
+            return;
+        }
+        if (polls >= FORCE_RELOAD_MAX_POLLS) {
+            sendReloadMessage(sender, "<red>[FAIL] force reload timed out while waiting for dungeon cleanup</red>");
+            return;
+        }
+        plugin.getServer().getScheduler().runTaskLater(plugin, () -> awaitForceReload(sender, polls + 1), 1L);
+    }
+
+    private void reloadAsync(CommandSender sender) {
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                ConfigRegistryService.ReloadResult result = reservations.withAdmissionPaused(configRegistry::reload);
+                plugin.getServer().getScheduler().runTask(plugin, () -> reportReload(sender, result));
+            } catch (RuntimeException exception) {
+                plugin.getServer().getScheduler().runTask(plugin, () -> sendReloadMessage(sender,
+                        "<red>[FAIL] reload: " + exception.getMessage() + "</red>"));
+            }
+        });
+    }
+
+    private void reportReload(CommandSender sender, ConfigRegistryService.ReloadResult result) {
+        result.warnings().forEach(warning -> sendReloadMessage(sender, "<yellow>[WARN] " + warning + "</yellow>"));
+        result.errors().forEach(error -> sendReloadMessage(sender, "<red>[FAIL] reload: " + error + "</red>"));
+        if (result.swapped()) {
+            sendReloadMessage(sender, "<green>[PASS] active hash=" + result.snapshot().hash() + "</green>");
+        } else if (result.errors().stream().anyMatch(error -> error.contains("reservation(s) are active"))) {
+            sendReloadMessage(sender, "<red>Reload refused because a dungeon is active. Use "
+                    + "<click:suggest_command:'/dungeon reload force'><aqua>/dungeon reload force</aqua></click>"
+                    + " to cancel all running dungeons and reload.</red>");
+        }
+    }
+
+    private static void sendReloadMessage(CommandSender sender, String miniMessage) {
+        sender.sendMessage(MiniMessageUtils.miniMessage(miniMessage));
     }
 
     @Subcommand("floor info")

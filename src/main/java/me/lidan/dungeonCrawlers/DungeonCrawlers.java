@@ -33,6 +33,8 @@ import me.lidan.dungeonCrawlers.core.protection.TeleportPermitService;
 import me.lidan.dungeonCrawlers.core.protection.WorldProtectionService;
 import me.lidan.dungeonCrawlers.core.snapshot.PlayerSnapshotService;
 import me.lidan.dungeonCrawlers.core.secret.SecretDiscoveryService;
+import me.lidan.dungeonCrawlers.core.portal.PortalEncounterService;
+import me.lidan.dungeonCrawlers.core.encounter.EncounterFactoryRegistry;
 import me.lidan.dungeonCrawlers.core.update.CentralUpdateService;
 import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
 import me.lidan.dungeonCrawlers.core.state.StateTransitionService;
@@ -41,12 +43,16 @@ import me.lidan.dungeonCrawlers.core.template.TemplateValidator;
 import me.lidan.dungeonCrawlers.commands.DungeonPhaseFourCommand;
 import me.lidan.dungeonCrawlers.commands.DungeonPhaseSevenCommand;
 import me.lidan.dungeonCrawlers.commands.DungeonPhaseEightCommand;
+import me.lidan.dungeonCrawlers.commands.DungeonPhaseNineCommand;
 import me.lidan.dungeonCrawlers.commands.BlessingIdSuggestionProvider;
 import me.lidan.dungeonCrawlers.integration.BukkitChunkTicketService;
 import me.lidan.dungeonCrawlers.integration.BukkitCombatListener;
 import me.lidan.dungeonCrawlers.integration.BukkitCombatMobGateway;
 import me.lidan.dungeonCrawlers.integration.BukkitEntityIdentity;
 import me.lidan.dungeonCrawlers.integration.BukkitProgressBarService;
+import me.lidan.dungeonCrawlers.integration.BukkitBossGateway;
+import me.lidan.dungeonCrawlers.integration.BukkitBossIdentity;
+import me.lidan.dungeonCrawlers.integration.BukkitPortalBossListener;
 import me.lidan.dungeonCrawlers.integration.ThrottledDungeonActionBar;
 import me.lidan.dungeonCrawlers.integration.BukkitWorldProtectionListener;
 import me.lidan.dungeonCrawlers.integration.BukkitDungeonRunListener;
@@ -106,6 +112,8 @@ public final class DungeonCrawlers extends JavaPlugin {
     private DungeonPhaseFiveCommand phaseFiveCommand;
     private BukkitProgressBarService progressBars;
     private SecretDiscoveryService phaseSeven;
+    private PortalEncounterService phaseNine;
+    private BukkitBossIdentity bossIdentity;
     private PlayerLifecycleService lifecycle;
     private volatile boolean disabling;
 
@@ -240,11 +248,65 @@ public final class DungeonCrawlers extends JavaPlugin {
                 }, getLogger()::warning, instanceId -> {
                     if (lifecycle != null) lifecycle.cleanup(instanceId);
                     if (phaseSeven != null) phaseSeven.cleanup(instanceId);
+                    if (phaseNine != null) phaseNine.cleanup(instanceId);
                     combat.cleanup(instanceId);
                     generation.cancel(instanceId);
                 }, true);
         phaseSeven = new SecretDiscoveryService(configRegistry::snapshot);
         lifecycle = new PlayerLifecycleService(centralUpdates, phaseClock(), this::handleLifecycleNotice);
+        bossIdentity = new BukkitBossIdentity(this);
+        phaseNine = new PortalEncounterService(centralUpdates, runPreparation,
+                EncounterFactoryRegistry.withBasic(),
+                new BukkitBossGateway(getServer(), this::generationWorld, new MythicMobsAdapter(), bossIdentity),
+                new PortalEncounterService.ParticipantGateway() {
+                    @Override
+                    public java.util.List<UUID> activePlayers(UUID instanceId) {
+                        return runPreparation.info(instanceId).map(snapshot -> snapshot.participants().stream()
+                                .filter(playerId -> getServer().getPlayer(playerId) != null)
+                                .filter(playerId -> lifecycle.player(instanceId, playerId)
+                                        .map(value -> value.state() == PlayerLifecycleService.PlayerState.ALIVE)
+                                        .orElse(true))
+                                .sorted().toList()).orElse(java.util.List.of());
+                    }
+
+                    @Override
+                    public boolean teleport(UUID playerId, me.lidan.dungeonCrawlers.core.template.TemplateModels.Point target) {
+                        Player player = getServer().getPlayer(playerId);
+                        org.bukkit.World world = generationWorld();
+                        if (player == null) return false;
+                        teleportPermits.authorize(playerId, java.util.Set.of(
+                                new TeleportPermitService.Destination(generationWorldName,
+                                        new me.lidan.dungeonCrawlers.core.template.TemplateModels.Point(
+                                                target.x(), target.y() + 1, target.z()))),
+                                phaseClock().instant().plus(java.time.Duration.ofSeconds(5)));
+                        return player.teleport(new org.bukkit.Location(world, target.x() + 0.5,
+                                target.y() + 1.0, target.z() + 0.5));
+                    }
+
+                    @Override
+                    public String displayName(UUID playerId) {
+                        Player player = getServer().getPlayer(playerId);
+                        if (player != null && !player.getDisplayName().isBlank()) return player.getDisplayName();
+                        String name = getServer().getOfflinePlayer(playerId).getName();
+                        return name == null || name.isBlank() ? playerId.toString() : name;
+                    }
+
+                    @Override
+                    public void notice(UUID instanceId, String miniMessage) {
+                        runPreparation.info(instanceId).ifPresent(snapshot -> snapshot.participants().stream()
+                                .map(getServer()::getPlayer).filter(java.util.Objects::nonNull)
+                                .forEach(player -> player.sendMessage(MiniMessageUtils.miniMessage(miniMessage))));
+                    }
+
+                    @Override
+                    public void title(UUID instanceId, String miniMessageTitle, String miniMessageSubtitle) {
+                        runPreparation.info(instanceId).ifPresent(snapshot -> snapshot.participants().stream()
+                                .map(getServer()::getPlayer).filter(java.util.Objects::nonNull)
+                                .forEach(player -> player.showTitle(Title.title(
+                                        MiniMessageUtils.miniMessage(miniMessageTitle),
+                                        MiniMessageUtils.miniMessage(miniMessageSubtitle), 0, 20, 5))));
+                    }
+                }, phaseClock(), getLogger()::warning);
     }
 
     private int configuredBackupRetention() {
@@ -343,11 +405,11 @@ public final class DungeonCrawlers extends JavaPlugin {
                 generation, runPreparation, playerSnapshots, teleportPermits, getServer(), this, phaseClock(),
                 generationWorldName,
                 new ThrottledDungeonActionBar(new BukkitDungeonActionBar(new CaveActionBarAdapter()), phaseClock()),
-                combat, progressBars, phaseSeven, lifecycle);
+                combat, progressBars, phaseSeven, lifecycle, phaseNine);
         Lamp<BukkitCommandActor> commandHandler = commandHandlerBuilder.build();
         commandHandler.register(new DungeonCrawlersCommand(this,
                 new CompatibilityService(this, mainConfig, configRegistry), mainConfig, configRegistry,
-                reservations, durableRepository));
+                reservations, durableRepository, generation, phaseFiveCommand::cancelFromAdmin));
         commandHandler.register(new DungeonAuthoringCommand(this, mainConfig, configRegistry, reservations, authoring,
                 generation::activeTemplateIds, progressBars));
         commandHandler.register(new DungeonGenerationCommand(configRegistry,
@@ -358,6 +420,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         commandHandler.register(new DungeonPhaseSixCommand(combat, runPreparation));
         commandHandler.register(new DungeonPhaseSevenCommand(phaseSeven, runPreparation));
         commandHandler.register(new DungeonPhaseEightCommand(lifecycle, runPreparation, phaseFiveCommand));
+        commandHandler.register(new DungeonPhaseNineCommand(phaseNine, runPreparation));
         commandHandler.register(new DungeonPhaseFourCommand(centralUpdates, doors, protectionPolicy,
                 teleportPermits, playerSnapshots, getServer(), this, phaseClock(),
                 generationWorldName,
@@ -372,7 +435,9 @@ public final class DungeonCrawlers extends JavaPlugin {
         registerEvent(new BukkitDungeonRunListener(phaseFiveCommand, runPreparation, generationWorldName, phaseSeven));
         registerEvent(new BukkitDungeonLifecycleListener(lifecycle, runPreparation, this, phaseClock(),
                 phaseFiveCommand::recoverOnJoin, phaseFiveCommand::leaveFromSpawn));
-        registerEvent(new BukkitCombatListener(combat, entityIdentity, generationWorldName, () -> disabling));
+        registerEvent(new BukkitCombatListener(combat, entityIdentity, generationWorldName, () -> disabling,
+                bossIdentity, phaseNine));
+        registerEvent(new BukkitPortalBossListener(phaseNine, runPreparation, generationWorldName));
         // PlugMan-style reloads do not emit PlayerJoinEvent; repair any durable snapshots for players
         // who stayed online while the plugin was restarted.
         Bukkit.getOnlinePlayers().forEach(phaseFiveCommand::recoverOnJoin);
@@ -488,6 +553,7 @@ public final class DungeonCrawlers extends JavaPlugin {
             lifecycle.cleanupAll();
         }
         if (phaseSeven != null) phaseSeven.cleanupAll();
+        if (phaseNine != null) phaseNine.cleanupAll();
         if (combat != null) combat.cleanupAll();
         if (generation != null) generation.freezeForDisable();
         if (centralUpdates != null) centralUpdates.clear();

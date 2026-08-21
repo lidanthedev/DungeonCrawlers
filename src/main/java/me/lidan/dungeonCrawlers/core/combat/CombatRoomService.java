@@ -117,9 +117,15 @@ public final class CombatRoomService {
         MutableRoom previous = room(instance, link.fromIndex()).orElse(null);
         MutableRoom target = room(instance, link.toIndex()).orElse(null);
         if (previous == null) return ActivationResult.failure("combat door source room is missing");
-        if (target == null) return ActivationResult.failure("door target is not a combat room");
         if (previous.state != RoomState.CLEARED) {
             return ActivationResult.failure("previous room " + previous.room.index() + " is not cleared");
+        }
+        // The final combat link terminates at the generated portal room, which
+        // intentionally has no CombatRoom state of its own.  Once the preceding
+        // room is cleared, opening that link simply unlocks the portal entrance.
+        if (target == null) {
+            return ActivationResult.success("portal room ready", snapshot(instance))
+                    .withOpenedDoorBlocks(link.triggerBlocks());
         }
         ActivationResult result = activate(instance, target.room.index());
         return result.successful() ? result.withOpenedDoorBlocks(link.triggerBlocks()) : result;
