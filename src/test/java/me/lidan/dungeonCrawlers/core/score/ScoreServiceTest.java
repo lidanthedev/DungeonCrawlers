@@ -4,8 +4,10 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 class ScoreServiceTest {
     private final ScoreService service = new ScoreService();
@@ -36,6 +38,41 @@ class ScoreServiceTest {
         assertEquals(100, result.bonus());
         assertEquals(List.of("same", "extra"), result.bonusFacts().stream().map(ScoreService.BonusFact::key).toList());
         assertEquals("first", result.bonusFacts().getFirst().detail());
+    }
+
+    @Test
+    void finalReportEvaluatesProvidersOnceAndCanBeReused() {
+        AtomicInteger calls = new AtomicInteger();
+        ScoreService.BonusProvider provider = new ScoreService.BonusProvider() {
+            @Override public String id() { return "once"; }
+            @Override public int priority() { return 0; }
+            @Override public List<ScoreService.BonusFact> evaluate(ScoreService.ScoreSnapshot snapshot) {
+                calls.incrementAndGet();
+                return List.of(new ScoreService.BonusFact("once", 7, "one-time"));
+            }
+        };
+
+        ScoreService.ScoreReport report = service.calculateReport(
+                new ScoreService.ScoreInput(true, 2, Duration.ofMinutes(8), 11, 12), List.of(provider));
+
+        assertEquals(1, calls.get());
+        assertEquals(7, report.result().bonus());
+        assertEquals(report.result(), report.result());
+        assertSame(report.finalSnapshot(), report.finalSnapshot());
+    }
+
+    @Test
+    void providerRegistryRejectsDuplicateIdsAndOrdersProviders() {
+        ScoreService.BonusProviderRegistry registry = new ScoreService.BonusProviderRegistry();
+        ScoreService.BonusProvider first = provider("first", 10, List.of());
+        ScoreService.BonusProvider earlier = provider("earlier", 0, List.of());
+        registry.register(first);
+        registry.register(earlier);
+
+        assertEquals(List.of("earlier", "first"), registry.providers().stream()
+                .map(ScoreService.BonusProvider::id).toList());
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> registry.register(provider("first", 1, List.of())));
     }
 
     private ScoreService.ScoreResult score(boolean success, int deaths, long minutes, int found, int total) {

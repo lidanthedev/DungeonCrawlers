@@ -12,6 +12,7 @@ import me.lidan.dungeonCrawlers.core.generation.GenerationService;
 import me.lidan.dungeonCrawlers.core.party.PartySnapshot;
 import me.lidan.dungeonCrawlers.core.reservation.PlayerReservationService;
 import me.lidan.dungeonCrawlers.core.score.ScoreService;
+import me.lidan.dungeonCrawlers.core.score.ScoreResultRenderer;
 import me.lidan.dungeonCrawlers.core.state.InstanceState;
 import me.lidan.dungeonCrawlers.core.state.StateTransitionService;
 import me.lidan.dungeonCrawlers.integration.CaveItemsGateway;
@@ -247,11 +248,9 @@ public final class DungeonCrawlersCommand {
     public void scoreSimulate(CommandSender sender, boolean successful, int deaths, long elapsedMinutes,
                               int foundSecrets, int totalSecrets) {
         try {
-            var result = scores.calculate(new ScoreService.ScoreInput(successful, deaths,
+            var report = scores.calculateReport(new ScoreService.ScoreInput(successful, deaths,
                     Duration.ofMinutes(elapsedMinutes), foundSecrets, totalSecrets), List.of());
-            sender.sendMessage("[PASS] skill=" + result.skill() + ", time=" + result.time()
-                    + ", exploration=" + result.exploration() + ", bonus=" + result.bonus()
-                    + ", total=" + result.total() + ", rank=" + result.rank());
+            sender.sendMessage(ScoreResultRenderer.render(report));
         } catch (IllegalArgumentException | ArithmeticException exception) {
             sender.sendMessage("[FAIL] " + exception.getMessage());
         }
