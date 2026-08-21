@@ -377,7 +377,8 @@ public final class DungeonCrawlers extends JavaPlugin {
         commandHandler.register(new DungeonPhaseSixCommand(combat, runPreparation));
         commandHandler.register(new DungeonPhaseSevenCommand(phaseSeven, runPreparation));
         commandHandler.register(new DungeonPhaseEightCommand(lifecycle, runPreparation, phaseFiveCommand));
-        commandHandler.register(new DungeonPhaseNineCommand(phaseNine, runPreparation));
+        commandHandler.register(new DungeonPhaseNineCommand(phaseNine, runPreparation,
+                phaseFiveCommand::cancelFromAdmin));
         commandHandler.register(new DungeonPhaseFourCommand(centralUpdates, doors, protectionPolicy,
                 teleportPermits, playerSnapshots, getServer(), this, phaseClock(),
                 generationWorldName,

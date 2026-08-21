@@ -10,16 +10,24 @@ import revxrsal.commands.annotation.SuggestWith;
 import revxrsal.commands.bukkit.annotation.CommandPermission;
 
 import java.util.UUID;
+import java.util.function.Consumer;
 
 /** Administrative portal and boss encounter diagnostics for Phase 9. */
 @Command("dungeon")
 public final class DungeonPhaseNineCommand {
     private final PortalEncounterService encounters;
     private final RunPreparationService runs;
+    private final Consumer<UUID> cleanupRun;
 
     public DungeonPhaseNineCommand(PortalEncounterService encounters, RunPreparationService runs) {
+        this(encounters, runs, ignored -> { });
+    }
+
+    public DungeonPhaseNineCommand(PortalEncounterService encounters, RunPreparationService runs,
+                                   Consumer<UUID> cleanupRun) {
         this.encounters = java.util.Objects.requireNonNull(encounters, "encounters");
         this.runs = java.util.Objects.requireNonNull(runs, "runs");
+        this.cleanupRun = java.util.Objects.requireNonNull(cleanupRun, "cleanupRun");
     }
 
     @Subcommand("portal start")
@@ -84,6 +92,7 @@ public final class DungeonPhaseNineCommand {
         UUID id = parse(sender, instanceId);
         if (id == null) return;
         if (encounters.cleanup(id)) {
+            cleanupRun.accept(id);
             sender.sendMessage(MiniMessageUtils.miniMessage("<green>[PASS] boss and portal encounter cleaned</green>"));
         } else {
             sender.sendMessage(MiniMessageUtils.miniMessage("<red>[FAIL] no portal encounter registered for instance " + id + "</red>"));

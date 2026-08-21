@@ -72,9 +72,13 @@ class PortalEncounterServiceTest {
         assertEquals("<red><bold>Boss Starting</bold></red>|<yellow>In <white>4</white> seconds</yellow>",
                 participants.titles.getLast());
         updates.tick(START.plusSeconds(5));
+        var preparing = service.info(instance).orElseThrow();
+        assertEquals(PortalEncounterService.Status.BOSS, preparing.status());
+        assertEquals(1, participants.teleports.size());
+        assertEquals(0, entities.spawnCount);
+        updates.tick(START.plusSeconds(6));
         var started = service.info(instance).orElseThrow();
         assertEquals(PortalEncounterService.Status.BOSS, started.status());
-        assertEquals(1, participants.teleports.size());
         assertEquals(1, entities.spawnCount);
         updates.tick(START.plusSeconds(5));
         assertEquals(1, entities.spawnCount);
@@ -101,6 +105,7 @@ class PortalEncounterServiceTest {
 
         assertTrue(service.register(instance, floor("multi"), plan(instance)).successful());
         assertTrue(service.startBoss(instance).successful());
+        updates.tick(START.plusSeconds(1));
         UUID boss = service.info(instance).orElseThrow().bossEntity();
         assertTrue(service.onBossDeath(instance, boss).accepted());
         assertEquals(PortalEncounterService.Status.BOSS, service.info(instance).orElseThrow().status());
@@ -127,9 +132,13 @@ class PortalEncounterServiceTest {
                 new FakeParticipants(player), EncounterFactoryRegistry.withTestFactories());
 
         assertTrue(service.register(instance, floor("factory_failure_test"), plan(instance)).successful());
-        var result = service.startBoss(instance);
-        assertFalse(result.successful());
+        var startResult = service.startBoss(instance);
+        assertTrue(startResult.successful());
+        updates.tick(START.plusSeconds(1));
+        var result = service.status(instance);
+        assertTrue(result.successful());
         assertEquals("IllegalStateException: factory failure test", result.detail());
+        assertEquals(PortalEncounterService.Status.FAILED, result.snapshot().status());
         assertEquals(PortalEncounterService.Status.FAILED, service.info(instance).orElseThrow().status());
         assertEquals(0, entities.spawnCount);
         assertEquals(RunPreparationService.RunState.FAILED, runs.info(instance).orElseThrow().state());

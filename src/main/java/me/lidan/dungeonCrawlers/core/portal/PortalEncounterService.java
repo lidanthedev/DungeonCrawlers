@@ -26,6 +26,7 @@ import java.util.function.Consumer;
 /** Owns the portal countdown and the isolated boss encounter for a generated run. */
 public final class PortalEncounterService {
     public static final Duration PORTAL_COUNTDOWN = Duration.ofSeconds(5);
+    public static final Duration BOSS_SPAWN_DELAY = Duration.ofSeconds(1);
 
     private final CentralUpdateService updates;
     private final RunPreparationService runs;
@@ -250,6 +251,13 @@ public final class PortalEncounterService {
                     announceCountdown(state, remainingSeconds);
                 }
             }
+            if (state.status == Status.BOSS && state.encounter == null) {
+                if (state.bossSpawnAt != null && !now.isBefore(state.bossSpawnAt)) {
+                    state.bossSpawnAt = null;
+                    spawnBoss(state);
+                }
+                return;
+            }
             if (state.status != Status.BOSS || state.encounter == null) return;
             EncounterFactory.TickResult result = state.encounter.tick(now);
             if (!result.successful()) {
@@ -281,25 +289,46 @@ public final class PortalEncounterService {
                     return failStart(state, "boss teleport failed for " + active.get(index));
                 }
             }
-            EncounterFactory factory = factories.factory(state.floor.encounterId()).orElse(null);
-            if (factory == null) return failStart(state, "unknown encounter factory: " + state.floor.encounterId());
-            state.encounter = factory.create(new EncounterFactory.EncounterContext(state.instanceId,
-                    state.floor.encounterId(), state.floor.bossMob(), state.bossSpawn, entities,
-                    message -> diagnostics.accept("instance=" + state.instanceId + " " + message)));
-            if (state.encounter == null) return failStart(state, "encounter factory returned null");
-            EncounterFactory.StartResult started = state.encounter.start();
-            if (!started.successful()) return failStart(state, started.detail());
+            state.bossSpawnAt = clock.instant().plus(BOSS_SPAWN_DELAY);
         } catch (RuntimeException exception) {
             return failStart(state, exception.getClass().getSimpleName() + ": " + exception.getMessage());
         }
         state.status = Status.BOSS;
+        state.detail = "boss encounter preparing encounter=" + state.floor.encounterId();
+        return PortalResult.success(state.detail, snapshot(state));
+    }
+
+    private void spawnBoss(MutableInstance state) {
+        try {
+            EncounterFactory factory = factories.factory(state.floor.encounterId()).orElse(null);
+            if (factory == null) {
+                failStart(state, "unknown encounter factory: " + state.floor.encounterId());
+                return;
+            }
+            state.encounter = factory.create(new EncounterFactory.EncounterContext(state.instanceId,
+                    state.floor.encounterId(), state.floor.bossMob(), state.bossSpawn, entities,
+                    message -> diagnostics.accept("instance=" + state.instanceId + " " + message)));
+            if (state.encounter == null) {
+                failStart(state, "encounter factory returned null");
+                return;
+            }
+            EncounterFactory.StartResult started = state.encounter.start();
+            if (!started.successful()) {
+                failStart(state, started.detail());
+                return;
+            }
+        } catch (RuntimeException exception) {
+            failStart(state, exception.getClass().getSimpleName() + ": " + exception.getMessage());
+            return;
+        }
+        state.status = Status.BOSS;
         state.detail = "boss encounter active encounter=" + state.floor.encounterId();
         participants.notice(state.instanceId, "<red>Boss encounter started.</red>");
-        return PortalResult.success(state.detail, snapshot(state));
     }
 
     private PortalResult failStart(MutableInstance state, String detail) {
         state.status = Status.FAILED;
+        state.bossSpawnAt = null;
         state.detail = detail;
         runs.fail(state.instanceId, detail);
         updates.removeSupplemental(state.instanceId, state.callback);
@@ -429,6 +458,7 @@ public final class PortalEncounterService {
         private final Point bossSpawn;
         private final Point rewardChest;
         private java.util.function.Consumer<Instant> callback;
+        private Instant bossSpawnAt;
         private Status status = Status.IDLE;
         private UUID owner;
         private Instant deadline;
