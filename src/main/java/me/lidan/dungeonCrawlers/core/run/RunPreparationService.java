@@ -171,6 +171,51 @@ public final class RunPreparationService {
         return DoorInteractionResult.success(opened.detail(), opened.door(), run.snapshot());
     }
 
+    /** Transitions a started run into the isolated boss encounter. */
+    public synchronized PhaseResult enterBoss(UUID instanceId) {
+        MutableRun run = runs.get(Objects.requireNonNull(instanceId, "instanceId"));
+        if (run == null) return PhaseResult.failure("unknown run " + instanceId);
+        if (run.state == RunState.BOSS) return PhaseResult.success("boss encounter already active", run.snapshot());
+        if (run.state != RunState.RUNNING) return PhaseResult.failure("run is not running: " + run.state);
+        StateTransitionService.TransitionResult transition = transitions.transition(
+                InstanceState.RUNNING, InstanceState.BOSS);
+        if (!transition.accepted()) return PhaseResult.failure(transition.detail());
+        run.state = RunState.BOSS;
+        return PhaseResult.success("boss encounter started", run.snapshot());
+    }
+
+    /** Freezes progression while the final completion record is prepared. */
+    public synchronized PhaseResult enterCompletionPending(UUID instanceId) {
+        MutableRun run = runs.get(Objects.requireNonNull(instanceId, "instanceId"));
+        if (run == null) return PhaseResult.failure("unknown run " + instanceId);
+        if (run.state == RunState.COMPLETION_PENDING) {
+            return PhaseResult.success("completion already pending", run.snapshot());
+        }
+        if (run.state != RunState.BOSS) return PhaseResult.failure("run is not in BOSS: " + run.state);
+        StateTransitionService.TransitionResult transition = transitions.transition(
+                InstanceState.BOSS, InstanceState.COMPLETION_PENDING);
+        if (!transition.accepted()) return PhaseResult.failure(transition.detail());
+        run.state = RunState.COMPLETION_PENDING;
+        return PhaseResult.success("boss defeated; completion pending", run.snapshot());
+    }
+
+    /** Marks an active run failed without performing cleanup. */
+    public synchronized PhaseResult fail(UUID instanceId, String detail) {
+        MutableRun run = runs.get(Objects.requireNonNull(instanceId, "instanceId"));
+        Objects.requireNonNull(detail, "detail");
+        if (run == null) return PhaseResult.failure("unknown run " + instanceId);
+        if (run.state == RunState.FAILED) return PhaseResult.success("run already failed: " + detail, run.snapshot());
+        if (run.state != RunState.RUNNING && run.state != RunState.BOSS) {
+            return PhaseResult.failure("run cannot fail from " + run.state);
+        }
+        StateTransitionService.TransitionResult transition = transitions.transition(
+                run.state == RunState.RUNNING ? InstanceState.RUNNING : InstanceState.BOSS,
+                InstanceState.FAILED);
+        if (!transition.accepted()) return PhaseResult.failure(transition.detail());
+        run.state = RunState.FAILED;
+        return PhaseResult.success(detail, run.snapshot());
+    }
+
     public synchronized Optional<DoorBlockLookup> doorAt(Point point) {
         return doors.lookup(Objects.requireNonNull(point, "point"))
                 .map(block -> new DoorBlockLookup(block.instanceId(), block.state()));
@@ -247,7 +292,7 @@ public final class RunPreparationService {
         return throwable.getMessage() == null ? throwable.getClass().getSimpleName() : throwable.getMessage();
     }
 
-    public enum RunState { PREPARING, RUNNING }
+    public enum RunState { PREPARING, RUNNING, BOSS, COMPLETION_PENDING, FAILED }
 
     public record DoorBlockLookup(UUID instanceId, DoorService.DoorState state) {
         public DoorBlockLookup { Objects.requireNonNull(instanceId); Objects.requireNonNull(state); }
@@ -271,6 +316,14 @@ public final class RunPreparationService {
             return new PreparationResult(true, detail, snapshot);
         }
         public static PreparationResult failure(String detail) { return new PreparationResult(false, detail, null); }
+    }
+
+    public record PhaseResult(boolean successful, String detail, RunSnapshot snapshot) {
+        public PhaseResult { Objects.requireNonNull(detail); }
+        public static PhaseResult success(String detail, RunSnapshot snapshot) {
+            return new PhaseResult(true, detail, snapshot);
+        }
+        public static PhaseResult failure(String detail) { return new PhaseResult(false, detail, null); }
     }
 
     public record ClassSelectionResult(boolean successful, String detail, RunSnapshot snapshot,

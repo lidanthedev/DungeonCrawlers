@@ -33,6 +33,8 @@ import me.lidan.dungeonCrawlers.core.protection.TeleportPermitService;
 import me.lidan.dungeonCrawlers.core.protection.WorldProtectionService;
 import me.lidan.dungeonCrawlers.core.snapshot.PlayerSnapshotService;
 import me.lidan.dungeonCrawlers.core.secret.SecretDiscoveryService;
+import me.lidan.dungeonCrawlers.core.portal.PortalEncounterService;
+import me.lidan.dungeonCrawlers.core.encounter.EncounterFactoryRegistry;
 import me.lidan.dungeonCrawlers.core.update.CentralUpdateService;
 import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
 import me.lidan.dungeonCrawlers.core.state.StateTransitionService;
@@ -41,12 +43,17 @@ import me.lidan.dungeonCrawlers.core.template.TemplateValidator;
 import me.lidan.dungeonCrawlers.commands.DungeonPhaseFourCommand;
 import me.lidan.dungeonCrawlers.commands.DungeonPhaseSevenCommand;
 import me.lidan.dungeonCrawlers.commands.DungeonPhaseEightCommand;
+import me.lidan.dungeonCrawlers.commands.DungeonPhaseNineCommand;
 import me.lidan.dungeonCrawlers.commands.BlessingIdSuggestionProvider;
 import me.lidan.dungeonCrawlers.integration.BukkitChunkTicketService;
 import me.lidan.dungeonCrawlers.integration.BukkitCombatListener;
 import me.lidan.dungeonCrawlers.integration.BukkitCombatMobGateway;
 import me.lidan.dungeonCrawlers.integration.BukkitEntityIdentity;
 import me.lidan.dungeonCrawlers.integration.BukkitProgressBarService;
+import me.lidan.dungeonCrawlers.integration.BukkitBossGateway;
+import me.lidan.dungeonCrawlers.integration.BukkitBossIdentity;
+import me.lidan.dungeonCrawlers.integration.BukkitPortalBossListener;
+import me.lidan.dungeonCrawlers.integration.BukkitPortalParticipantGateway;
 import me.lidan.dungeonCrawlers.integration.ThrottledDungeonActionBar;
 import me.lidan.dungeonCrawlers.integration.BukkitWorldProtectionListener;
 import me.lidan.dungeonCrawlers.integration.BukkitDungeonRunListener;
@@ -106,6 +113,9 @@ public final class DungeonCrawlers extends JavaPlugin {
     private DungeonPhaseFiveCommand phaseFiveCommand;
     private BukkitProgressBarService progressBars;
     private SecretDiscoveryService phaseSeven;
+    private PortalEncounterService phaseNine;
+    private BukkitBossIdentity bossIdentity;
+    private MythicMobsAdapter mythicMobs;
     private PlayerLifecycleService lifecycle;
     private volatile boolean disabling;
 
@@ -224,11 +234,12 @@ public final class DungeonCrawlers extends JavaPlugin {
         int maximumTotal = Math.multiplyExact(maximumPerInstance, generation.slots().size());
         org.bukkit.World world = getServer().getWorld(worldName);
         if (world == null) throw new IllegalStateException("generation world disappeared during Phase 4 setup");
+        mythicMobs = new MythicMobsAdapter();
         chunkTickets = new BukkitChunkTicketService(this, world,
                 new ChunkTicketBudget(maximumPerInstance, maximumTotal));
         combat = new CombatRoomService(
                 new BukkitCombatMobGateway(getServer(), this::generationWorld,
-                        new MythicMobsAdapter(), entityIdentity),
+                        mythicMobs, entityIdentity),
                 chunkTickets, getLogger()::info, this::notifyCombatRoom);
         runPreparation = new RunPreparationService(doors, centralUpdates, new StateTransitionService(), phaseClock(),
                 instanceId -> {
@@ -240,11 +251,19 @@ public final class DungeonCrawlers extends JavaPlugin {
                 }, getLogger()::warning, instanceId -> {
                     if (lifecycle != null) lifecycle.cleanup(instanceId);
                     if (phaseSeven != null) phaseSeven.cleanup(instanceId);
+                    if (phaseNine != null) phaseNine.cleanup(instanceId);
                     combat.cleanup(instanceId);
                     generation.cancel(instanceId);
                 }, true);
         phaseSeven = new SecretDiscoveryService(configRegistry::snapshot);
         lifecycle = new PlayerLifecycleService(centralUpdates, phaseClock(), this::handleLifecycleNotice);
+        bossIdentity = new BukkitBossIdentity(this);
+        phaseNine = new PortalEncounterService(centralUpdates, runPreparation,
+                EncounterFactoryRegistry.withBasic(),
+                new BukkitBossGateway(getServer(), this::generationWorld, mythicMobs, bossIdentity),
+                new BukkitPortalParticipantGateway(getServer(), this::generationWorld, generationWorldName,
+                        runPreparation, lifecycle, teleportPermits, phaseClock()),
+                phaseClock(), getLogger()::warning);
     }
 
     private int configuredBackupRetention() {
@@ -343,11 +362,11 @@ public final class DungeonCrawlers extends JavaPlugin {
                 generation, runPreparation, playerSnapshots, teleportPermits, getServer(), this, phaseClock(),
                 generationWorldName,
                 new ThrottledDungeonActionBar(new BukkitDungeonActionBar(new CaveActionBarAdapter()), phaseClock()),
-                combat, progressBars, phaseSeven, lifecycle);
+                new DungeonPhaseFiveCommand.PhaseServices(combat, progressBars, phaseSeven, lifecycle, phaseNine));
         Lamp<BukkitCommandActor> commandHandler = commandHandlerBuilder.build();
         commandHandler.register(new DungeonCrawlersCommand(this,
                 new CompatibilityService(this, mainConfig, configRegistry), mainConfig, configRegistry,
-                reservations, durableRepository));
+                reservations, durableRepository, generation, phaseFiveCommand::cancelFromAdmin));
         commandHandler.register(new DungeonAuthoringCommand(this, mainConfig, configRegistry, reservations, authoring,
                 generation::activeTemplateIds, progressBars));
         commandHandler.register(new DungeonGenerationCommand(configRegistry,
@@ -358,6 +377,8 @@ public final class DungeonCrawlers extends JavaPlugin {
         commandHandler.register(new DungeonPhaseSixCommand(combat, runPreparation));
         commandHandler.register(new DungeonPhaseSevenCommand(phaseSeven, runPreparation));
         commandHandler.register(new DungeonPhaseEightCommand(lifecycle, runPreparation, phaseFiveCommand));
+        commandHandler.register(new DungeonPhaseNineCommand(phaseNine, runPreparation,
+                phaseFiveCommand::cancelFromAdmin));
         commandHandler.register(new DungeonPhaseFourCommand(centralUpdates, doors, protectionPolicy,
                 teleportPermits, playerSnapshots, getServer(), this, phaseClock(),
                 generationWorldName,
@@ -372,7 +393,9 @@ public final class DungeonCrawlers extends JavaPlugin {
         registerEvent(new BukkitDungeonRunListener(phaseFiveCommand, runPreparation, generationWorldName, phaseSeven));
         registerEvent(new BukkitDungeonLifecycleListener(lifecycle, runPreparation, this, phaseClock(),
                 phaseFiveCommand::recoverOnJoin, phaseFiveCommand::leaveFromSpawn));
-        registerEvent(new BukkitCombatListener(combat, entityIdentity, generationWorldName, () -> disabling));
+        registerEvent(new BukkitCombatListener(combat, entityIdentity, generationWorldName, () -> disabling,
+                bossIdentity, phaseNine));
+        registerEvent(new BukkitPortalBossListener(this, phaseNine, runPreparation, generationWorldName));
         // PlugMan-style reloads do not emit PlayerJoinEvent; repair any durable snapshots for players
         // who stayed online while the plugin was restarted.
         Bukkit.getOnlinePlayers().forEach(phaseFiveCommand::recoverOnJoin);
@@ -488,6 +511,7 @@ public final class DungeonCrawlers extends JavaPlugin {
             lifecycle.cleanupAll();
         }
         if (phaseSeven != null) phaseSeven.cleanupAll();
+        if (phaseNine != null) phaseNine.cleanupAll();
         if (combat != null) combat.cleanupAll();
         if (generation != null) generation.freezeForDisable();
         if (centralUpdates != null) centralUpdates.clear();

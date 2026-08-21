@@ -187,7 +187,10 @@ public final class GenerationService {
                         placement.bounds(), placement.normalMobs(), placement.minibossMobs()))
                 .toList();
         List<RoomLink> links = instance.prepared.plan().connections().stream()
-                .filter(connection -> rooms.stream().anyMatch(room -> room.index() == connection.toIndex()))
+                // Combat owns doors leaving a combat room, including the terminal
+                // connection into the portal room.  The start door is handled by
+                // the preparation service and therefore has no combat source room.
+                .filter(connection -> rooms.stream().anyMatch(room -> room.index() == connection.fromIndex()))
                 .map(connection -> new RoomLink(connection.fromIndex(), connection.toIndex(),
                         union(connection.doorBounds(), connection.entranceBounds())))
                 .toList();

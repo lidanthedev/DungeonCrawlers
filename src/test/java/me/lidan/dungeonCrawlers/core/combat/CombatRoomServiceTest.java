@@ -45,6 +45,28 @@ class CombatRoomServiceTest {
     }
 
     @Test
+    void clearedFinalRoomOpensThePortalDoorWithoutACombatTarget() {
+        UUID instance = UUID.randomUUID();
+        FakeMobs mobs = new FakeMobs();
+        CombatRoomService service = new CombatRoomService(mobs, new FakeChunks(), ignored -> { });
+        assertTrue(service.register(plan(instance, 1)).successful());
+
+        assertTrue(service.activateFirst(instance).successful());
+        for (UUID entity : List.copyOf(mobs.entities)) {
+            assertTrue(service.onDeath(instance, 1, entity).accepted());
+        }
+        assertTrue(service.activateAt(new Point(2, 0, 0)).successful());
+        UUID finalEntity = service.info(instance).orElseThrow().rooms().get(1)
+                .requiredMobs().getFirst().entityId();
+        assertTrue(service.onDeath(instance, 2, finalEntity).accepted());
+
+        var portal = service.activateFromDoor(instance, new Point(7, 0, 0));
+        assertTrue(portal.successful());
+        assertEquals("portal room ready", portal.detail());
+        assertEquals(Set.of(new Point(7, 0, 0)), portal.openedDoorBlocks());
+    }
+
+    @Test
     void unexpectedRemovalRetriesAndExhaustionFailsRoom() {
         UUID instance = UUID.randomUUID();
         FakeMobs mobs = new FakeMobs();
@@ -150,7 +172,8 @@ class CombatRoomServiceTest {
                 new Bounds(new Point(5, 0, 0), new Point(9, 4, 4)), List.of(new Point(6, 1, 1)), List.of());
         return new GenerationService.CombatPlan(instance, 1, List.of(room1, room2),
                 List.of(new GenerationService.RoomLink(0, 1, Set.of(new Point(0, 0, 0))),
-                        new GenerationService.RoomLink(1, 2, Set.of(new Point(2, 0, 0)))),
+                        new GenerationService.RoomLink(1, 2, Set.of(new Point(2, 0, 0))),
+                        new GenerationService.RoomLink(2, 99, Set.of(new Point(7, 0, 0)))),
                 List.of("zombie"), List.of("mini"), retries);
     }
 

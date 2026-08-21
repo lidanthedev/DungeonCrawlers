@@ -12,10 +12,15 @@ import java.util.function.IntFunction;
 
 public final class PlayerReservationService {
     private final Map<UUID, PlayerIndexEntry> players = new HashMap<>();
+    private boolean admissionPaused;
 
     public synchronized ReservationResult reserve(UUID instanceId, PartySnapshot snapshot) {
         Objects.requireNonNull(instanceId, "instanceId");
         Objects.requireNonNull(snapshot, "snapshot");
+        if (admissionPaused) {
+            return new ReservationResult(false, instanceId, List.of(), List.of(),
+                    "reservation admission is paused for a forced reload");
+        }
         List<UUID> conflicts = snapshot.onlineMembers().stream().filter(players::containsKey).sorted().toList();
         if (!conflicts.isEmpty()) {
             return new ReservationResult(false, instanceId, List.of(), conflicts,
@@ -50,6 +55,16 @@ public final class PlayerReservationService {
 
     public synchronized int activeReservationCount() {
         return Math.toIntExact(players.values().stream().map(PlayerIndexEntry::instanceId).distinct().count());
+    }
+
+    /** Prevents new reservations while an administrator is cancelling runs for a forced reload. */
+    public synchronized void pauseAdmission() {
+        admissionPaused = true;
+    }
+
+    /** Reopens reservation admission after a forced reload completes or times out. */
+    public synchronized void resumeAdmission() {
+        admissionPaused = false;
     }
 
     /**

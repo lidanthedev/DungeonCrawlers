@@ -3,6 +3,7 @@ package me.lidan.dungeonCrawlers.integration;
 import com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent;
 import me.lidan.dungeonCrawlers.core.combat.CombatRoomService;
 import me.lidan.dungeonCrawlers.core.identity.EntityIdentity;
+import me.lidan.dungeonCrawlers.core.portal.PortalEncounterService;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -27,19 +28,19 @@ public final class BukkitCombatListener implements Listener {
     private final BukkitEntityIdentity identity;
     private final String generationWorldName;
     private final BooleanSupplier shuttingDown;
+    private final BukkitBossIdentity bossIdentity;
+    private final PortalEncounterService encounters;
     private final Set<UUID> unloadingWorlds = ConcurrentHashMap.newKeySet();
 
     public BukkitCombatListener(CombatRoomService combat, BukkitEntityIdentity identity,
-                                String generationWorldName) {
-        this(combat, identity, generationWorldName, () -> false);
-    }
-
-    public BukkitCombatListener(CombatRoomService combat, BukkitEntityIdentity identity,
-                                String generationWorldName, BooleanSupplier shuttingDown) {
+                                String generationWorldName, BooleanSupplier shuttingDown,
+                                BukkitBossIdentity bossIdentity, PortalEncounterService encounters) {
         this.combat = Objects.requireNonNull(combat, "combat");
         this.identity = Objects.requireNonNull(identity, "identity");
         this.generationWorldName = Objects.requireNonNull(generationWorldName, "generationWorldName");
         this.shuttingDown = Objects.requireNonNull(shuttingDown, "shuttingDown");
+        this.bossIdentity = Objects.requireNonNull(bossIdentity, "bossIdentity");
+        this.encounters = Objects.requireNonNull(encounters, "encounters");
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -62,6 +63,13 @@ public final class BukkitCombatListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onMobDeath(EntityDeathEvent event) {
+        if (bossIdentity != null && encounters != null) {
+            UUID bossInstance = bossIdentity.read(event.getEntity()).orElse(null);
+            if (bossInstance != null) {
+                encounters.onBossDeath(bossInstance, event.getEntity().getUniqueId());
+                return;
+            }
+        }
         EntityIdentity value = identity.read(event.getEntity()).orElse(null);
         if (value == null) return;
         combat.onDeath(value.instanceId(), value.roomIndex(), event.getEntity().getUniqueId());

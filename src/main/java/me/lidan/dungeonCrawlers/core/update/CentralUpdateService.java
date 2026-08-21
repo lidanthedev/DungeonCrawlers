@@ -94,6 +94,12 @@ public final class CentralUpdateService {
         return updates.size();
     }
 
+    public synchronized int callbackCount(UUID instanceId) {
+        Objects.requireNonNull(instanceId, "instanceId");
+        List<Consumer<Instant>> callbacks = updates.get(instanceId);
+        return callbacks == null ? 0 : callbacks.size();
+    }
+
     public synchronized void clear() {
         updates.clear();
     }
