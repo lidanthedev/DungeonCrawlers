@@ -131,8 +131,18 @@ public final class DungeonCrawlersCommand {
                     .filter(instance -> instance.status() != GenerationService.InstanceStatus.DESTROYED)
                     .map(GenerationService.InstanceSnapshot::instanceId).toList();
             active.forEach(instanceId -> {
-                preparationCancel.accept(instanceId);
-                generation.cancel(instanceId);
+                try {
+                    preparationCancel.accept(instanceId);
+                } catch (RuntimeException exception) {
+                    sendReloadMessage(sender, "<yellow>[WARN] cleanup callback failed for <white>"
+                            + instanceId + "</white>; continuing generation cancellation</yellow>");
+                }
+                try {
+                    generation.cancel(instanceId);
+                } catch (RuntimeException exception) {
+                    sendReloadMessage(sender, "<yellow>[WARN] generation cancellation failed for <white>"
+                            + instanceId + "</white>: " + exception.getMessage() + "</yellow>");
+                }
             });
             sendReloadMessage(sender, "<yellow>Force reload requested for <white>" + active.size()
                     + "</white> dungeon(s); waiting for cleanup...</yellow>");
@@ -141,13 +151,15 @@ public final class DungeonCrawlersCommand {
     }
 
     private void awaitForceReload(CommandSender sender, int polls) {
-        if (reservations.activeReservationCount() == 0) {
+        boolean instancesCleared = generation.instances().stream()
+                .allMatch(instance -> instance.status() == GenerationService.InstanceStatus.DESTROYED);
+        if (reservations.activeReservationCount() == 0 && instancesCleared) {
             reloadAsync(sender, reservations::resumeAdmission);
             return;
         }
         if (polls >= FORCE_RELOAD_MAX_POLLS) {
-            reservations.resumeAdmission();
-            sendReloadMessage(sender, "<red>[FAIL] force reload timed out while waiting for dungeon cleanup</red>");
+            sendReloadMessage(sender, "<red>[FAIL] force reload timed out while waiting for dungeon cleanup; "
+                    + "admission remains paused. Resolve the clearing instance and retry force reload.</red>");
             return;
         }
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> awaitForceReload(sender, polls + 1), 1L);
