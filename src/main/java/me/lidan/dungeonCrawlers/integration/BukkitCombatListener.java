@@ -42,7 +42,7 @@ public final class BukkitCombatListener implements Listener {
         this.shuttingDown = Objects.requireNonNull(shuttingDown, "shuttingDown");
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onRoomDoor(PlayerInteractEvent event) {
         if (event.getHand() == EquipmentSlot.OFF_HAND
                 || event.getAction() != Action.RIGHT_CLICK_BLOCK

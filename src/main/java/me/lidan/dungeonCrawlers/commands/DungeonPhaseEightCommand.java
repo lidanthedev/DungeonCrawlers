@@ -98,11 +98,11 @@ public final class DungeonPhaseEightCommand {
         sendResult(sender, result.successful(), "player=" + playerLabel(player) + " " + result.detail());
     }
 
-    private static UUID parse(CommandSender sender, String value) {
+    private UUID parse(CommandSender sender, String value) {
         try {
-            return UUID.fromString(value);
+            return DungeonInstanceResolver.require(sender, value, runs);
         } catch (IllegalArgumentException exception) {
-            send(sender, "<red>[FAIL] id must be a UUID</red>");
+            send(sender, "<red>[FAIL] " + exception.getMessage() + "</red>");
             return null;
         }
     }

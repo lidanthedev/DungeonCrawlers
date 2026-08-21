@@ -6,6 +6,7 @@ import me.lidan.dungeonCrawlers.core.generation.GenerationService;
 import me.lidan.dungeonCrawlers.core.generation.SlotAllocator;
 import me.lidan.dungeonCrawlers.core.party.PartySnapshotPolicy;
 import me.lidan.dungeonCrawlers.core.protection.TeleportPermitService;
+import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
 import me.lidan.dungeonCrawlers.integration.PartyProvider;
 import net.kyori.adventure.text.Component;
@@ -40,11 +41,12 @@ public final class DungeonGenerationCommand {
     private final TeleportPermitService teleportPermits;
     private final Clock clock;
     private final Consumer<UUID> preparationCancel;
+    private final RunPreparationService runs;
 
     public DungeonGenerationCommand(ConfigRegistryService configRegistry, PartyProvider parties,
                                     GenerationService generation, Server server, String generationWorldName,
                                     TeleportPermitService teleportPermits, Clock clock,
-                                    Consumer<UUID> preparationCancel) {
+                                    Consumer<UUID> preparationCancel, RunPreparationService runs) {
         this.configRegistry = configRegistry;
         this.parties = parties;
         this.generation = generation;
@@ -53,6 +55,7 @@ public final class DungeonGenerationCommand {
         this.teleportPermits = teleportPermits;
         this.clock = clock;
         this.preparationCancel = preparationCancel;
+        this.runs = runs;
     }
 
     @Subcommand("instance generate-debug")
@@ -71,7 +74,8 @@ public final class DungeonGenerationCommand {
     @Subcommand("instance cancel")
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void cancel(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
-        UUID id = uuid(instanceId);
+        UUID id = resolve(sender, instanceId);
+        if (id == null) return;
         preparationCancel.accept(id);
         report(sender, generation.cancel(id));
     }
@@ -79,7 +83,8 @@ public final class DungeonGenerationCommand {
     @Subcommand("instance cleanup")
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void cleanup(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
-        UUID id = uuid(instanceId);
+        UUID id = resolve(sender, instanceId);
+        if (id == null) return;
         preparationCancel.accept(id);
         report(sender, generation.cleanup(id));
     }
@@ -87,7 +92,8 @@ public final class DungeonGenerationCommand {
     @Subcommand("instance info")
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void info(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
-        UUID id = uuid(instanceId);
+        UUID id = resolve(sender, instanceId);
+        if (id == null) return;
         generation.info(id).ifPresentOrElse(value -> {
             SlotAllocator.SlotLease slot = slotFor(id);
             GenerationService.PlayerSpawn spawn = generation.playerSpawn(id).orElse(null);
@@ -107,7 +113,7 @@ public final class DungeonGenerationCommand {
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void teleport(Player player, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
         try {
-            UUID id = uuid(instanceId);
+            UUID id = DungeonInstanceResolver.require(player, instanceId, runs);
             generation.info(id)
                     .orElseThrow(() -> new IllegalArgumentException("unknown instance " + instanceId));
             SlotAllocator.SlotLease slot = slotFor(id);
@@ -216,11 +222,12 @@ public final class DungeonGenerationCommand {
         sender.sendMessage((result.successful() ? "[PASS] " : "[FAIL] ") + result.detail());
     }
 
-    private static UUID uuid(String value) {
+    private UUID resolve(CommandSender sender, String value) {
         try {
-            return UUID.fromString(value);
+            return DungeonInstanceResolver.require(sender, value, runs);
         } catch (IllegalArgumentException exception) {
-            throw new IllegalArgumentException("instance id must be a UUID");
+            sender.sendMessage("[FAIL] " + exception.getMessage());
+            return null;
         }
     }
 

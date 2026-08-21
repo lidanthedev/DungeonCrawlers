@@ -7,6 +7,7 @@ import revxrsal.commands.node.ExecutionContext;
 import java.util.Collection;
 import java.util.Objects;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 /** Supplies currently active generation instance IDs to Lamp command completion. */
 public final class InstanceIdSuggestionProvider<A extends CommandActor> implements SuggestionProvider<A> {
@@ -18,6 +19,6 @@ public final class InstanceIdSuggestionProvider<A extends CommandActor> implemen
 
     @Override
     public Collection<String> getSuggestions(ExecutionContext<A> context) {
-        return source.get().stream().sorted().toList();
+        return Stream.concat(Stream.of("this"), source.get().stream()).sorted().toList();
     }
 }

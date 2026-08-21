@@ -145,11 +145,11 @@ public final class DungeonPhaseSevenCommand {
         sender.sendMessage("[" + (cleared ? "PASS" : "FAIL") + "] blessings cleared");
     }
 
-    private static UUID parse(CommandSender sender, String value) {
+    private UUID parse(CommandSender sender, String value) {
         try {
-            return UUID.fromString(value);
+            return DungeonInstanceResolver.require(sender, value, runs);
         } catch (IllegalArgumentException exception) {
-            sender.sendMessage("[FAIL] instance id must be a UUID");
+            sender.sendMessage("[FAIL] " + exception.getMessage());
             return null;
         }
     }

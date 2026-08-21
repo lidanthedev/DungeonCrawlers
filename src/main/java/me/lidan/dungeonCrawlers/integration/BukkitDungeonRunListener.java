@@ -8,7 +8,6 @@ import me.lidan.dungeonCrawlers.config.registry.ConfigModels.ClassDefinition;
 import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
 import me.lidan.dungeonCrawlers.core.secret.SecretDiscoveryService;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
-import org.bukkit.GameMode;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -79,10 +78,6 @@ public final class BukkitDungeonRunListener implements Listener {
         if (material != org.bukkit.Material.CHEST && material != org.bukkit.Material.TRAPPED_CHEST) return;
         UUID instanceId = runs.instanceFor(event.getPlayer().getUniqueId()).orElse(null);
         if (instanceId == null) return;
-        if (event.getPlayer().getGameMode() == GameMode.SPECTATOR) {
-            event.setCancelled(true);
-            return;
-        }
         Point point = new Point(event.getClickedBlock().getX(), event.getClickedBlock().getY(),
                 event.getClickedBlock().getZ());
         var result = phaseSeven.discover(instanceId, event.getPlayer().getUniqueId(), point);

@@ -2,14 +2,17 @@ package me.lidan.dungeonCrawlers.integration;
 
 import me.lidan.dungeonCrawlers.core.lifecycle.PlayerLifecycleService;
 import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
-import org.bukkit.GameMode;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityTargetEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
@@ -72,6 +75,17 @@ public final class BukkitDungeonLifecycleListener implements Listener {
         lifecycle.lethal(instanceId, player.getUniqueId(), clock.instant());
     }
 
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onGhostDamage(EntityDamageByEntityEvent event) {
+        Player attacker = attacker(event.getDamager());
+        if (attacker != null && isGhost(attacker)) event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onGhostTarget(EntityTargetEvent event) {
+        if (event.getTarget() instanceof Player player && isGhost(player)) event.setCancelled(true);
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onNaturalDeath(PlayerDeathEvent event) {
         Player player = event.getEntity();
@@ -105,12 +119,11 @@ public final class BukkitDungeonLifecycleListener implements Listener {
         var state = lifecycle.player(instanceId, player.getUniqueId()).orElse(null);
         if (state == null || state.state() != PlayerLifecycleService.PlayerState.GHOST) return;
         plugin.getServer().getScheduler().runTask(plugin, () -> {
-            player.setGameMode(GameMode.SPECTATOR);
-            player.setSpectatorTarget(null);
+            BukkitGhostState.enter(player);
         });
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.LOWEST)
     public void onGhostInteract(PlayerInteractEvent event) {
         if (isGhost(event.getPlayer())) event.setCancelled(true);
     }
@@ -140,8 +153,7 @@ public final class BukkitDungeonLifecycleListener implements Listener {
                     if (lifecycle.player(id, event.getPlayer().getUniqueId())
                             .map(value -> value.state() == PlayerLifecycleService.PlayerState.GHOST).orElse(false)) {
                         plugin.getServer().getScheduler().runTask(plugin, () -> {
-                            event.getPlayer().setGameMode(GameMode.SPECTATOR);
-                            event.getPlayer().setSpectatorTarget(null);
+                            BukkitGhostState.enter(event.getPlayer());
                         });
                     }
                 });
@@ -151,5 +163,11 @@ public final class BukkitDungeonLifecycleListener implements Listener {
         UUID instanceId = runs.instanceFor(player.getUniqueId()).orElse(null);
         return instanceId != null && lifecycle.player(instanceId, player.getUniqueId())
                 .map(value -> value.state() == PlayerLifecycleService.PlayerState.GHOST).orElse(false);
+    }
+
+    private static Player attacker(Entity damager) {
+        if (damager instanceof Player player) return player;
+        if (damager instanceof Projectile projectile && projectile.getShooter() instanceof Player player) return player;
+        return null;
     }
 }
