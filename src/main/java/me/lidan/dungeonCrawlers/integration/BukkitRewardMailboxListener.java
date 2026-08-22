@@ -1,7 +1,6 @@
 package me.lidan.dungeonCrawlers.integration;
 
 import me.lidan.dungeonCrawlers.core.claim.RewardClaimService;
-import me.lidan.cavecrawlers.utils.MiniMessageUtils;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
@@ -30,6 +29,7 @@ import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.event.player.PlayerArmorStandManipulateEvent;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.List;
 import java.util.Objects;
 
 /** Blocks every common transfer path while a mailbox item is awaiting its durable delivery ACK. */
@@ -47,18 +47,7 @@ public final class BukkitRewardMailboxListener implements Listener {
 
     /** Runs the same durable recovery path for players who stayed online across a plugin reload. */
     public void recover(Player player) {
-        claims.deliverPending(player, result -> {
-            if (result.successful()) {
-                player.sendMessage(MiniMessageUtils.miniMessage(
-                        "<green>Reward delivered to your inventory.</green>"));
-            } else if (result.pending()) {
-                player.sendMessage(MiniMessageUtils.miniMessage(
-                        "<yellow>Reward delivery pending: " + result.detail() + "</yellow>"));
-            } else {
-                player.sendMessage(MiniMessageUtils.miniMessage(
-                        "<red>Reward delivery failed: " + result.detail() + "</red>"));
-            }
-        });
+        claims.deliverPending(player, result -> RewardDeliveryMessages.send(player, result));
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
@@ -146,10 +135,13 @@ public final class BukkitRewardMailboxListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onDeath(PlayerDeathEvent event) {
-        boolean hasPending = event.getDrops().stream().anyMatch(BukkitRewardMailboxListener::pending);
-        if (hasPending) {
+        List<ItemStack> pendingItems = event.getDrops().stream()
+                .filter(BukkitRewardMailboxListener::pending)
+                .map(ItemStack::clone)
+                .toList();
+        if (!pendingItems.isEmpty()) {
             event.getDrops().removeIf(BukkitRewardMailboxListener::pending);
-            event.setKeepInventory(true);
+            event.getItemsToKeep().addAll(pendingItems);
         }
     }
 
@@ -172,6 +164,7 @@ public final class BukkitRewardMailboxListener implements Listener {
     }
 
     private static boolean pending(ItemStack item) {
-        return RewardClaimService.isPending(item);
+        return item != null && !item.getType().isAir() && item.hasItemMeta()
+                && RewardClaimService.isPending(item);
     }
 }

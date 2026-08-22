@@ -20,6 +20,7 @@ import me.lidan.dungeonCrawlers.persistence.DurableRecord;
 import me.lidan.dungeonCrawlers.persistence.DurableRepository;
 import me.lidan.dungeonCrawlers.persistence.DurableSubmission;
 import me.lidan.dungeonCrawlers.persistence.DurableWrite;
+import me.lidan.dungeonCrawlers.persistence.model.CompletedRunRecordCodec;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
@@ -98,7 +99,9 @@ public final class RewardClaimService {
         this.mainThread = Objects.requireNonNull(mainThread, "mainThread");
         this.auditSink = Objects.requireNonNull(auditSink, "auditSink");
         this.gson = new GsonBuilder().disableHtmlEscaping()
-                .registerTypeAdapter(Instant.class, new InstantAdapter()).create();
+                .registerTypeAdapter(Instant.class, new InstantAdapter())
+                .registerTypeAdapter(byte[].class, new CompletedRunRecordCodec.ByteArrayAdapter())
+                .create();
         restoreAsync();
     }
 
@@ -451,7 +454,7 @@ public final class RewardClaimService {
                         ClaimStatus.REJECTED, INVENTORY_FULL_DETAIL));
                 return;
             }
-            if (payloads.successful()) prepared = withItems(snapshot, payloads.items());
+            if (payloads.successful()) prepared = snapshot.withItems(payloads.items());
             OfferStateMachine.Event preflight = reward.price() > 0
                     && (provider == null || !providerId.equals(snapshot.provider()))
                     ? OfferStateMachine.Event.PROVIDER_MISSING
@@ -542,7 +545,11 @@ public final class RewardClaimService {
                     transaction = provider.withdraw(account, amount);
                     if (transaction == null || !transaction.successful()
                             || !Double.isFinite(transaction.amount()) || transaction.amount() < 0) {
-                        if (transaction == null) transaction = null;
+                        String detail = transaction == null
+                                ? "provider returned no debit result"
+                                : "provider returned an invalid debit result: " + transaction.detail();
+                        markAmbiguous(mutable, offerId, attempt, detail, callback);
+                        return;
                     }
                 } catch (RuntimeException exception) {
                     auditSink.accept("reward debit ambiguous offer=" + offerId + " attempt=" + attempt
@@ -780,7 +787,7 @@ public final class RewardClaimService {
         else mailbox.put(offerId, List.copyOf(remaining));
         if (!remaining.isEmpty()) {
             OfferSnapshot blocked = transition(offer, OfferStateMachine.Event.DELIVERY_UNSAFE, null);
-            ClaimRecord target = replaceOffer(current, blocked, current.claimGroup(), Map.of(),
+            ClaimRecord target = replaceOffer(current, blocked, current.claimGroup(), mailbox,
                     audit(current, "DELIVERY_BLOCKED", offerId, offer.attemptId(),
                             "inventory capacity changed before delivery completed"));
             persistCandidate(mutable, current, target, true, success -> complete(callback,
@@ -993,13 +1000,6 @@ public final class RewardClaimService {
     private Instant highWater(Instant completedAt) {
         Instant now = clock.instant();
         return now.isAfter(completedAt) ? now : completedAt;
-    }
-
-    private static OfferSnapshot withItems(OfferSnapshot source, List<ItemPayload> items) {
-        return new OfferSnapshot(source.offerId(), source.mode(), source.state(), source.quarantinePrior(),
-                source.completedAt(), source.recoveredAt(), source.outerStartDeadline(), source.sessionStartedAt(),
-                source.sessionExpiresAt(), source.clockHighWater(), source.attemptId(), source.provider(),
-                source.accountId(), source.price(), items);
     }
 
     private static ClaimRecord replaceOffer(ClaimRecord source, OfferSnapshot offer, ClaimGroup group,

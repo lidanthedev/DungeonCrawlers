@@ -1,5 +1,8 @@
 package me.lidan.dungeonCrawlers.core.claim;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.RewardDefinition;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.RewardItem;
 import me.lidan.dungeonCrawlers.core.reward.RewardEntitlementService;
@@ -26,8 +29,11 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -191,37 +197,43 @@ class RewardClaimServiceTest {
     }
 
     @Test
-    void definiteDebitFailureReleasesTheClaimGroupForRetry() {
-        AtomicInteger withdrawals = new AtomicInteger();
-        EconomyGateway economy = new EconomyGateway() {
-            @Override
-            public String providerIdentity() { return "TestEconomy"; }
+    void invalidDebitResponsesRequireReconciliation() {
+        List<EconomyGateway.TransactionResult> responses = Arrays.asList(
+                null,
+                new EconomyGateway.TransactionResult(false, 5, 1, "insufficient funds"),
+                new EconomyGateway.TransactionResult(true, Double.NaN, 10, "invalid amount"),
+                new EconomyGateway.TransactionResult(true, -1, 10, "invalid amount"));
+        for (EconomyGateway.TransactionResult response : responses) {
+            AtomicInteger withdrawals = new AtomicInteger();
+            EconomyGateway economy = new EconomyGateway() {
+                @Override
+                public String providerIdentity() { return "TestEconomy"; }
 
-            @Override
-            public TransactionResult withdraw(OfflinePlayer player, double amount) {
-                withdrawals.incrementAndGet();
-                return new TransactionResult(false, amount, 1, "insufficient funds");
-            }
+                @Override
+                public TransactionResult withdraw(OfflinePlayer player, double amount) {
+                    withdrawals.incrementAndGet();
+                    return response;
+                }
 
-            @Override
-            public TransactionResult deposit(OfflinePlayer player, double amount) {
-                throw new AssertionError("definite failure must not refund");
-            }
-        };
-        RewardClaimService claims = new RewardClaimService(clock(), entitlements(), items(), economy);
-        AtomicReference<RewardClaimService.ClaimResult> result = new AtomicReference<>();
+                @Override
+                public TransactionResult deposit(OfflinePlayer player, double amount) {
+                    throw new AssertionError("ambiguous debit must not refund automatically");
+                }
+            };
+            RewardClaimService claims = new RewardClaimService(clock(), entitlements(), items(), economy);
+            AtomicReference<RewardClaimService.ClaimResult> result = new AtomicReference<>();
 
-        claims.claim(INSTANCE, PLAYER, "gold", player(), result::set);
+            claims.claim(INSTANCE, PLAYER, "gold", player(), result::set);
 
-        assertEquals(RewardClaimService.ClaimStatus.REJECTED, result.get().status());
-        RewardClaimService.ClaimRecord record = claims.info(INSTANCE, PLAYER).orElseThrow();
-        UUID offerId = record.offers().values().stream().filter(value -> value.price() == 5)
-                .findFirst().orElseThrow().offerId();
-        assertEquals(OfferState.AVAILABLE, record.offers().get(offerId).state());
-        assertEquals(ClaimGroup.State.NONE, record.claimGroup().state());
-
-        claims.claim(INSTANCE, PLAYER, "gold", player(), result::set);
-        assertEquals(2, withdrawals.get());
+            assertEquals(RewardClaimService.ClaimStatus.RECONCILIATION_REQUIRED, result.get().status(),
+                    "response=" + response);
+            RewardClaimService.ClaimRecord record = claims.info(INSTANCE, PLAYER).orElseThrow();
+            UUID offerId = record.offers().values().stream().filter(value -> value.price() == 5)
+                    .findFirst().orElseThrow().offerId();
+            assertEquals(OfferState.RECONCILIATION_REQUIRED, record.offers().get(offerId).state());
+            assertEquals(ClaimGroup.State.ATTEMPTED, record.claimGroup().state());
+            assertEquals(1, withdrawals.get());
+        }
     }
 
     @Test
@@ -308,6 +320,43 @@ class RewardClaimServiceTest {
         UUID offerId = claim.get().offerId();
         assertEquals(OfferState.OWNED,
                 claims.info(INSTANCE, PLAYER).orElseThrow().offers().get(offerId).state());
+    }
+
+    @Test
+    void deliveryCapacityRacePreservesUnrelatedMailboxEntries() {
+        InMemoryRepository repository = new InMemoryRepository();
+        RewardClaimService claims = new RewardClaimService(clock(), repository, entitlements(), items(),
+                () -> successfulEconomy(), Runnable::run, ignored -> { });
+        claims.ready().join();
+        PlayerMock online = new PlayerMock(MockBukkit.getMock(), "Claimant", PLAYER);
+        MockBukkit.getMock().addPlayer(online);
+        AtomicReference<RewardClaimService.ClaimResult> claim = new AtomicReference<>();
+
+        claims.claim(INSTANCE, PLAYER, "gold", online, claim::set);
+
+        UUID offerId = claim.get().offerId();
+        byte[] serializedItem = claims.info(INSTANCE, PLAYER).orElseThrow().offers().get(offerId).items()
+                .getFirst().serializedItem();
+        String persisted = new String(repository.latestPayload(), StandardCharsets.UTF_8);
+        assertTrue(persisted.contains("\"serializedItem\":\""
+                + Base64.getEncoder().encodeToString(serializedItem) + "\""));
+        UUID unrelatedMailboxOffer = UUID.randomUUID();
+        repository.addMailboxEntryFromOffer(offerId, unrelatedMailboxOffer);
+
+        RewardClaimService restored = new RewardClaimService(clock(), repository, entitlements(), items(),
+                () -> successfulEconomy(), Runnable::run, ignored -> { });
+        restored.ready().join();
+        ItemStack[] full = new ItemStack[online.getInventory().getSize()];
+        Arrays.fill(full, new ItemStack(Material.STONE, 64));
+        online.getInventory().setContents(full);
+        AtomicReference<RewardClaimService.DeliveryResult> delivery = new AtomicReference<>();
+
+        restored.deliver(INSTANCE, PLAYER, online, delivery::set);
+
+        assertFalse(delivery.get().successful());
+        assertFalse(delivery.get().pending());
+        assertTrue(restored.info(INSTANCE, PLAYER).orElseThrow().mailbox()
+                .containsKey(unrelatedMailboxOffer));
     }
 
     @Test
@@ -452,5 +501,24 @@ class RewardClaimServiceTest {
 
         @Override
         public void close() { }
+
+        byte[] latestPayload() {
+            return records.values().stream().findFirst().orElseThrow().payload();
+        }
+
+        void addMailboxEntryFromOffer(UUID sourceOfferId, UUID mailboxOfferId) {
+            DurableRecord existing = records.values().stream().findFirst().orElseThrow();
+            JsonObject envelope = JsonParser.parseString(new String(existing.payload(), StandardCharsets.UTF_8))
+                    .getAsJsonObject();
+            JsonObject record = envelope.getAsJsonObject("record");
+            JsonArray sourceItems = record.getAsJsonObject("offers")
+                    .getAsJsonObject(sourceOfferId.toString()).getAsJsonArray("items");
+            JsonArray copiedItems = new JsonArray();
+            sourceItems.forEach(item -> copiedItems.add(item.deepCopy()));
+            record.getAsJsonObject("mailbox").add(mailboxOfferId.toString(), copiedItems);
+            byte[] payload = envelope.toString().getBytes(StandardCharsets.UTF_8);
+            records.put(existing.namespace() + ":" + existing.recordId(), new DurableRecord(
+                    existing.namespace(), existing.recordId(), payload, existing.checksum(), existing.path()));
+        }
     }
 }

@@ -14,6 +14,7 @@ import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
 import me.lidan.dungeonCrawlers.core.score.DungeonRank;
 import me.lidan.dungeonCrawlers.core.score.ScoreService;
 import me.lidan.dungeonCrawlers.integration.CaveItemsGateway;
+import me.lidan.dungeonCrawlers.integration.RewardDeliveryMessages;
 import me.lidan.dungeonCrawlers.integration.cave.CaveItemsAdapter;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
@@ -264,7 +265,7 @@ public final class DungeonPhaseElevenCommand {
         claims.setDeliveryPausedForTesting(false);
         player.sendMessage(MiniMessageUtils.miniMessage(
                 "<yellow>Running reward delivery recovery test...</yellow>"));
-        claims.deliverPending(player, delivery -> reportDelivery(player, delivery));
+        claims.deliverPending(player, delivery -> RewardDeliveryMessages.send(player, delivery));
     }
 
     public void claimReward(Player player, UUID instanceId, String rewardId) {
@@ -282,20 +283,9 @@ public final class DungeonPhaseElevenCommand {
                 return;
             }
             player.sendMessage(MiniMessageUtils.miniMessage("<green>Reward purchased. Delivering items...</green>"));
-            claims.deliver(instanceId, player.getUniqueId(), player, delivery -> reportDelivery(player, delivery));
+            claims.deliver(instanceId, player.getUniqueId(), player,
+                    delivery -> RewardDeliveryMessages.send(player, delivery));
         });
-    }
-
-    private static void reportDelivery(Player player, RewardClaimService.DeliveryResult delivery) {
-        if (delivery.successful()) {
-            player.sendMessage(MiniMessageUtils.miniMessage("<green>Reward delivered to your inventory.</green>"));
-        } else if (delivery.pending()) {
-            player.sendMessage(MiniMessageUtils.miniMessage("<yellow>Reward delivery pending: "
-                    + delivery.detail() + "</yellow>"));
-        } else {
-            player.sendMessage(MiniMessageUtils.miniMessage("<red>Reward delivery failed: "
-                    + delivery.detail() + "</red>"));
-        }
     }
 
     @Subcommand("reward reset-test")

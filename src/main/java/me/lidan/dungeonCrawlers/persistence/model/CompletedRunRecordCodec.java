@@ -93,7 +93,7 @@ public final class CompletedRunRecordCodec {
         }
     }
 
-    private static final class ByteArrayAdapter implements JsonSerializer<byte[]>, JsonDeserializer<byte[]> {
+    public static final class ByteArrayAdapter implements JsonSerializer<byte[]>, JsonDeserializer<byte[]> {
         @Override
         public JsonElement serialize(byte[] source, Type type, JsonSerializationContext context) {
             return new JsonPrimitive(Base64.getEncoder().encodeToString(source));
