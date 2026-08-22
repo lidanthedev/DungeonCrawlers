@@ -68,5 +68,7 @@ restart matrix remain release-blocking follow-up checks for this phase.
 - 2026-08-23: The documentation-checkpoint JAR was rebuilt and uploaded successfully with SHA-256
   `fafe0c874bae1f45df240145ead52331cb3198435a5e89a2ca9b923d91c6c056`. A Pterodactyl backup
   request was refused at the configured three-backup limit; existing backups were left untouched.
+- 2026-08-23: reload-dispatch guard checkpoint `206985c` passed the full clean build and was
+  deployed with JAR SHA-256 `24c6853d412114fe0905474f3ba0cdfc3e4720a71c48337e2043789dac18cd18`.
 
 See [PHASE_14_OPERATIONS_RUNBOOK.md](PHASE_14_OPERATIONS_RUNBOOK.md) for backup and rollback steps.
