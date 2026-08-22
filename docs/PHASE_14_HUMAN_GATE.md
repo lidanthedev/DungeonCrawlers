@@ -34,11 +34,11 @@ diagnostic only: it must not release a clearing slot or reservation automaticall
   return to their exact saved location while the journal is cleared or startup-recoverable.
 - [ ] Put a player into GHOST, then use the safe reload path. Confirm no late revive callback,
   stale ghost state, entity, protection region, or reservation remains.
-- [ ] Enter the custom BOSS encounter, use `/dungeon reload force`, and confirm the boss/entity
+- [x] Enter the custom BOSS encounter, use `/dungeon reload force`, and confirm the boss/entity
   callbacks stop and the player is restored without a second completion.
 - [ ] During `COMPLETION_PENDING`, confirm `/dungeon reload force` is rejected before admission
   is paused or any cleanup callback runs. Wait for the reward period to close before reloading.
-- [ ] During `FAILED`, confirm the failed-reading cleanup remains retryable and no stale slot or
+- [x] During `FAILED`, confirm the failed-reading cleanup remains retryable and no stale slot or
   player mapping remains after the deadline.
 - [x] During `DELIVERY_PENDING` or `OWNED`, use the Phase 12 delivery pause/recovery controls and
   confirm disable/rejoin delivers the exact item once with no automatic debit retry.
@@ -94,5 +94,12 @@ restart matrix remain release-blocking follow-up checks for this phase.
   remains`, failed-reading cleanup, and player restoration. A subsequent `cc reload all` left
   operations clean. A ghost surviving reload cannot be exercised with one participant because
   the run closes immediately; a second active participant is required for that case.
+- 2026-08-23: Boss reload drill on instance `3b59d7e8-d3cd-4b79-95d9-4a256753b044` reached
+  `status=BOSS` with encounter `basic`. `cc reload all` recovered and cleared one run; final
+  operations reported zero active instances, reservations, occupied slots, and repository work.
+- 2026-08-23: Failed-reading reload drill on instance `d66de7e1-79b9-4efc-8282-faa1b2045498`
+  advanced the central test clock by 3,600 seconds. The client showed `Dungeon failed: run time
+  limit reached.` and score `0 (D)`; reload recovery discovered and cleared one run, then
+  operations returned to zero active instances, reservations, occupied slots, and queued work.
 
 See [PHASE_14_OPERATIONS_RUNBOOK.md](PHASE_14_OPERATIONS_RUNBOOK.md) for backup and rollback steps.
