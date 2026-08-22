@@ -32,6 +32,7 @@ class PlayerLifecycleServiceTest {
 
         var death = service.lethal(instance, ghost, START);
         assertEquals(PlayerLifecycleService.PlayerState.GHOST, service.player(instance, ghost).orElseThrow().state());
+        assertEquals(1, service.player(instance, ghost).orElseThrow().deaths());
         assertEquals(START.plusSeconds(60), service.player(instance, ghost).orElseThrow().reviveAt());
         assertTrue(death.successful());
 
@@ -49,6 +50,23 @@ class PlayerLifecycleServiceTest {
         assertEquals(PlayerLifecycleService.PlayerState.ALIVE, revived.state());
         assertEquals(alive, revived.reviveTarget());
         assertEquals(1, notices.stream().filter(value -> value.event() == PlayerLifecycleService.Event.REVIVED).count());
+    }
+
+    @Test
+    void deathCountIncrementsOnlyForAcceptedLethalTransitions() {
+        UUID instance = UUID.randomUUID();
+        UUID ghost = UUID.randomUUID();
+        UUID alive = UUID.randomUUID();
+        CentralUpdateService updates = new CentralUpdateService(Clock.fixed(START, ZoneOffset.UTC), ignored -> { });
+        PlayerLifecycleService service = new PlayerLifecycleService(updates, Clock.fixed(START, ZoneOffset.UTC),
+                ignored -> { });
+        assertTrue(updates.register(instance, ignored -> { }));
+        assertTrue(service.register(instance, List.of(ghost, alive)).successful());
+        assertTrue(service.start(instance).successful());
+
+        assertTrue(service.lethal(instance, ghost, START).successful());
+        assertFalse(service.lethal(instance, ghost, START).successful());
+        assertEquals(1, service.player(instance, ghost).orElseThrow().deaths());
     }
 
     @Test

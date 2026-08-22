@@ -35,12 +35,33 @@ public final class PortalEncounterService {
     private final ParticipantGateway participants;
     private final Clock clock;
     private final Consumer<String> diagnostics;
+    private final CompletionFinalizer completionEffects;
     private final Map<UUID, MutableInstance> instances = new LinkedHashMap<>();
 
     public PortalEncounterService(CentralUpdateService updates, RunPreparationService runs,
                                   EncounterFactoryRegistry factories, BossEntityGateway entities,
                                   ParticipantGateway participants, Clock clock,
                                   Consumer<String> diagnostics) {
+        this(updates, runs, factories, entities, participants, clock, diagnostics,
+                (CompletionFinalizer) ignored -> true);
+    }
+
+    /** Compatibility constructor for callers whose completion effect has no failure result. */
+    public PortalEncounterService(CentralUpdateService updates, RunPreparationService runs,
+                                  EncounterFactoryRegistry factories, BossEntityGateway entities,
+                                  ParticipantGateway participants, Clock clock,
+                                  Consumer<String> diagnostics, Consumer<Snapshot> completionEffects) {
+        this(updates, runs, factories, entities, participants, clock, diagnostics,
+                snapshot -> {
+                    Objects.requireNonNull(completionEffects, "completionEffects").accept(snapshot);
+                    return true;
+                });
+    }
+
+    public PortalEncounterService(CentralUpdateService updates, RunPreparationService runs,
+                                  EncounterFactoryRegistry factories, BossEntityGateway entities,
+                                  ParticipantGateway participants, Clock clock,
+                                  Consumer<String> diagnostics, CompletionFinalizer completionEffects) {
         this.updates = Objects.requireNonNull(updates, "updates");
         this.runs = Objects.requireNonNull(runs, "runs");
         this.factories = Objects.requireNonNull(factories, "factories");
@@ -48,6 +69,7 @@ public final class PortalEncounterService {
         this.participants = Objects.requireNonNull(participants, "participants");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
+        this.completionEffects = Objects.requireNonNull(completionEffects, "completionEffects");
     }
 
     public synchronized RegistrationResult register(UUID instanceId, FloorDefinition floor, LayoutPlan plan) {
@@ -187,6 +209,15 @@ public final class PortalEncounterService {
         Objects.requireNonNull(point, "point");
         return instances.values().stream().filter(state -> state.portalBlocks.contains(point))
                 .map(state -> state.instanceId).findFirst();
+    }
+
+    /** Resolves the generated reward chest only after finalization has succeeded. */
+    public synchronized Optional<UUID> rewardAt(Point point) {
+        Objects.requireNonNull(point, "point");
+        return instances.values().stream()
+                .filter(state -> state.status == Status.COMPLETION_PENDING && state.rewardChest.equals(point))
+                .map(state -> state.instanceId)
+                .findFirst();
     }
 
     /** Returns the portal and countdown-owner indexes used by the Bukkit movement listener. */
@@ -338,13 +369,34 @@ public final class PortalEncounterService {
     }
 
     private DeathResult complete(MutableInstance state, String detail) {
+        if (state.status != Status.BOSS) return DeathResult.ignored("boss completion is not active");
+        boolean finalized;
+        try {
+            finalized = completionEffects.finalizeCompletion(snapshot(state));
+        } catch (RuntimeException exception) {
+            return finalizationFailure(state, exception.getClass().getSimpleName() + ": " + exception.getMessage());
+        }
+        if (!finalized) return finalizationFailure(state, "completion finalizer returned false");
         RunPreparationService.PhaseResult transition = runs.enterCompletionPending(state.instanceId);
-        if (!transition.successful()) return DeathResult.ignored(transition.detail());
+        if (!transition.successful()) {
+            return finalizationFailure(state, "run completion transition failed: " + transition.detail());
+        }
         state.status = Status.COMPLETION_PENDING;
         state.detail = detail + "; reward location=" + state.rewardChest;
         updates.removeSupplemental(state.instanceId, state.callback);
         participants.notice(state.instanceId, "<green>Boss defeated. Finalizing dungeon...</green>");
         return DeathResult.accepted(detail, snapshot(state));
+    }
+
+    private DeathResult finalizationFailure(MutableInstance state, String detail) {
+        String failure = "completion finalization failed: " + detail;
+        state.detail = failure;
+        try {
+            diagnostics.accept("instance=" + state.instanceId + " " + failure);
+        } catch (RuntimeException ignored) {
+            // Diagnostics are best-effort; the BOSS state remains retryable.
+        }
+        return DeathResult.ignored(failure);
     }
 
     private PortalResult abortInternal(MutableInstance state, String detail) {
@@ -386,6 +438,11 @@ public final class PortalEncounterService {
 
         /** Sends a MiniMessage title and subtitle to every participant in the run. */
         default void title(UUID instanceId, String miniMessageTitle, String miniMessageSubtitle) { }
+    }
+
+    @FunctionalInterface
+    public interface CompletionFinalizer {
+        boolean finalizeCompletion(Snapshot snapshot);
     }
 
     public enum Status { IDLE, COUNTDOWN, BOSS, COMPLETION_PENDING, FAILED }

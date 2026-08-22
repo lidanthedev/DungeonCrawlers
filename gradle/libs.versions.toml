@@ -12,6 +12,7 @@ triumph-gui = "3.1.14"
 xseries = "13.7.0"
 junit = "5.11.4"
 mockito = "5.15.2"
+mockbukkit = "4.110.0"
 gson = "2.11.0"
 
 [libraries]
@@ -31,4 +32,5 @@ xseries = { module = "com.github.cryptomorin:XSeries", version.ref = "xseries" }
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
 mockito-core = { module = "org.mockito:mockito-core", version.ref = "mockito" }
+mockbukkit = { module = "org.mockbukkit.mockbukkit:mockbukkit-v1.21", version.ref = "mockbukkit" }
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }

@@ -46,6 +46,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ThreadLocalRandom;
 
 /** Player-facing start, class selection, and preparation-door commands. */
 @Command("dungeon")
@@ -181,7 +182,7 @@ public final class DungeonPhaseFiveCommand {
             return;
         }
         GenerationService.StartResult result = generation.start(new GenerationService.StartRequest(
-                config, floor, party.snapshot(), player.getWorld().getSeed(), 0));
+                config, floor, party.snapshot(), ThreadLocalRandom.current().nextLong(), 0));
         if (!result.accepted()) {
             player.sendMessage("[FAIL] " + result.detail());
             return;

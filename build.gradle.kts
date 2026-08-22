@@ -46,6 +46,11 @@ dependencies {
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.mockito.core)
+    testImplementation(libs.mockbukkit) {
+        // MockBukkit publishes its JUnit extension API as a runtime dependency;
+        // keep the project's JUnit BOM authoritative for the test engine.
+        exclude(group = "org.junit.jupiter", module = "junit-jupiter-api")
+    }
     testImplementation(libs.lamp.common)
     testImplementation(libs.paper.api)
     testImplementation(libs.cave.crawlers)

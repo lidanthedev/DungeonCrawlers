@@ -27,6 +27,7 @@ import java.util.stream.Stream;
 
 public final class ConfigLoader {
     private static final Pattern ID = Pattern.compile("^[a-z0-9][a-z0-9_-]{0,63}$");
+    private static final Pattern EXTERNAL_ITEM_ID = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$");
     private final EncounterRegistry encounters;
     private final Clock clock;
     private final BoostedConfigFactory configFactory;
@@ -312,6 +313,15 @@ public final class ConfigLoader {
             return value;
         }
 
+        String externalItemId(String value, String path) {
+            if (value == null) return null;
+            if (!EXTERNAL_ITEM_ID.matcher(value).matches()) {
+                error(path + " invalid id " + value);
+                return null;
+            }
+            return value.toUpperCase(Locale.ROOT);
+        }
+
         String string(Object value, String path) {
             if (!(value instanceof String text) || text.isBlank()) { error(path + " must be a non-blank string"); return null; }
             return text;
@@ -498,7 +508,7 @@ public final class ConfigLoader {
             List<RewardItem> result = new ArrayList<>();
             for (Object item : list) {
                 Map<String, Object> entry = map(item, path + "[]", true);
-                String itemId = id(string(entry.get("item"), path + "[].item"), path);
+                String itemId = externalItemId(string(entry.get("item"), path + "[].item"), path);
                 double weight = optionalDouble(entry.get("weight"), path + "[].weight", 1, 0, Double.MAX_VALUE);
                 int[] amount = amount(entry.get("amount"), path + "[].amount");
                 if (itemId != null) result.add(new RewardItem(itemId, weight, amount[0], amount[1]));

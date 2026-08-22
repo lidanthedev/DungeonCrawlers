@@ -28,6 +28,7 @@ import java.util.Optional;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -88,6 +89,7 @@ class PortalEncounterServiceTest {
         assertEquals(PortalEncounterService.Status.COMPLETION_PENDING, service.info(instance).orElseThrow().status());
         assertEquals(RunPreparationService.RunState.COMPLETION_PENDING,
                 runs.info(instance).orElseThrow().state());
+        assertEquals(instance, service.rewardAt(service.info(instance).orElseThrow().rewardChest()).orElseThrow());
     }
 
     @Test
@@ -115,9 +117,45 @@ class PortalEncounterServiceTest {
         assertEquals(PortalEncounterService.Status.COMPLETION_PENDING, service.info(instance).orElseThrow().status());
         var snapshot = service.info(instance).orElseThrow();
         assertNotEquals(snapshot.bossSpawn(), snapshot.rewardChest());
+        assertEquals(instance, service.rewardAt(snapshot.rewardChest()).orElseThrow());
         service.cleanup(instance);
         assertTrue(entities.removed.contains(secondBoss));
         assertTrue(service.info(instance).isEmpty());
+        assertTrue(service.rewardAt(snapshot.rewardChest()).isEmpty());
+    }
+
+    @Test
+    void failedFinalizationKeepsBossIncompleteAndRetriesBeforeExposingRewardChest() {
+        UUID instance = UUID.randomUUID();
+        UUID player = UUID.randomUUID();
+        Clock clock = Clock.fixed(START, ZoneOffset.UTC);
+        CentralUpdateService updates = new CentralUpdateService(clock, ignored -> { });
+        RunPreparationService runs = runningRun(instance, player, updates, clock);
+        FakeEntities entities = new FakeEntities();
+        AtomicInteger attempts = new AtomicInteger();
+        PortalEncounterService service = new PortalEncounterService(updates, runs,
+                EncounterFactoryRegistry.withBasic(), entities, new FakeParticipants(player), clock,
+                ignored -> { }, snapshot -> attempts.incrementAndGet() > 1);
+
+        assertTrue(service.register(instance, floor("basic"), plan(instance)).successful());
+        assertTrue(service.startBoss(instance).successful());
+        updates.tick(START.plusSeconds(1));
+        UUID boss = service.info(instance).orElseThrow().bossEntity();
+
+        var failed = service.onBossDeath(instance, boss);
+
+        assertFalse(failed.accepted());
+        assertEquals(PortalEncounterService.Status.BOSS, service.info(instance).orElseThrow().status());
+        assertEquals(RunPreparationService.RunState.BOSS, runs.info(instance).orElseThrow().state());
+        assertTrue(service.rewardAt(service.info(instance).orElseThrow().rewardChest()).isEmpty());
+        assertEquals(1, attempts.get());
+
+        updates.tick(START.plusSeconds(2));
+
+        var completed = service.info(instance).orElseThrow();
+        assertEquals(PortalEncounterService.Status.COMPLETION_PENDING, completed.status());
+        assertEquals(instance, service.rewardAt(completed.rewardChest()).orElseThrow());
+        assertEquals(2, attempts.get());
     }
 
     @Test
