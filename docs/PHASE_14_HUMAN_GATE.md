@@ -27,9 +27,9 @@ diagnostic only: it must not release a clearing slot or reservation automaticall
 - [x] Idle `/dungeon operations` reports `activeInstances=0`, `reservations=0`,
   `occupiedSlots=0`, and an idle repository.
 - [x] Idle `/dungeon reload force` completes without leaving admission paused.
-- [ ] Create a fresh Pterodactyl backup before the next stateful restart drill. The server reports
-  its three-backup limit and the account cannot list existing backups, so this remains an external
-  operations blocker; no existing backup was deleted.
+- [x] Create a fresh Pterodactyl backup before the next stateful restart drill. Backup
+  `phase14-operations-bdcc613` was created after the old backup was deleted; a follow-up create
+  request correctly reported the configured three-backup limit.
 - [ ] Start during GENERATING/PASTING, run `/dungeon reload force`, and confirm online players
   return to their exact saved location while the journal is cleared or startup-recoverable.
 - [ ] Put a player into GHOST, then use the safe reload path. Confirm no late revive callback,
@@ -70,5 +70,7 @@ restart matrix remain release-blocking follow-up checks for this phase.
   request was refused at the configured three-backup limit; existing backups were left untouched.
 - 2026-08-23: reload-dispatch guard checkpoint `206985c` passed the full clean build and was
   deployed with JAR SHA-256 `24c6853d412114fe0905474f3ba0cdfc3e4720a71c48337e2043789dac18cd18`.
+- 2026-08-23: Pterodactyl backup `phase14-operations-bdcc613` was created and locked before the
+  stateful restart drills; a second create request was refused at the three-backup limit.
 
 See [PHASE_14_OPERATIONS_RUNBOOK.md](PHASE_14_OPERATIONS_RUNBOOK.md) for backup and rollback steps.
