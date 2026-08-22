@@ -32,6 +32,8 @@ diagnostic only: it must not release a clearing slot or reservation automaticall
   request correctly reported the configured three-backup limit.
 - [ ] Start during GENERATING/PASTING, run `/dungeon reload force`, and confirm online players
   return to their exact saved location while the journal is cleared or startup-recoverable.
+- [x] With two online players in a RUNNING dungeon, run `cc reload all` and confirm both return
+  to their exact saved locations while the run is cleared.
 - [x] Put a player into GHOST, then use the safe reload path. Confirm no late revive callback,
   stale ghost state, entity, protection region, or reservation remains.
 - [x] Enter the custom BOSS encounter, use `/dungeon reload force`, and confirm the boss/entity
@@ -106,5 +108,10 @@ restart matrix remain release-blocking follow-up checks for this phase.
   `cc reload all` recovered and cleared the run without a late revive; after recovery both
   lifecycle mappings were gone and operations reported zero instances, reservations, occupied
   slots, and repository work.
+- 2026-08-23: Two-player online snapshot drill on instance `bc8bbee0-2759-450f-a230-d3c3633cb02f`
+  ran `cc reload all` after both players cleared room 1. Disable logged
+  `snapshots_restored online=2 offline_retained=true`; startup recovery discovered and cleared
+  one run. Both players confirmed they returned to their exact pre-dungeon locations, and final
+  operations reported zero active instances, reservations, occupied slots, and repository work.
 
 See [PHASE_14_OPERATIONS_RUNBOOK.md](PHASE_14_OPERATIONS_RUNBOOK.md) for backup and rollback steps.
