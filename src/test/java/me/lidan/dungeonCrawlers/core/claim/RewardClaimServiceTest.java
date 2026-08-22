@@ -360,6 +360,29 @@ class RewardClaimServiceTest {
     }
 
     @Test
+    void rewardClaimRestoreAcceptsLegacyArrayEncodedPayloads() {
+        InMemoryRepository repository = new InMemoryRepository();
+        RewardClaimService original = new RewardClaimService(clock(), repository, entitlements(), items(),
+                () -> successfulEconomy(), Runnable::run, ignored -> { });
+        original.ready().join();
+        AtomicReference<RewardClaimService.ClaimResult> claim = new AtomicReference<>();
+
+        original.claim(INSTANCE, PLAYER, "gold", player(), claim::set);
+
+        assertTrue(claim.get().successful(), claim.get().detail());
+        repository.rewriteSerializedItemsAsLegacyArrays();
+        RewardClaimService restored = new RewardClaimService(clock(), repository, entitlements(), items(),
+                () -> successfulEconomy(), Runnable::run, ignored -> { });
+
+        restored.ready().join();
+
+        assertTrue(restored.info(INSTANCE, PLAYER).isPresent());
+        AtomicReference<Boolean> reset = new AtomicReference<>();
+        restored.resetInstance(INSTANCE, reset::set);
+        assertTrue(reset.get());
+    }
+
+    @Test
     void deliveryPauseLeavesOwnedClaimForRestartJoinRecovery() {
         PlayerMock online = new PlayerMock(MockBukkit.getMock(), "Claimant", PLAYER);
         MockBukkit.getMock().addPlayer(online);
@@ -516,6 +539,24 @@ class RewardClaimServiceTest {
             JsonArray copiedItems = new JsonArray();
             sourceItems.forEach(item -> copiedItems.add(item.deepCopy()));
             record.getAsJsonObject("mailbox").add(mailboxOfferId.toString(), copiedItems);
+            byte[] payload = envelope.toString().getBytes(StandardCharsets.UTF_8);
+            records.put(existing.namespace() + ":" + existing.recordId(), new DurableRecord(
+                    existing.namespace(), existing.recordId(), payload, existing.checksum(), existing.path()));
+        }
+
+        void rewriteSerializedItemsAsLegacyArrays() {
+            DurableRecord existing = records.values().stream().findFirst().orElseThrow();
+            JsonObject envelope = JsonParser.parseString(new String(existing.payload(), StandardCharsets.UTF_8))
+                    .getAsJsonObject();
+            JsonObject offers = envelope.getAsJsonObject("record").getAsJsonObject("offers");
+            offers.entrySet().forEach(entry -> entry.getValue().getAsJsonObject().getAsJsonArray("items")
+                    .forEach(item -> {
+                        JsonObject payload = item.getAsJsonObject();
+                        byte[] bytes = Base64.getDecoder().decode(payload.get("serializedItem").getAsString());
+                        JsonArray legacy = new JsonArray();
+                        for (byte value : bytes) legacy.add(value);
+                        payload.add("serializedItem", legacy);
+                    }));
             byte[] payload = envelope.toString().getBytes(StandardCharsets.UTF_8);
             records.put(existing.namespace() + ":" + existing.recordId(), new DurableRecord(
                     existing.namespace(), existing.recordId(), payload, existing.checksum(), existing.path()));

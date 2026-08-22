@@ -52,6 +52,10 @@ class CompletedRunRecordCodecTest {
         assertTrue(json.contains("\"serializedItem\":\"AQID\""));
         assertEquals(original, restored);
         assertArrayEquals(new byte[]{1, 2, 3}, restored.offers().get(player).getFirst().items().getFirst().serializedItem());
+        String legacyJson = json.replace("\"serializedItem\":\"AQID\"", "\"serializedItem\":[1,2,3]");
+        CompletedRunRecord legacyRestored = codec.decode(legacyJson.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        assertArrayEquals(new byte[]{1, 2, 3},
+                legacyRestored.offers().get(player).getFirst().items().getFirst().serializedItem());
         assertThrows(UnsupportedOperationException.class,
                 () -> restored.offers().get(player).add(offer));
     }
