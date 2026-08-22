@@ -72,6 +72,7 @@ public final class RewardClaimService {
     private static final NamespacedKey PENDING_KEY = new NamespacedKey("dungeoncrawlers", "reward-pending");
     private static final String INVENTORY_FULL_DETAIL =
             "inventory is full; make room before purchasing";
+    private static final String INSUFFICIENT_FUNDS_DETAIL = "not enough money for this reward";
 
     private final Clock clock;
     private final DurableRepository repository;
@@ -543,11 +544,13 @@ public final class RewardClaimService {
                 try {
                     double amount = offer.price();
                     transaction = provider.withdraw(account, amount);
-                    if (transaction == null || !transaction.successful()
-                            || !Double.isFinite(transaction.amount()) || transaction.amount() < 0) {
-                        String detail = transaction == null
-                                ? "provider returned no debit result"
-                                : "provider returned an invalid debit result: " + transaction.detail();
+                    if (transaction == null) {
+                        markAmbiguous(mutable, offerId, attempt, "provider returned no debit result", callback);
+                        return;
+                    }
+                    if (transaction.successful()
+                            && (!Double.isFinite(transaction.amount()) || transaction.amount() < 0)) {
+                        String detail = "provider returned an invalid debit result: " + transaction.detail();
                         markAmbiguous(mutable, offerId, attempt, detail, callback);
                         return;
                     }
@@ -572,7 +575,7 @@ public final class RewardClaimService {
                     audit(current, "DEBIT_FAILED", offerId, attempt, failedTransaction.detail()));
             persistCandidate(mutable, current, target, false, success -> complete(callback,
                     success ? ClaimResult.failure(current.instanceId(), current.playerId(), offerId,
-                            ClaimStatus.REJECTED, "purchase failed: " + failedTransaction.detail())
+                            ClaimStatus.REJECTED, INSUFFICIENT_FUNDS_DETAIL)
                             : ClaimResult.failure(current.instanceId(), current.playerId(), offerId,
                             ClaimStatus.RECONCILIATION_REQUIRED,
                             "purchase failed but state persistence is uncertain")));
@@ -1236,6 +1239,10 @@ public final class RewardClaimService {
         }
 
         public boolean successful() { return status == ClaimStatus.CLAIMED; }
+
+        public boolean insufficientFunds() {
+            return status == ClaimStatus.REJECTED && INSUFFICIENT_FUNDS_DETAIL.equals(detail);
+        }
     }
 
     public record ReconcileResult(UUID offerId, boolean successful, OfferState state, String detail) {

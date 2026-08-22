@@ -20,6 +20,7 @@ import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.Sound;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryClickEvent;
@@ -276,6 +277,12 @@ public final class DungeonPhaseElevenCommand {
         player.sendMessage(MiniMessageUtils.miniMessage("<yellow>Purchase processing...</yellow>"));
         claims.claim(instanceId, player.getUniqueId(), rewardId, player, result -> {
             if (!result.successful()) {
+                if (result.insufficientFunds()) {
+                    player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+                    player.sendMessage(MiniMessageUtils.miniMessage(
+                            "<red>Not enough money for this reward.</red>"));
+                    return;
+                }
                 String color = result.status() == RewardClaimService.ClaimStatus.RECONCILIATION_REQUIRED
                         ? "red" : "yellow";
                 player.sendMessage(MiniMessageUtils.miniMessage("<" + color + ">Reward claim: "

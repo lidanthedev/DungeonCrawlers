@@ -1,6 +1,6 @@
 # Phase 12 Human Gate - Checked purchase and inventory capacity
 
-Status: PASS
+Status: IN PROGRESS
 
 The phase 12 gate covers durable claim locking, the provider debit boundary, reconciliation,
 inventory-capacity preflight, exact serialized item delivery, and restart recovery on server `fa696721`
@@ -17,15 +17,18 @@ legacy claims, but full inventory is no longer an accepted purchase flow.
 - [x] Claim a paid reward with enough balance and confirm exactly one debit and inventory delivery.
 - [x] Confirm delivered rewards no longer retain DungeonCrawlers provenance tags and can stack as
   ordinary identical items.
-- [x] Confirm an insufficient-balance purchase is rejected without entering delivery; observed
-  `Reward claim: REJECTED - purchase failed: Loan was not permitted!`.
+- [x] Confirm an insufficient-balance purchase is rejected without entering delivery, releases the
+  claim group, and leaves another reward selectable.
 - [x] Fill the player's inventory and confirm BUY is rejected before debit, with no claim record
   and no delivery attempt.
 - [x] Confirm capacity preflight treats temporary delivery provenance markers as part of stack
   identity, so a partial unmarked stack cannot hide a full-inventory rejection.
 - [x] Spam BUY and confirm the claim group allows only one winner and no second debit.
-- [x] Confirm a definite provider failure releases the claim for a later retry. The expensive
-  reward rejected with insufficient funds, then succeeded after `/eco give` supplied the balance.
+- [x] Confirm a definite provider failure releases the claim for a later retry. An insufficient
+  balance leaves the expensive offer available, allowing a different reward to be selected; the
+  same reward can still be retried after `/eco give` supplies the balance.
+- [ ] Confirm the in-game insufficient-funds result plays the deny sound and shows
+  `Not enough money for this reward.`; reopen the chest and select a different reward.
 - [x] Review the ambiguous-provider timeout scenario against the standard Vault + EssentialsX setup.
   Vault exposes synchronous success/failure responses and EssentialsX performs the default economy
   operation in-process, so there is no normal timeout path to reproduce in this human gate. Keep
@@ -43,10 +46,11 @@ payload round-trip, inventory-capacity preflight, and interrupted-delivery check
 ## Recorded evidence
 
 - 2026-08-22: Java 21 `clean build` passed, including tests and external-plugin shading
-  verification. Latest deployed JAR SHA-256: `13ff4670752edd1f9af6300d2c9a1191267021a9252c41d9f450c0fb74a3b05d`.
-- 2026-08-22: Paid purchase human check with insufficient balance produced
+  verification. Latest deployed JAR SHA-256: `865f130f50ebc4bdecc2b35c11c8a8d3a628fd25f992be9fea2713c6250e35f4`.
+- 2026-08-22 (prior build): Paid purchase with insufficient balance produced
   `Purchase processing...` followed by `Reward claim: REJECTED - purchase failed: Loan was not permitted!`.
-  No purchase or delivery message followed.
+  This exposed that the UI/service path still consumed the claim group; the corrected behavior is
+  recorded below.
 - 2026-08-22: Paid purchase human check with enough balance produced
   `Purchase processing...`, `Reward purchased. Delivering items...`, and
   `Reward delivered to your inventory.`
@@ -76,8 +80,11 @@ payload round-trip, inventory-capacity preflight, and interrupted-delivery check
   claim left that same claim ID and `DELIVERED` state.
 - 2026-08-22: BUY spam produced only `PROCESSING - another claim is still processing` while one
   purchase completed and delivered; no duplicate reward was observed.
-- 2026-08-22: The `expensive` reward first rejected with `Loan was not permitted!`; after
-  `/eco give LidanTheGamer 10000000000`, retrying the same reward purchased and delivered it.
+- 2026-08-22 (prior build): The `expensive` reward first rejected with `Loan was not permitted!`;
+  after `/eco give LidanTheGamer 10000000000`, retrying the same reward purchased and delivered it.
+- 2026-08-22: After the definite-failure fix, live run `e99e22cf-0495-487e-86ca-4a173e2e46f9`
+  attempted `expensive` with insufficient balance; `dungeon reward info` showed it still
+  `AVAILABLE`, and selecting `wooden` afterward reached `DELIVERED`.
 - 2026-08-22: Upstream Vault and EssentialsX review confirmed that the standard integration uses a
   synchronous `EconomyResponse` with `SUCCESS`/`FAILURE`/`NOT_IMPLEMENTED`; EssentialsX calls its
   local economy implementation directly and maps known exceptions to a definite failure. A server

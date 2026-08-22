@@ -200,7 +200,6 @@ class RewardClaimServiceTest {
     void invalidDebitResponsesRequireReconciliation() {
         List<EconomyGateway.TransactionResult> responses = Arrays.asList(
                 null,
-                new EconomyGateway.TransactionResult(false, 5, 1, "insufficient funds"),
                 new EconomyGateway.TransactionResult(true, Double.NaN, 10, "invalid amount"),
                 new EconomyGateway.TransactionResult(true, -1, 10, "invalid amount"));
         for (EconomyGateway.TransactionResult response : responses) {
@@ -234,6 +233,44 @@ class RewardClaimServiceTest {
             assertEquals(ClaimGroup.State.ATTEMPTED, record.claimGroup().state());
             assertEquals(1, withdrawals.get());
         }
+    }
+
+    @Test
+    void definiteDebitFailureReleasesClaimForDifferentReward() {
+        AtomicInteger withdrawals = new AtomicInteger();
+        EconomyGateway economy = new EconomyGateway() {
+            @Override
+            public String providerIdentity() { return "TestEconomy"; }
+
+            @Override
+            public TransactionResult withdraw(OfflinePlayer player, double amount) {
+                withdrawals.incrementAndGet();
+                return new TransactionResult(false, 0, 0, "Loan was not permitted!");
+            }
+
+            @Override
+            public TransactionResult deposit(OfflinePlayer player, double amount) {
+                throw new AssertionError("definite debit failure must not refund automatically");
+            }
+        };
+        RewardClaimService claims = new RewardClaimService(clock(), entitlements(), items(), economy);
+        AtomicReference<RewardClaimService.ClaimResult> result = new AtomicReference<>();
+
+        claims.claim(INSTANCE, PLAYER, "gold", player(), result::set);
+
+        assertEquals(RewardClaimService.ClaimStatus.REJECTED, result.get().status());
+        assertTrue(result.get().insufficientFunds());
+        assertEquals("not enough money for this reward", result.get().detail());
+        RewardClaimService.ClaimRecord record = claims.info(INSTANCE, PLAYER).orElseThrow();
+        assertEquals(ClaimGroup.State.NONE, record.claimGroup().state());
+        assertEquals(OfferState.AVAILABLE, record.offers().values().stream()
+                .filter(value -> value.price() == 5).findFirst().orElseThrow().state());
+        assertEquals(1, withdrawals.get());
+
+        claims.claim(INSTANCE, PLAYER, "wood", player(), result::set);
+
+        assertTrue(result.get().successful(), result.get().detail());
+        assertEquals(1, withdrawals.get(), "the free alternative must not debit the economy");
     }
 
     @Test
