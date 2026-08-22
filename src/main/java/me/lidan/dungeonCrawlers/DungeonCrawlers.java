@@ -663,14 +663,24 @@ public final class DungeonCrawlers extends JavaPlugin {
     }
 
     private void startTasks() {
-        getServer().getScheduler().runTaskTimer(this, (Runnable) centralUpdates::tick, 1L, 1L);
+        getServer().getScheduler().runTaskTimer(this, (Runnable) () -> {
+            centralUpdates.tick();
+            generation.checkCleanupDeadlines();
+        }, 1L, 1L);
     }
 
     @Override
     public void onDisable() {
-        // Plugin shutdown logic
         disabling = true;
+        if (reservations != null) reservations.pauseAdmission();
+        if (generation != null) generation.freezeForDisable();
+        if (runPreparation != null) runPreparation.freezeForDisable();
+        if (centralUpdates != null) centralUpdates.freeze();
+        if (lifecycle != null) lifecycle.freezeForDisable();
+        getLogger().info("[OPS] event=disable phase=callbacks_frozen admission=paused");
+
         if (progressBars != null) progressBars.cancelAll();
+        closeAllGuis();
         if (lifecycle != null) {
             lifecycle.instances().stream()
                     .flatMap(instance -> instance.players().stream())
@@ -678,17 +688,21 @@ public final class DungeonCrawlers extends JavaPlugin {
                     .map(value -> getServer().getPlayer(value.playerId()))
                     .filter(java.util.Objects::nonNull)
                     .forEach(BukkitGhostState::exit);
-            lifecycle.cleanupAll();
         }
+        int restored = phaseFiveCommand == null ? 0 : phaseFiveCommand.restoreOnlinePlayersForDisable();
+        getLogger().info("[OPS] event=disable phase=snapshots_restored online=" + restored
+                + " offline_retained=true");
+
         if (phaseSeven != null) phaseSeven.cleanupAll();
         if (phaseNine != null) phaseNine.cleanupAll();
         if (combat != null) combat.cleanupAll();
-        if (generation != null) generation.freezeForDisable();
+        if (lifecycle != null) lifecycle.cleanupAll();
+        if (runPreparation != null) runPreparation.cleanupAll();
         if (centralUpdates != null) centralUpdates.clear();
         getServer().getScheduler().cancelTasks(this);
         if (durableRepository != null) durableRepository.close();
         if (generationExecutor != null) generationExecutor.shutdownNow();
-        closeAllGuis();
+        getLogger().info("[OPS] event=disable phase=complete journals_retained_for_startup_recovery=true");
     }
 
     /**

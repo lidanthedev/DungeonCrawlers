@@ -123,6 +123,31 @@ public final class DungeonCrawlersCommand {
         });
     }
 
+    @Subcommand("operations")
+    @CommandPermission("dungeoncrawlers.admin.reload")
+    public void operations(CommandSender sender) {
+        if (generation == null || durableRepository == null) {
+            sender.sendMessage("[FAIL] operations diagnostics are unavailable during bootstrap");
+            return;
+        }
+        GenerationService.OperationsSnapshot operations = generation.operations();
+        var repository = durableRepository.diagnostics();
+        sender.sendMessage("[PASS] operations activeInstances=" + operations.activeInstances()
+                + " reservations=" + operations.activeReservations() + " occupiedSlots="
+                + operations.occupiedSlots());
+        sender.sendMessage("[PASS] recovery running=" + operations.recoveryRunning()
+                + " startsEnabled=" + operations.startsEnabled()
+                + " blockers=" + operations.recoveryBlockers());
+        sender.sendMessage("[PASS] cleanup started=" + operations.cleanupStarted()
+                + " completed=" + operations.cleanupCompleted() + " failed=" + operations.cleanupFailed()
+                + " deadlineAlerts=" + operations.cleanupDeadlineAlerts()
+                + " lateCallbacks=" + operations.lateCallbacks());
+        sender.sendMessage("[PASS] repository inFlight=" + repository.normalInFlight()
+                + " queued=" + repository.queuedOperations() + " terminalReservations="
+                + repository.terminalReservations() + " terminalInFlight=" + repository.terminalInFlight()
+                + " closed=" + repository.closed());
+    }
+
     @Subcommand("reload")
     @CommandPermission("dungeoncrawlers.admin.reload")
     public void reload(CommandSender sender) {

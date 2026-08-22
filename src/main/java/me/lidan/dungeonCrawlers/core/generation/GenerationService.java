@@ -21,6 +21,8 @@ import me.lidan.dungeonCrawlers.persistence.model.GenerationJournal.PlannedBound
 import me.lidan.dungeonCrawlers.persistence.model.GenerationJournalCodec;
 
 import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
@@ -39,6 +41,7 @@ import java.util.function.Consumer;
 
 public final class GenerationService {
     public static final String JOURNAL_NAMESPACE = "generation";
+    public static final Duration CLEANUP_DEADLINE = Duration.ofSeconds(30);
     private final PlayerReservationService reservations;
     private final SlotAllocator slots;
     private final DurableRepository repository;
@@ -60,6 +63,12 @@ public final class GenerationService {
     private int recoveryDiscovered;
     private int recoveryCleared;
     private final List<String> recoveryBlockers = new ArrayList<>();
+    private long admittedCount;
+    private long cleanupStartedCount;
+    private long cleanupCompletedCount;
+    private long cleanupFailedCount;
+    private long cleanupDeadlineAlertCount;
+    private long lateCallbackCount;
 
     public GenerationService(PlayerReservationService reservations, SlotAllocator slots, DurableRepository repository,
                              GenerationWorldGateway world, PreparationProvider preparation, Executor planningExecutor,
@@ -107,6 +116,7 @@ public final class GenerationService {
             }
             instance = new MutableInstance(instanceId, request, allocated.orElseThrow());
             instances.put(instanceId, instance);
+            admittedCount++;
         }
         diagnostics.accept("instance=" + instanceId + " admitted slot=" + instance.slot.id());
         emitProgress(instance, 0.02, "planning dungeon", false, true);
@@ -270,6 +280,42 @@ public final class GenerationService {
                 List.copyOf(recoveryBlockers));
     }
 
+    /** Emits one alert for each cleanup that remains in flight past the operational deadline. */
+    public List<CleanupDeadlineAlert> checkCleanupDeadlines() {
+        return checkCleanupDeadlines(clock.instant());
+    }
+
+    public List<CleanupDeadlineAlert> checkCleanupDeadlines(Instant now) {
+        requirePrimaryThread();
+        Objects.requireNonNull(now, "now");
+        List<CleanupDeadlineAlert> alerts = new ArrayList<>();
+        for (MutableInstance instance : instances.values()) {
+            if (instance.state != InstanceStatus.CLEARING || instance.cleanupStartedAt == null
+                    || instance.cleanupDeadlineAlerted
+                    || now.isBefore(instance.cleanupStartedAt.plus(CLEANUP_DEADLINE))) continue;
+            instance.cleanupDeadlineAlerted = true;
+            long elapsed = Math.max(0, Duration.between(instance.cleanupStartedAt, now).toSeconds());
+            CleanupDeadlineAlert alert = new CleanupDeadlineAlert(instance.instanceId, elapsed);
+            alerts.add(alert);
+            cleanupDeadlineAlertCount++;
+            diagnostics.accept("[OPS] event=cleanup_deadline_exceeded instance=" + instance.instanceId
+                    + " elapsed_seconds=" + elapsed + " state=" + instance.state);
+        }
+        return List.copyOf(alerts);
+    }
+
+    public OperationsSnapshot operations() {
+        requirePrimaryThread();
+        long occupiedSlots = slots.snapshot().stream()
+                .filter(slot -> slot.state() != SlotAllocator.SlotState.FREE).count();
+        long activeInstances = instances.values().stream()
+                .filter(instance -> instance.state != InstanceStatus.DESTROYED).count();
+        return new OperationsSnapshot(admittedCount, cleanupStartedCount, cleanupCompletedCount,
+                cleanupFailedCount, cleanupDeadlineAlertCount, lateCallbackCount, activeInstances,
+                reservations.activeReservationCount(), occupiedSlots, startsEnabled, recoveryRunning,
+                recoveryBlockers.size());
+    }
+
     public void freezeForDisable() {
         requirePrimaryThread();
         startsEnabled = false;
@@ -323,7 +369,10 @@ public final class GenerationService {
         requirePrimaryThread();
         MutableInstance instance = instances.get(instanceId);
         if (instance == null || instance.token != token || instance.cancelled) {
-            if (instance != null) releaseUnmodified(instance, "cancelled before journal");
+            if (instance != null) {
+                lateCallbackCount++;
+                releaseUnmodified(instance, "cancelled before journal");
+            }
             return;
         }
         if (failure != null) {
@@ -447,6 +496,9 @@ public final class GenerationService {
         instance.cleanupInFlight = true;
         instance.state = InstanceStatus.CLEARING;
         instance.detail = reason;
+        instance.cleanupStartedAt = clock.instant();
+        instance.cleanupDeadlineAlerted = false;
+        cleanupStartedCount++;
         emitProgress(instance, 0.97, "cleaning up: " + reason, false, false);
         instance.token++;
         slots.markClearing(instance.slot.id(), instance.instanceId);
@@ -473,6 +525,7 @@ public final class GenerationService {
                         instance.cleanupInFlight = false;
                         instance.state = InstanceStatus.DESTROYED;
                         instance.detail = "clear ACK, journal removed, reservation released, slot FREE";
+                        cleanupCompletedCount++;
                         emitProgress(instance, 1.0, "cleanup complete", true, false);
                         notifyListeners(instance);
                         diagnostics.accept("instance=" + instance.instanceId + " cleanup complete");
@@ -485,6 +538,7 @@ public final class GenerationService {
         instance.cleanupInFlight = false;
         instance.state = InstanceStatus.CLEAR_FAILED;
         instance.detail = detail;
+        cleanupFailedCount++;
         emitProgress(instance, instance.prepared == null ? 0.0 : 0.97, detail, true, false);
         diagnostics.accept("P0 instance=" + instance.instanceId + " " + detail + "; slot remains blocked");
     }
@@ -779,6 +833,18 @@ public final class GenerationService {
     public record RecoveryStatus(boolean startsEnabled, boolean running, int discovered, int cleared,
                                  List<String> blockers) { }
 
+    public record CleanupDeadlineAlert(UUID instanceId, long elapsedSeconds) {
+        public CleanupDeadlineAlert {
+            Objects.requireNonNull(instanceId, "instanceId");
+            if (elapsedSeconds < 0) throw new IllegalArgumentException("elapsedSeconds must not be negative");
+        }
+    }
+
+    public record OperationsSnapshot(long admitted, long cleanupStarted, long cleanupCompleted,
+                                     long cleanupFailed, long cleanupDeadlineAlerts, long lateCallbacks,
+                                     long activeInstances, int activeReservations, long occupiedSlots,
+                                     boolean startsEnabled, boolean recoveryRunning, int recoveryBlockers) { }
+
     public record InstanceRegion(String world, UUID instanceId, Bounds bounds, Set<UUID> participants) {
         public InstanceRegion {
             Objects.requireNonNull(world); Objects.requireNonNull(instanceId); Objects.requireNonNull(bounds);
@@ -794,6 +860,8 @@ public final class GenerationService {
         private boolean cancelled;
         private boolean journalAccepted;
         private boolean cleanupInFlight;
+        private Instant cleanupStartedAt;
+        private boolean cleanupDeadlineAlerted;
         private InstanceStatus state = InstanceStatus.PLANNING;
         private String detail = "planning and loading templates asynchronously";
         private PreparedGeneration prepared;
