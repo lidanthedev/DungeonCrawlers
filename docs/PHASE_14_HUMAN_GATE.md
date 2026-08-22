@@ -40,7 +40,7 @@ diagnostic only: it must not release a clearing slot or reservation automaticall
   is paused or any cleanup callback runs. Wait for the reward period to close before reloading.
 - [ ] During `FAILED`, confirm the failed-reading cleanup remains retryable and no stale slot or
   player mapping remains after the deadline.
-- [ ] During `DELIVERY_PENDING` or `OWNED`, use the Phase 12 delivery pause/recovery controls and
+- [x] During `DELIVERY_PENDING` or `OWNED`, use the Phase 12 delivery pause/recovery controls and
   confirm disable/rejoin delivers the exact item once with no automatic debit retry.
 - [ ] Confirm an ambiguous `DEBIT_ATTEMPTED` record remains reconciliation-required after reload;
   no automatic charge/refund/retry occurs.
@@ -84,5 +84,10 @@ restart matrix remain release-blocking follow-up checks for this phase.
   longer inside a dungeon room afterward. The admin door-open and boss-start commands were also
   verified to refuse before the lifecycle is RUNNING; those checks require one physical start-door
   interaction to continue.
+- 2026-08-23: Delivery recovery drill on instance `6f89e27f-6211-4ad1-8637-e5a12cf5ce03` reset
+  entitlements, paused delivery, and claimed `wooden`. After `cc reload all`, player recovery
+  reported `discovered=1 cleared=1`; chat reported `Reward delivered to your inventory.` and
+  reward info showed claim `fad3c504-a8b5-3138-990d-69b7dbddf27d` in `DELIVERED`. Operations
+  remained idle with no queued or in-flight repository work.
 
 See [PHASE_14_OPERATIONS_RUNBOOK.md](PHASE_14_OPERATIONS_RUNBOOK.md) for backup and rollback steps.
