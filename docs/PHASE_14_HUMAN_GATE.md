@@ -32,7 +32,7 @@ diagnostic only: it must not release a clearing slot or reservation automaticall
   request correctly reported the configured three-backup limit.
 - [ ] Start during GENERATING/PASTING, run `/dungeon reload force`, and confirm online players
   return to their exact saved location while the journal is cleared or startup-recoverable.
-- [ ] Put a player into GHOST, then use the safe reload path. Confirm no late revive callback,
+- [x] Put a player into GHOST, then use the safe reload path. Confirm no late revive callback,
   stale ghost state, entity, protection region, or reservation remains.
 - [x] Enter the custom BOSS encounter, use `/dungeon reload force`, and confirm the boss/entity
   callbacks stop and the player is restored without a second completion.
@@ -101,5 +101,10 @@ restart matrix remain release-blocking follow-up checks for this phase.
   advanced the central test clock by 3,600 seconds. The client showed `Dungeon failed: run time
   limit reached.` and score `0 (D)`; reload recovery discovered and cleared one run, then
   operations returned to zero active instances, reservations, occupied slots, and queued work.
+- 2026-08-23: Two-player ghost reload drill on instance `6e420c42-815d-4e8a-8d93-3fc7325bbca1`
+  verified `LidanTheGamer=GHOST` with `LidanTheGamer_=ALIVE` and a 60-second revive deadline.
+  `cc reload all` recovered and cleared the run without a late revive; after recovery both
+  lifecycle mappings were gone and operations reported zero instances, reservations, occupied
+  slots, and repository work.
 
 See [PHASE_14_OPERATIONS_RUNBOOK.md](PHASE_14_OPERATIONS_RUNBOOK.md) for backup and rollback steps.
