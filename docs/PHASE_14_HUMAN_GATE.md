@@ -72,5 +72,10 @@ restart matrix remain release-blocking follow-up checks for this phase.
   deployed with JAR SHA-256 `24c6853d412114fe0905474f3ba0cdfc3e4720a71c48337e2043789dac18cd18`.
 - 2026-08-23: Pterodactyl backup `phase14-operations-bdcc613` was created and locked before the
   stateful restart drills; a second create request was refused at the three-backup limit.
+- 2026-08-23: Debug generation instance `e4ac9f30-fcf9-4b29-90cd-343fc359e53e` was admitted with
+  the maximum 5-second delay, then `/dungeon reload force` canceled it. The client reported a
+  passing reload hash; operations ended with zero active instances, reservations, and occupied
+  slots, cleanup `started=1 completed=1 failed=0`, and an idle repository. Exact player snapshot
+  restoration remains a separate check because debug generation does not capture a player.
 
 See [PHASE_14_OPERATIONS_RUNBOOK.md](PHASE_14_OPERATIONS_RUNBOOK.md) for backup and rollback steps.
