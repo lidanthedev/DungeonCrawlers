@@ -31,6 +31,12 @@ public final class OfferStateMachine {
     }
 
     private static OfferState target(OfferState state, OfferState prior, Event event, boolean open) {
+        if (event == Event.SIBLING_CLAIMED) {
+            return switch (state) {
+                case AVAILABLE, OFFER_BLOCKED_PROVIDER, OFFER_PAYLOAD_QUARANTINED -> OfferState.EXPIRED;
+                default -> null;
+            };
+        }
         if (event == Event.DEADLINE_REACHED) {
             return switch (state) {
                 case AVAILABLE, OFFER_BLOCKED_PROVIDER, OFFER_PAYLOAD_QUARANTINED -> OfferState.EXPIRED;
@@ -89,7 +95,8 @@ public final class OfferStateMachine {
         RECONCILE_NOT_CHARGED,
         REQUEST_DELIVERY,
         DELIVERY_VERIFIED,
-        DELIVERY_UNSAFE
+        DELIVERY_UNSAFE,
+        SIBLING_CLAIMED
     }
 
     public record TransitionResult(OfferSnapshot snapshot, boolean accepted, boolean changed, String detail) {

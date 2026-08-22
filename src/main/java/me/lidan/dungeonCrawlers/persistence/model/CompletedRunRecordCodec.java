@@ -93,7 +93,7 @@ public final class CompletedRunRecordCodec {
         }
     }
 
-    private static final class ByteArrayAdapter implements JsonSerializer<byte[]>, JsonDeserializer<byte[]> {
+    public static final class ByteArrayAdapter implements JsonSerializer<byte[]>, JsonDeserializer<byte[]> {
         @Override
         public JsonElement serialize(byte[] source, Type type, JsonSerializationContext context) {
             return new JsonPrimitive(Base64.getEncoder().encodeToString(source));
@@ -103,9 +103,27 @@ public final class CompletedRunRecordCodec {
         public byte[] deserialize(JsonElement json, Type type, JsonDeserializationContext context)
                 throws JsonParseException {
             try {
-                return Base64.getDecoder().decode(json.getAsString());
+                if (json.isJsonPrimitive() && json.getAsJsonPrimitive().isString()) {
+                    return Base64.getDecoder().decode(json.getAsString());
+                }
+                if (!json.isJsonArray()) throw new JsonParseException("invalid byte array item payload");
+                byte[] result = new byte[json.getAsJsonArray().size()];
+                for (int index = 0; index < result.length; index++) {
+                    JsonElement value = json.getAsJsonArray().get(index);
+                    if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()) {
+                        throw new JsonParseException("invalid legacy byte array item payload");
+                    }
+                    int number = value.getAsInt();
+                    if (number < Byte.MIN_VALUE || number > Byte.MAX_VALUE) {
+                        throw new JsonParseException("legacy byte array item is out of range");
+                    }
+                    result[index] = (byte) number;
+                }
+                return result;
+            } catch (JsonParseException exception) {
+                throw exception;
             } catch (RuntimeException exception) {
-                throw new JsonParseException("invalid Base64 item payload", exception);
+                throw new JsonParseException("invalid byte array item payload", exception);
             }
         }
     }

@@ -59,6 +59,12 @@ public record OfferSnapshot(UUID offerId, OfferMode mode, OfferState state, Offe
                 provider, accountId, price, items);
     }
 
+    public OfferSnapshot withItems(List<ItemPayload> replacement) {
+        return new OfferSnapshot(offerId, mode, state, quarantinePrior, completedAt, recoveredAt,
+                outerStartDeadline, sessionStartedAt, sessionExpiresAt, clockHighWater, attemptId,
+                provider, accountId, price, replacement);
+    }
+
     private static Instant max(Instant left, Instant right) {
         return right.isAfter(left) ? right : left;
     }

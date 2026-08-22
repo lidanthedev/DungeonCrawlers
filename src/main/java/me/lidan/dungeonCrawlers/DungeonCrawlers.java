@@ -21,6 +21,7 @@ import me.lidan.dungeonCrawlers.config.registry.EncounterRegistry;
 import me.lidan.dungeonCrawlers.config.BoostedConfigFactory;
 import me.lidan.cavecrawlers.utils.BoostedCustomConfig;
 import me.lidan.dungeonCrawlers.core.reservation.PlayerReservationService;
+import me.lidan.dungeonCrawlers.core.claim.RewardClaimService;
 import me.lidan.dungeonCrawlers.core.chunk.ChunkTicketBudget;
 import me.lidan.dungeonCrawlers.core.combat.CombatRoomService;
 import me.lidan.dungeonCrawlers.core.door.DoorService;
@@ -60,6 +61,7 @@ import me.lidan.dungeonCrawlers.integration.BukkitBossIdentity;
 import me.lidan.dungeonCrawlers.integration.BukkitPortalBossListener;
 import me.lidan.dungeonCrawlers.integration.BukkitPortalParticipantGateway;
 import me.lidan.dungeonCrawlers.integration.BukkitRewardChestListener;
+import me.lidan.dungeonCrawlers.integration.BukkitRewardMailboxListener;
 import me.lidan.dungeonCrawlers.integration.ThrottledDungeonActionBar;
 import me.lidan.dungeonCrawlers.integration.BukkitWorldProtectionListener;
 import me.lidan.dungeonCrawlers.integration.BukkitDungeonRunListener;
@@ -78,6 +80,8 @@ import org.bukkit.Bukkit;
 import org.bukkit.event.Listener;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.plugin.RegisteredServiceProvider;
+import net.milkbowl.vault.economy.Economy;
 import net.kyori.adventure.title.Title;
 import revxrsal.commands.Lamp;
 import revxrsal.commands.annotation.SuggestWith;
@@ -125,6 +129,7 @@ public final class DungeonCrawlers extends JavaPlugin {
     private PortalEncounterService phaseNine;
     private DungeonPhaseElevenCommand phaseElevenCommand;
     private RewardEntitlementService rewards;
+    private RewardClaimService claims;
     private BukkitBossIdentity bossIdentity;
     private MythicMobsAdapter mythicMobs;
     private PlayerLifecycleService lifecycle;
@@ -277,6 +282,14 @@ public final class DungeonCrawlers extends JavaPlugin {
                 phaseClock(), getLogger()::warning, this::finalizeRewards);
         rewards = new RewardEntitlementService(phaseClock(), new CaveItemsAdapter()::isConfigured,
                 durableRepository);
+        claims = new RewardClaimService(phaseClock(), durableRepository, rewards, new CaveItemsAdapter(),
+                () -> {
+                    RegisteredServiceProvider<Economy> registration = getServer().getServicesManager()
+                            .getRegistration(Economy.class);
+                    return registration == null ? null : new me.lidan.dungeonCrawlers.integration.vault.VaultEconomyAdapter(
+                            registration.getProvider());
+                }, callback -> getServer().getScheduler().runTask(this, callback),
+                detail -> getLogger().warning(detail));
     }
 
     private int configuredBackupRetention() {
@@ -398,7 +411,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         commandHandler.register(new DungeonPhaseNineCommand(phaseNine, runPreparation,
                 phaseFiveCommand::cancelFromAdmin));
         phaseElevenCommand = new DungeonPhaseElevenCommand(rewards, generation, runPreparation, configRegistry,
-                lifecycle);
+                lifecycle, claims);
         commandHandler.register(phaseElevenCommand);
         commandHandler.register(new DungeonPhaseFourCommand(centralUpdates, doors, protectionPolicy,
                 teleportPermits, playerSnapshots, getServer(), this, phaseClock(),
@@ -408,6 +421,7 @@ public final class DungeonCrawlers extends JavaPlugin {
     }
 
     private void registerEvents() {
+        BukkitRewardMailboxListener rewardMailboxListener = new BukkitRewardMailboxListener(claims);
         registerEvent(new BukkitWorldProtectionListener(protectionPolicy,
                 () -> generation.protectionRegions().stream().map(WorldProtectionService.InstanceRegion::from).toList(),
                 teleportPermits, phaseClock()));
@@ -418,9 +432,11 @@ public final class DungeonCrawlers extends JavaPlugin {
                 bossIdentity, phaseNine));
         registerEvent(new BukkitPortalBossListener(this, phaseNine, runPreparation, generationWorldName));
         registerEvent(new BukkitRewardChestListener(phaseNine, generationWorldName, phaseElevenCommand::openRewards));
+        registerEvent(rewardMailboxListener);
         // PlugMan-style reloads do not emit PlayerJoinEvent; repair any durable snapshots for players
         // who stayed online while the plugin was restarted.
         Bukkit.getOnlinePlayers().forEach(phaseFiveCommand::recoverOnJoin);
+        Bukkit.getOnlinePlayers().forEach(rewardMailboxListener::recover);
     }
 
     private org.bukkit.World generationWorld() {
