@@ -157,4 +157,19 @@ class DungeonPhaseElevenCommandTest {
         assertEquals("<dark_purple>Reward Preview - <gold>FREE</gold></dark_purple>",
                 DungeonPhaseElevenCommand.previewTitle(free));
     }
+
+    @Test
+    void overviewOffersSortByMinimumScoreThenRewardId() {
+        RewardEntitlementService.RewardOffer high = new RewardEntitlementService.RewardOffer(
+                UUID.randomUUID(), "gold", 100, 200, false, List.of());
+        RewardEntitlementService.RewardOffer lowB = new RewardEntitlementService.RewardOffer(
+                UUID.randomUUID(), "bronze", 0, 0, false, List.of());
+        RewardEntitlementService.RewardOffer lowA = new RewardEntitlementService.RewardOffer(
+                UUID.randomUUID(), "apple", 0, 0, false, List.of());
+
+        assertEquals(List.of("apple", "bronze", "gold"),
+                DungeonPhaseElevenCommand.sortedOffers(List.of(high, lowB, lowA)).stream()
+                        .map(RewardEntitlementService.RewardOffer::rewardId)
+                        .toList());
+    }
 }
