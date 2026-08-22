@@ -15,6 +15,10 @@ The plugin already retains versioned config and authoring backups under its data
 durable runtime repository contains generation journals, player snapshots, entitlements, and
 claims; do not delete those directories during a cleanup or rollback.
 
+If Pterodactyl refuses a backup because the server has reached its backup limit, stop the restart
+drill and escalate to the server owner. Do not delete an existing backup just to make room, and do
+not claim backup coverage in the human gate until the limit is resolved.
+
 ## Health check after deploy
 
 Run `cc reload all`, then verify:

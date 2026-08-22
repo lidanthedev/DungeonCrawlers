@@ -27,6 +27,9 @@ diagnostic only: it must not release a clearing slot or reservation automaticall
 - [x] Idle `/dungeon operations` reports `activeInstances=0`, `reservations=0`,
   `occupiedSlots=0`, and an idle repository.
 - [x] Idle `/dungeon reload force` completes without leaving admission paused.
+- [ ] Create a fresh Pterodactyl backup before the next stateful restart drill. The server reports
+  its three-backup limit and the account cannot list existing backups, so this remains an external
+  operations blocker; no existing backup was deleted.
 - [ ] Start during GENERATING/PASTING, run `/dungeon reload force`, and confirm online players
   return to their exact saved location while the journal is cleared or startup-recoverable.
 - [ ] Put a player into GHOST, then use the safe reload path. Confirm no late revive callback,
@@ -62,5 +65,8 @@ restart matrix remain release-blocking follow-up checks for this phase.
 - 2026-08-23: `cc reload all` reported DungeonCrawlers reloaded on `fa696721`; `/dungeon operations`
   reported `activeInstances=0 reservations=0 occupiedSlots=0`, zero cleanup alerts, and an idle
   repository. Idle `/dungeon reload force` completed with a passing config hash.
+- 2026-08-23: The documentation-checkpoint JAR was rebuilt and uploaded successfully with SHA-256
+  `fafe0c874bae1f45df240145ead52331cb3198435a5e89a2ca9b923d91c6c056`. A Pterodactyl backup
+  request was refused at the configured three-backup limit; existing backups were left untouched.
 
 See [PHASE_14_OPERATIONS_RUNBOOK.md](PHASE_14_OPERATIONS_RUNBOOK.md) for backup and rollback steps.
