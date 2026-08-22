@@ -79,6 +79,12 @@ restart matrix remain release-blocking follow-up checks for this phase.
   passing reload hash; operations ended with zero active instances, reservations, and occupied
   slots, cleanup `started=1 completed=1 failed=0`, and an idle repository. Exact player snapshot
   restoration remains a separate check because debug generation does not capture a player.
+- 2026-08-23: Live slow-generation disable drill on instance `fc55ad1e-3bff-4593-841e-6aae9844abb8`
+  observed `status=PASTING` before `cc reload all`. Disable retained the journal with
+  `snapshots_restored online=0 offline_retained=true`; startup recovery reported
+  `discovered=1 cleared=1 blocked=0`, and final operations were clean with zero active instances,
+  reservations, occupied slots, cleanup alerts, or repository work. This validates generation
+  journal and slot recovery; the debug path does not capture player snapshots.
 - 2026-08-23: Live player-recovery drill on instance `72e7ce28-14b5-4f04-a46c-ff135832606f`
   started through `/sudo LidanTheGamer dungeon start floor_1`; `cc reload all` ran while the
   player was online. Disable logged `snapshots_restored online=1`, and post-reload operations
