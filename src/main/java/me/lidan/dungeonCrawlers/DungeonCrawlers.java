@@ -34,6 +34,9 @@ import me.lidan.dungeonCrawlers.core.protection.WorldProtectionService;
 import me.lidan.dungeonCrawlers.core.snapshot.PlayerSnapshotService;
 import me.lidan.dungeonCrawlers.core.secret.SecretDiscoveryService;
 import me.lidan.dungeonCrawlers.core.portal.PortalEncounterService;
+import me.lidan.dungeonCrawlers.core.reward.RewardEntitlementService;
+import me.lidan.dungeonCrawlers.core.score.ScoreService;
+import me.lidan.dungeonCrawlers.core.score.ScoreResultRenderer;
 import me.lidan.dungeonCrawlers.core.encounter.EncounterFactoryRegistry;
 import me.lidan.dungeonCrawlers.core.update.CentralUpdateService;
 import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
@@ -44,6 +47,8 @@ import me.lidan.dungeonCrawlers.commands.DungeonPhaseFourCommand;
 import me.lidan.dungeonCrawlers.commands.DungeonPhaseSevenCommand;
 import me.lidan.dungeonCrawlers.commands.DungeonPhaseEightCommand;
 import me.lidan.dungeonCrawlers.commands.DungeonPhaseNineCommand;
+import me.lidan.dungeonCrawlers.commands.DungeonPhaseElevenCommand;
+import me.lidan.dungeonCrawlers.commands.RewardIdSuggestionProvider;
 import me.lidan.dungeonCrawlers.commands.BlessingIdSuggestionProvider;
 import me.lidan.dungeonCrawlers.integration.BukkitChunkTicketService;
 import me.lidan.dungeonCrawlers.integration.BukkitCombatListener;
@@ -54,6 +59,7 @@ import me.lidan.dungeonCrawlers.integration.BukkitBossGateway;
 import me.lidan.dungeonCrawlers.integration.BukkitBossIdentity;
 import me.lidan.dungeonCrawlers.integration.BukkitPortalBossListener;
 import me.lidan.dungeonCrawlers.integration.BukkitPortalParticipantGateway;
+import me.lidan.dungeonCrawlers.integration.BukkitRewardChestListener;
 import me.lidan.dungeonCrawlers.integration.ThrottledDungeonActionBar;
 import me.lidan.dungeonCrawlers.integration.BukkitWorldProtectionListener;
 import me.lidan.dungeonCrawlers.integration.BukkitDungeonRunListener;
@@ -62,6 +68,7 @@ import me.lidan.dungeonCrawlers.integration.BukkitDungeonActionBar;
 import me.lidan.dungeonCrawlers.integration.BukkitGhostState;
 import me.lidan.dungeonCrawlers.integration.mythic.MythicMobsAdapter;
 import me.lidan.dungeonCrawlers.integration.cave.CaveActionBarAdapter;
+import me.lidan.dungeonCrawlers.integration.cave.CaveItemsAdapter;
 import me.lidan.dungeonCrawlers.integration.parties.PartyProviders;
 import me.lidan.dungeonCrawlers.integration.worldedit.FaweGenerationAdapter;
 import me.lidan.dungeonCrawlers.integration.worldedit.WorldEditAdapter;
@@ -84,6 +91,8 @@ import java.io.InputStream;
 import java.math.BigDecimal;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -114,6 +123,8 @@ public final class DungeonCrawlers extends JavaPlugin {
     private BukkitProgressBarService progressBars;
     private SecretDiscoveryService phaseSeven;
     private PortalEncounterService phaseNine;
+    private DungeonPhaseElevenCommand phaseElevenCommand;
+    private RewardEntitlementService rewards;
     private BukkitBossIdentity bossIdentity;
     private MythicMobsAdapter mythicMobs;
     private PlayerLifecycleService lifecycle;
@@ -263,7 +274,9 @@ public final class DungeonCrawlers extends JavaPlugin {
                 new BukkitBossGateway(getServer(), this::generationWorld, mythicMobs, bossIdentity),
                 new BukkitPortalParticipantGateway(getServer(), this::generationWorld, generationWorldName,
                         runPreparation, lifecycle, teleportPermits, phaseClock()),
-                phaseClock(), getLogger()::warning);
+                phaseClock(), getLogger()::warning, this::finalizeRewards);
+        rewards = new RewardEntitlementService(phaseClock(), new CaveItemsAdapter()::isConfigured,
+                durableRepository);
     }
 
     private int configuredBackupRetention() {
@@ -358,6 +371,11 @@ public final class DungeonCrawlers extends JavaPlugin {
             return new OfflinePlayerSuggestionProvider<BukkitCommandActor>(() -> Bukkit.getOnlinePlayers().stream()
                     .map(Player::getName).filter(java.util.Objects::nonNull).toList());
         });
+        commandHandlerBuilder.suggestionProviders().addProviderForAnnotation(SuggestWith.class, annotation -> {
+            if (annotation.value() != RewardIdSuggestionProvider.class) return null;
+            return new RewardIdSuggestionProvider<BukkitCommandActor>(() -> configRegistry.snapshot().floors().values()
+                    .stream().flatMap(floor -> floor.rewards().keySet().stream()).toList());
+        });
         phaseFiveCommand = new DungeonPhaseFiveCommand(configRegistry, PartyProviders.forServer(getServer()),
                 generation, runPreparation, playerSnapshots, teleportPermits, getServer(), this, phaseClock(),
                 generationWorldName,
@@ -379,6 +397,9 @@ public final class DungeonCrawlers extends JavaPlugin {
         commandHandler.register(new DungeonPhaseEightCommand(lifecycle, runPreparation, phaseFiveCommand));
         commandHandler.register(new DungeonPhaseNineCommand(phaseNine, runPreparation,
                 phaseFiveCommand::cancelFromAdmin));
+        phaseElevenCommand = new DungeonPhaseElevenCommand(rewards, generation, runPreparation, configRegistry,
+                lifecycle);
+        commandHandler.register(phaseElevenCommand);
         commandHandler.register(new DungeonPhaseFourCommand(centralUpdates, doors, protectionPolicy,
                 teleportPermits, playerSnapshots, getServer(), this, phaseClock(),
                 generationWorldName,
@@ -396,6 +417,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         registerEvent(new BukkitCombatListener(combat, entityIdentity, generationWorldName, () -> disabling,
                 bossIdentity, phaseNine));
         registerEvent(new BukkitPortalBossListener(this, phaseNine, runPreparation, generationWorldName));
+        registerEvent(new BukkitRewardChestListener(phaseNine, generationWorldName, phaseElevenCommand::openRewards));
         // PlugMan-style reloads do not emit PlayerJoinEvent; repair any durable snapshots for players
         // who stayed online while the plugin was restarted.
         Bukkit.getOnlinePlayers().forEach(phaseFiveCommand::recoverOnJoin);
@@ -405,6 +427,42 @@ public final class DungeonCrawlers extends JavaPlugin {
         org.bukkit.World world = getServer().getWorld(generationWorldName);
         if (world == null) throw new IllegalStateException("generation world is not loaded: " + generationWorldName);
         return world;
+    }
+
+    private boolean finalizeRewards(PortalEncounterService.Snapshot snapshot) {
+        var context = generation.layoutContext(snapshot.instanceId()).orElse(null);
+        var run = runPreparation.info(snapshot.instanceId()).orElse(null);
+        var lifecycleSnapshot = lifecycle.info(snapshot.instanceId()).orElse(null);
+        org.bukkit.World world = getServer().getWorld(generationWorldName);
+        if (context == null || run == null || lifecycleSnapshot == null || world == null) return false;
+        var lifecyclePlayers = lifecycleSnapshot.players().stream().collect(
+                java.util.stream.Collectors.toMap(PlayerLifecycleService.PlayerSnapshot::playerId, value -> value));
+        List<RewardEntitlementService.Participant> participants = run.participants().stream()
+                .map(lifecyclePlayers::get)
+                .filter(java.util.Objects::nonNull)
+                .filter(player -> player.state() != PlayerLifecycleService.PlayerState.REMOVED)
+                .map(player -> new RewardEntitlementService.Participant(player.playerId(), true,
+                        getServer().getPlayer(player.playerId()) != null))
+                .toList();
+        int totalSecrets = phaseSeven.info(snapshot.instanceId()).map(value -> value.secrets().size()).orElse(0);
+        int foundSecrets = phaseSeven.info(snapshot.instanceId()).map(value -> (int) value.secrets().stream()
+                .filter(SecretDiscoveryService.SecretSnapshot::discovered).count()).orElse(0);
+        int deaths = run.participants().stream().map(lifecyclePlayers::get).filter(java.util.Objects::nonNull)
+                .mapToInt(PlayerLifecycleService.PlayerSnapshot::deaths).sum();
+        Duration elapsed = run.startedAt() == null ? Duration.ZERO
+                : Duration.between(run.startedAt(), phaseClock().instant());
+        ScoreService.ScoreReport score = new ScoreService().calculateReport(
+                new ScoreService.ScoreInput(true, deaths, elapsed, foundSecrets, totalSecrets), List.of());
+        rewards.register(new RewardEntitlementService.Completion(snapshot.instanceId(),
+                context.seed(), phaseClock().instant(), score.finalSnapshot(), participants,
+                context.floor().rewards()));
+        var point = snapshot.rewardChest();
+        world.getBlockAt(point.x(), point.y(), point.z()).setType(org.bukkit.Material.ENDER_CHEST, false);
+        participants.stream().map(RewardEntitlementService.Participant::playerId)
+                .map(getServer()::getPlayer)
+                .filter(java.util.Objects::nonNull)
+                .forEach(player -> player.sendMessage(ScoreResultRenderer.render(score)));
+        return true;
     }
 
     private void notifyCombatRoom(CombatRoomService.RoomNotice notice) {

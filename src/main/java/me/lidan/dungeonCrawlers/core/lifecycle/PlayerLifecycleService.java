@@ -73,6 +73,7 @@ public final class PlayerLifecycleService {
         if (player.state != PlayerState.ALIVE) {
             return TransitionResult.failure("player is already " + player.state.name().toLowerCase());
         }
+        player.deaths++;
         player.state = PlayerState.GHOST;
         player.reviveAt = now.plus(REVIVE_DURATION);
         player.lastTarget = null;
@@ -280,7 +281,8 @@ public final class PlayerLifecycleService {
     }
 
     private static PlayerSnapshot snapshot(MutablePlayer player) {
-        return new PlayerSnapshot(player.id, player.state, player.online, player.reviveAt, player.lastTarget);
+        return new PlayerSnapshot(player.id, player.state, player.online, player.reviveAt, player.lastTarget,
+                player.deaths);
     }
 
     private static final class MutableInstance {
@@ -303,6 +305,7 @@ public final class PlayerLifecycleService {
         private boolean online = true;
         private Instant reviveAt;
         private UUID lastTarget;
+        private int deaths;
         private long lastCountdownSeconds = -1;
 
         private MutablePlayer(UUID id) { this.id = id; }
@@ -315,9 +318,10 @@ public final class PlayerLifecycleService {
     }
 
     public record PlayerSnapshot(UUID playerId, PlayerState state, boolean online,
-                                 Instant reviveAt, UUID reviveTarget) {
+                                 Instant reviveAt, UUID reviveTarget, int deaths) {
         public PlayerSnapshot {
             Objects.requireNonNull(playerId); Objects.requireNonNull(state);
+            if (deaths < 0) throw new IllegalArgumentException("deaths must not be negative");
         }
     }
 

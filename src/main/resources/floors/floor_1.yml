@@ -32,8 +32,8 @@ rewards:
     rolls: 1
     unique: false
     items:
-      - { item: undead_essence, weight: 70, amount: "3-8" }
-      - { item: crypt_fragment, weight: 30 }
+      - { item: UNDEAD_ESSENCE, weight: 70, amount: "3-8" }
+      - { item: CRYPT_FRAGMENT, weight: 30 }
 limits:
   max-party-size: 5
   max-template-dimension: 512

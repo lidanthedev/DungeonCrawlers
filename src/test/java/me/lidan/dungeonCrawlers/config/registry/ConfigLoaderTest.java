@@ -121,6 +121,31 @@ class ConfigLoaderTest {
     }
 
     @Test
+    void rewardItemIdsAcceptCaveItemsUppercaseAndRejectMalformedIds() throws Exception {
+        copyDefaults();
+        Path floor = directory.resolve("floors/floor_1.yml");
+
+        ConfigLoadResult uppercase = loader().load(directory);
+
+        assertTrue(uppercase.successful(), uppercase.errors().toString());
+        assertEquals("UNDEAD_ESSENCE", uppercase.snapshot().floors().get("floor_1")
+                .rewards().get("wooden").items().getFirst().itemId());
+
+        Files.writeString(floor, Files.readString(floor).replace("item: UNDEAD_ESSENCE", "item: undead_essence"));
+        ConfigLoadResult legacy = loader().load(directory);
+        assertTrue(legacy.successful(), legacy.errors().toString());
+        assertEquals("UNDEAD_ESSENCE", legacy.snapshot().floors().get("floor_1")
+                .rewards().get("wooden").items().getFirst().itemId());
+
+        Files.writeString(floor, Files.readString(floor).replace("item: undead_essence", "item: invalid item"));
+        ConfigLoadResult malformed = loader().load(directory);
+
+        assertFalse(malformed.successful());
+        assertTrue(malformed.errors().stream().anyMatch(error -> error.contains("invalid id invalid item")),
+                malformed.errors().toString());
+    }
+
+    @Test
     void duplicateFloorNumbersAreRejected() throws Exception {
         copyDefaults();
         String duplicate = Files.readString(directory.resolve("floors/floor_1.yml"))
