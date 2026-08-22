@@ -49,8 +49,8 @@ portal completion advancing to `COMPLETED` with a five-minute deadline.
 
 Human-gate evidence will be added after the first deployed Phase 13 build.
 
-- 2026-08-22: Clean build and full test suite passed; JAR SHA-256 was
-  `5d20adca404da7be859ac3a017ce030266f39fd943273f78ad43366fc92e1b57`. Deployment and
+- 2026-08-22: Clean build and full test suite passed; final deployed JAR SHA-256 was
+  `6eb9869daa655237e4b9f12635d8d322e6caaf77d3f693d4361b2468b4b7d375`. Deployment and
   `cc reload all` reported `DungeonCrawlers reloaded!` on server `fa696721`.
 - 2026-08-22: Live preparation check on instance `64b28008-44e9-438e-b0d9-60303464e1fe` showed
   `Class selection closes in 1 minute.` in the client log, then cleanup restored the player and
