@@ -1,6 +1,6 @@
 # Phase 12 Human Gate - Checked purchase and inventory capacity
 
-Status: IN PROGRESS
+Status: PASS
 
 The phase 12 gate covers durable claim locking, the provider debit boundary, reconciliation,
 inventory-capacity preflight, exact serialized item delivery, and restart recovery on server `fa696721`
@@ -27,7 +27,7 @@ legacy claims, but full inventory is no longer an accepted purchase flow.
 - [x] Confirm a definite provider failure releases the claim for a later retry. An insufficient
   balance leaves the expensive offer available, allowing a different reward to be selected; the
   same reward can still be retried after `/eco give` supplies the balance.
-- [ ] Confirm the in-game insufficient-funds result plays the deny sound and shows
+- [x] Confirm the in-game insufficient-funds result plays the deny sound and shows
   `Not enough money for this reward.`; reopen the chest and select a different reward.
 - [x] Review the ambiguous-provider timeout scenario against the standard Vault + EssentialsX setup.
   Vault exposes synchronous success/failure responses and EssentialsX performs the default economy
@@ -46,7 +46,7 @@ payload round-trip, inventory-capacity preflight, and interrupted-delivery check
 ## Recorded evidence
 
 - 2026-08-22: Java 21 `clean build` passed, including tests and external-plugin shading
-  verification. Latest deployed JAR SHA-256: `865f130f50ebc4bdecc2b35c11c8a8d3a628fd25f992be9fea2713c6250e35f4`.
+  verification. Latest deployed JAR SHA-256: `aa1da97b26c8fe81cfee392323f013f5108e3f41436086d34289594a3a1fedc9`.
 - 2026-08-22 (prior build): Paid purchase with insufficient balance produced
   `Purchase processing...` followed by `Reward claim: REJECTED - purchase failed: Loan was not permitted!`.
   This exposed that the UI/service path still consumed the claim group; the corrected behavior is
@@ -85,6 +85,9 @@ payload round-trip, inventory-capacity preflight, and interrupted-delivery check
 - 2026-08-22: After the definite-failure fix, live run `e99e22cf-0495-487e-86ca-4a173e2e46f9`
   attempted `expensive` with insufficient balance; `dungeon reward info` showed it still
   `AVAILABLE`, and selecting `wooden` afterward reached `DELIVERED`.
+- 2026-08-22: Final player check confirmed the insufficient-funds deny sound and
+  `Not enough money for this reward.`; reopening the chest allowed another reward to purchase
+  and deliver, and adding money allowed the expensive reward retry to purchase and deliver.
 - 2026-08-22: Upstream Vault and EssentialsX review confirmed that the standard integration uses a
   synchronous `EconomyResponse` with `SUCCESS`/`FAILURE`/`NOT_IMPLEMENTED`; EssentialsX calls its
   local economy implementation directly and maps known exceptions to a definite failure. A server
