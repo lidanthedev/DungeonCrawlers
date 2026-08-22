@@ -77,5 +77,12 @@ restart matrix remain release-blocking follow-up checks for this phase.
   passing reload hash; operations ended with zero active instances, reservations, and occupied
   slots, cleanup `started=1 completed=1 failed=0`, and an idle repository. Exact player snapshot
   restoration remains a separate check because debug generation does not capture a player.
+- 2026-08-23: Live player-recovery drill on instance `72e7ce28-14b5-4f04-a46c-ff135832606f`
+  started through `/sudo LidanTheGamer dungeon start floor_1`; `cc reload all` ran while the
+  player was online. Disable logged `snapshots_restored online=1`, and post-reload operations
+  reported zero instances, reservations, occupied slots, and repository work. The player was no
+  longer inside a dungeon room afterward. The admin door-open and boss-start commands were also
+  verified to refuse before the lifecycle is RUNNING; those checks require one physical start-door
+  interaction to continue.
 
 See [PHASE_14_OPERATIONS_RUNBOOK.md](PHASE_14_OPERATIONS_RUNBOOK.md) for backup and rollback steps.
