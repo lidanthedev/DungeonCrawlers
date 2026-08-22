@@ -20,8 +20,8 @@ deadline scenario. The normal one-second scheduler continues to run between comm
 
 ## Required checks
 
-- [ ] Build, deploy, run `cc reload all`, and record the JAR SHA-256.
-- [ ] Start a generated run, select all classes, and leave the door unopened. Advance 240 seconds
+- [x] Build, deploy, run `cc reload all`, and record the JAR SHA-256.
+- [x] Start a generated run, select all classes, and leave the door unopened. Advance 240 seconds
   and confirm one preparation warning. Advance 60 more seconds and confirm the run is cancelled,
   the captured player state is restored, and the generated instance is cleaned up.
 - [ ] Start another run and open the door. Advance 3,540 seconds and confirm one active-run
@@ -48,3 +48,15 @@ portal completion advancing to `COMPLETED` with a five-minute deadline.
 ## Recorded evidence
 
 Human-gate evidence will be added after the first deployed Phase 13 build.
+
+- 2026-08-22: Clean build and full test suite passed; JAR SHA-256 was
+  `5d20adca404da7be859ac3a017ce030266f39fd943273f78ad43366fc92e1b57`. Deployment and
+  `cc reload all` reported `DungeonCrawlers reloaded!` on server `fa696721`.
+- 2026-08-22: Live preparation check on instance `64b28008-44e9-438e-b0d9-60303464e1fe` showed
+  `Class selection closes in 1 minute.` in the client log, then cleanup restored the player and
+  `instance info` reported `DESTROYED` with the slot free.
+- 2026-08-22: Repeat check on instance `36ed5de5-e6b9-4500-8c0c-47f89b85991c` confirmed the
+  corrected player message `preparation timed out; preparation deadline ended and player restored`;
+  server cleanup again reported the instance `DESTROYED` and all four slots free.
+- Remaining running/BOSS and completed-reward checks require opening the generated start door and
+  completing or administratively starting a boss encounter in the live client.
