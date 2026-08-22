@@ -293,7 +293,7 @@ public final class DungeonCrawlers extends JavaPlugin {
 
     private void cancelDeadlineInstance(UUID instanceId) {
         if (phaseFiveCommand != null) {
-            phaseFiveCommand.cancelFromAdmin(instanceId);
+            phaseFiveCommand.closeFromDeadline(instanceId);
             return;
         }
         if (lifecycle != null) lifecycle.cleanup(instanceId);

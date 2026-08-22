@@ -268,6 +268,21 @@ public final class DungeonPhaseFiveCommand {
         }
     }
 
+    /** Closes a run after the central deadline service has finished its reading or reward period. */
+    public void closeFromDeadline(UUID instanceId) {
+        RunPreparationService.RunSnapshot snapshot = runs.info(instanceId).orElse(null);
+        if (snapshot == null) {
+            cancelFromAdmin(instanceId);
+            return;
+        }
+        switch (snapshot.state()) {
+            case PREPARING -> abort(instanceId, "preparation timed out", "preparation deadline ended");
+            case FAILED -> abort(instanceId, "failed run reading period ended", "failed run closed");
+            case COMPLETED -> abort(instanceId, "completed reward period ended", "run closed");
+            default -> cancelFromAdmin(instanceId);
+        }
+    }
+
     /** Completes cleanup after the running-player lifecycle wipes an active instance. */
     public void wipeFromLifecycle(UUID instanceId, String reason) {
         if (runs.info(instanceId).isPresent()) {
