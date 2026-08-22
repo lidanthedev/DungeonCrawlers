@@ -252,7 +252,14 @@ public final class DungeonPhaseFiveCommand {
 
     /** Called by the admin instance-cancel path before generation cleanup. */
     public void cancelFromAdmin(UUID instanceId) {
-        if (runs.info(instanceId).isPresent()) abort(instanceId, "preparation cancelled");
+        RunPreparationService.RunSnapshot snapshot = runs.info(instanceId).orElse(null);
+        if (snapshot != null) {
+            switch (snapshot.state()) {
+                case FAILED -> abort(instanceId, "failed run reading period ended", "failed run closed");
+                case COMPLETED -> abort(instanceId, "completed reward period ended", "run closed");
+                default -> abort(instanceId, "preparation cancelled");
+            }
+        }
         else {
             if (phaseNine != null) phaseNine.cleanup(instanceId);
             if (lifecycle != null) lifecycle.cleanup(instanceId);
