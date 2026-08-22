@@ -44,6 +44,7 @@ public final class DungeonPhaseFourCommand {
     private final BukkitDoorBlockService doorBlocks = new BukkitDoorBlockService();
     private final Supplier<List<WorldProtectionService.InstanceRegion>> regions;
     private final RunPreparationService runs;
+    private Instant testTick;
 
     public DungeonPhaseFourCommand(CentralUpdateService updates, DoorService doors,
                                    WorldProtectionService protection, TeleportPermitService permits,
@@ -72,9 +73,18 @@ public final class DungeonPhaseFourCommand {
             sender.sendMessage("[FAIL] test tick seconds must be in 0..3600");
             return;
         }
-        CentralUpdateService.TickReport report = updates.tick(clock.instant().plusSeconds(seconds));
+        Instant base = testTick == null ? clock.instant() : testTick;
+        testTick = base.plusSeconds(seconds);
+        CentralUpdateService.TickReport report = updates.tick(testTick);
         sender.sendMessage("[" + (report.successful() ? "PASS" : "FAIL") + "] tick=" + report.now()
                 + " attempted=" + report.attempted() + " failures=" + report.failures());
+    }
+
+    @Subcommand("tick reset-test")
+    @CommandPermission("dungeoncrawlers.admin.generation")
+    public void resetTestTick(CommandSender sender) {
+        testTick = null;
+        sender.sendMessage("[PASS] test tick clock reset");
     }
 
     @Subcommand("door register-test")

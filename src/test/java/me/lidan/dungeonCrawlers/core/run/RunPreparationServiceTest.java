@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.ArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -145,6 +146,136 @@ class RunPreparationServiceTest {
         assertEquals(0, updates.size());
         assertEquals(1, cancellations.get());
         assertTrue(diagnostics.stream().anyMatch(message -> message.contains("preparation timed out")));
+    }
+
+    @Test
+    void preparationWarningIsEmittedOnceBeforeTimeout() {
+        UUID player = UUID.randomUUID();
+        UUID instance = UUID.randomUUID();
+        CentralUpdateService updates = new CentralUpdateService(Clock.fixed(START, ZoneOffset.UTC), ignored -> { });
+        AtomicInteger cancellations = new AtomicInteger();
+        List<RunPreparationService.DeadlineNotice> notices = new ArrayList<>();
+        RunPreparationService service = new RunPreparationService(new DoorService(), updates,
+                new StateTransitionService(), Clock.fixed(START, ZoneOffset.UTC), ignored -> { },
+                ignored -> { }, ignored -> cancellations.incrementAndGet());
+        service.configureDeadlineHandlers(ignored -> { }, ignored -> true, notices::add);
+        service.registerGenerated(instance, new PartySnapshot(player, List.of(player), true), List.of("tank"),
+                Map.of("tank", classDefinition("tank")), new Point(0, 64, 0), Facing.NORTH);
+
+        updates.tick(START.plus(RunPreparationService.PREPARATION_WARNING));
+        updates.tick(START.plus(RunPreparationService.PREPARATION_WARNING));
+
+        assertEquals(1, notices.stream().filter(value -> value.event()
+                == RunPreparationService.DeadlineEvent.PREPARATION_WARNING).count());
+        assertTrue(service.info(instance).isPresent());
+        updates.tick(START.plus(RunPreparationService.PREPARATION_TIMEOUT));
+        assertTrue(service.info(instance).isEmpty());
+        assertEquals(1, cancellations.get());
+    }
+
+    @Test
+    void runDeadlineAppliesToBossAndProvidesFailureReadingPeriod() {
+        UUID player = UUID.randomUUID();
+        UUID instance = UUID.randomUUID();
+        CentralUpdateService updates = new CentralUpdateService(Clock.fixed(START, ZoneOffset.UTC), ignored -> { });
+        AtomicInteger failures = new AtomicInteger();
+        AtomicInteger cleanups = new AtomicInteger();
+        List<RunPreparationService.DeadlineNotice> notices = new ArrayList<>();
+        RunPreparationService service = new RunPreparationService(new DoorService(), updates,
+                new StateTransitionService(), Clock.fixed(START, ZoneOffset.UTC), ignored -> { },
+                ignored -> { }, ignored -> cleanups.incrementAndGet());
+        service.configureDeadlineHandlers(ignored -> failures.incrementAndGet(), ignored -> true, notices::add);
+        service.registerGenerated(instance, new PartySnapshot(player, List.of(player), true), List.of("tank"),
+                Map.of("tank", classDefinition("tank")), new Point(0, 64, 0), Facing.NORTH);
+        service.markSnapshotsReady(instance);
+        service.selectClass(instance, player, "tank");
+        service.openDoor(instance, player);
+        service.enterBoss(instance);
+
+        updates.tick(START.plus(RunPreparationService.RUN_WARNING));
+        updates.tick(START.plus(RunPreparationService.RUN_WARNING));
+        assertEquals(RunPreparationService.RunState.BOSS, service.info(instance).orElseThrow().state());
+        assertEquals(1, notices.stream().filter(value -> value.event()
+                == RunPreparationService.DeadlineEvent.RUN_WARNING).count());
+
+        updates.tick(START.plus(RunPreparationService.RUN_TIMEOUT));
+        assertEquals(RunPreparationService.RunState.FAILED, service.info(instance).orElseThrow().state());
+        assertEquals(1, failures.get());
+        assertEquals(START.plus(RunPreparationService.RUN_TIMEOUT)
+                        .plus(RunPreparationService.FAILED_READING_PERIOD),
+                service.info(instance).orElseThrow().failedDeadline());
+
+        updates.tick(START.plus(RunPreparationService.RUN_TIMEOUT)
+                .plus(RunPreparationService.FAILED_READING_PERIOD));
+        assertTrue(service.info(instance).isEmpty());
+        assertEquals(1, cleanups.get());
+    }
+
+    @Test
+    void completedRewardPeriodWarnsCountsDownAndCloses() {
+        UUID player = UUID.randomUUID();
+        UUID instance = UUID.randomUUID();
+        CentralUpdateService updates = new CentralUpdateService(Clock.fixed(START, ZoneOffset.UTC), ignored -> { });
+        AtomicInteger cleanups = new AtomicInteger();
+        AtomicBoolean active = new AtomicBoolean(true);
+        List<RunPreparationService.DeadlineNotice> notices = new ArrayList<>();
+        RunPreparationService service = new RunPreparationService(new DoorService(), updates,
+                new StateTransitionService(), Clock.fixed(START, ZoneOffset.UTC), ignored -> { },
+                ignored -> { }, ignored -> cleanups.incrementAndGet());
+        service.configureDeadlineHandlers(ignored -> { }, ignored -> active.get(), notices::add);
+        service.registerGenerated(instance, new PartySnapshot(player, List.of(player), true), List.of("tank"),
+                Map.of("tank", classDefinition("tank")), new Point(0, 64, 0), Facing.NORTH);
+        service.markSnapshotsReady(instance);
+        service.selectClass(instance, player, "tank");
+        service.openDoor(instance, player);
+        service.enterBoss(instance);
+        service.enterCompletionPending(instance);
+        assertTrue(service.markCompleted(instance).successful());
+
+        Instant warning = START.plus(RunPreparationService.COMPLETION_TIMEOUT)
+                .minus(RunPreparationService.COMPLETION_WARNING);
+        updates.tick(warning);
+        updates.tick(warning);
+        assertEquals(1, notices.stream().filter(value -> value.event()
+                == RunPreparationService.DeadlineEvent.COMPLETION_WARNING).count());
+        Instant finalCountdown = START.plus(RunPreparationService.COMPLETION_TIMEOUT)
+                .minus(RunPreparationService.COMPLETION_FINAL_COUNTDOWN);
+        updates.tick(finalCountdown);
+        updates.tick(finalCountdown);
+        assertEquals(1, notices.stream().filter(value -> value.event()
+                == RunPreparationService.DeadlineEvent.COMPLETION_COUNTDOWN).count());
+        assertEquals(RunPreparationService.RunState.COMPLETED, service.info(instance).orElseThrow().state());
+
+        updates.tick(START.plus(RunPreparationService.COMPLETION_TIMEOUT));
+        assertTrue(service.info(instance).isEmpty());
+        assertEquals(1, cleanups.get());
+    }
+
+    @Test
+    void completedRewardPeriodClosesEarlyWhenActiveGroupIsEmpty() {
+        UUID player = UUID.randomUUID();
+        UUID instance = UUID.randomUUID();
+        CentralUpdateService updates = new CentralUpdateService(Clock.fixed(START, ZoneOffset.UTC), ignored -> { });
+        AtomicBoolean active = new AtomicBoolean(true);
+        AtomicInteger cleanups = new AtomicInteger();
+        RunPreparationService service = new RunPreparationService(new DoorService(), updates,
+                new StateTransitionService(), Clock.fixed(START, ZoneOffset.UTC), ignored -> { },
+                ignored -> { }, ignored -> cleanups.incrementAndGet());
+        service.configureDeadlineHandlers(ignored -> { }, ignored -> active.get(), ignored -> { });
+        service.registerGenerated(instance, new PartySnapshot(player, List.of(player), true), List.of("tank"),
+                Map.of("tank", classDefinition("tank")), new Point(0, 64, 0), Facing.NORTH);
+        service.markSnapshotsReady(instance);
+        service.selectClass(instance, player, "tank");
+        service.openDoor(instance, player);
+        service.enterBoss(instance);
+        service.enterCompletionPending(instance);
+        service.markCompleted(instance);
+        active.set(false);
+
+        updates.tick(START.plusSeconds(1));
+
+        assertTrue(service.info(instance).isEmpty());
+        assertEquals(1, cleanups.get());
     }
 
     @Test

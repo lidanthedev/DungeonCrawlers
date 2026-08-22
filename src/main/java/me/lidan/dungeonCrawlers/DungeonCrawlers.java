@@ -96,6 +96,7 @@ import java.math.BigDecimal;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -265,11 +266,7 @@ public final class DungeonCrawlers extends JavaPlugin {
                     }
                     getLogger().info("instance=" + instanceId + " first room activated");
                 }, getLogger()::warning, instanceId -> {
-                    if (lifecycle != null) lifecycle.cleanup(instanceId);
-                    if (phaseSeven != null) phaseSeven.cleanup(instanceId);
-                    if (phaseNine != null) phaseNine.cleanup(instanceId);
-                    combat.cleanup(instanceId);
-                    generation.cancel(instanceId);
+                    cancelDeadlineInstance(instanceId);
                 }, true);
         phaseSeven = new SecretDiscoveryService(configRegistry::snapshot);
         lifecycle = new PlayerLifecycleService(centralUpdates, phaseClock(), this::handleLifecycleNotice);
@@ -290,6 +287,20 @@ public final class DungeonCrawlers extends JavaPlugin {
                             registration.getProvider());
                 }, callback -> getServer().getScheduler().runTask(this, callback),
                 detail -> getLogger().warning(detail));
+        runPreparation.configureDeadlineHandlers(this::handleRunFailure, this::hasActiveCompletionGroup,
+                this::handleDeadlineNotice);
+    }
+
+    private void cancelDeadlineInstance(UUID instanceId) {
+        if (phaseFiveCommand != null) {
+            phaseFiveCommand.closeFromDeadline(instanceId);
+            return;
+        }
+        if (lifecycle != null) lifecycle.cleanup(instanceId);
+        if (phaseSeven != null) phaseSeven.cleanup(instanceId);
+        if (phaseNine != null) phaseNine.cleanup(instanceId);
+        if (combat != null) combat.cleanup(instanceId);
+        generation.cancel(instanceId);
     }
 
     private int configuredBackupRetention() {
@@ -451,24 +462,8 @@ public final class DungeonCrawlers extends JavaPlugin {
         var lifecycleSnapshot = lifecycle.info(snapshot.instanceId()).orElse(null);
         org.bukkit.World world = getServer().getWorld(generationWorldName);
         if (context == null || run == null || lifecycleSnapshot == null || world == null) return false;
-        var lifecyclePlayers = lifecycleSnapshot.players().stream().collect(
-                java.util.stream.Collectors.toMap(PlayerLifecycleService.PlayerSnapshot::playerId, value -> value));
-        List<RewardEntitlementService.Participant> participants = run.participants().stream()
-                .map(lifecyclePlayers::get)
-                .filter(java.util.Objects::nonNull)
-                .filter(player -> player.state() != PlayerLifecycleService.PlayerState.REMOVED)
-                .map(player -> new RewardEntitlementService.Participant(player.playerId(), true,
-                        getServer().getPlayer(player.playerId()) != null))
-                .toList();
-        int totalSecrets = phaseSeven.info(snapshot.instanceId()).map(value -> value.secrets().size()).orElse(0);
-        int foundSecrets = phaseSeven.info(snapshot.instanceId()).map(value -> (int) value.secrets().stream()
-                .filter(SecretDiscoveryService.SecretSnapshot::discovered).count()).orElse(0);
-        int deaths = run.participants().stream().map(lifecyclePlayers::get).filter(java.util.Objects::nonNull)
-                .mapToInt(PlayerLifecycleService.PlayerSnapshot::deaths).sum();
-        Duration elapsed = run.startedAt() == null ? Duration.ZERO
-                : Duration.between(run.startedAt(), phaseClock().instant());
-        ScoreService.ScoreReport score = new ScoreService().calculateReport(
-                new ScoreService.ScoreInput(true, deaths, elapsed, foundSecrets, totalSecrets), List.of());
+        List<RewardEntitlementService.Participant> participants = rewardParticipants(run, lifecycleSnapshot);
+        ScoreService.ScoreReport score = calculateScore(run, lifecycleSnapshot, true, phaseClock().instant());
         rewards.register(new RewardEntitlementService.Completion(snapshot.instanceId(),
                 context.seed(), phaseClock().instant(), score.finalSnapshot(), participants,
                 context.floor().rewards()));
@@ -479,6 +474,95 @@ public final class DungeonCrawlers extends JavaPlugin {
                 .filter(java.util.Objects::nonNull)
                 .forEach(player -> player.sendMessage(ScoreResultRenderer.render(score)));
         return true;
+    }
+
+    private void handleRunFailure(UUID instanceId) {
+        if (phaseNine != null) phaseNine.cleanup(instanceId);
+        var context = generation.layoutContext(instanceId).orElse(null);
+        var run = runPreparation.info(instanceId).orElse(null);
+        var lifecycleSnapshot = lifecycle == null ? null : lifecycle.info(instanceId).orElse(null);
+        if (context == null || run == null || lifecycleSnapshot == null) {
+            getLogger().warning("instance=" + instanceId + " failed run could not be scored before cleanup");
+            return;
+        }
+        Instant failedAt = run.failedDeadline() == null
+                ? phaseClock().instant()
+                : run.failedDeadline().minus(RunPreparationService.FAILED_READING_PERIOD);
+        try {
+            ScoreService.ScoreReport score = calculateScore(run, lifecycleSnapshot, false, failedAt);
+            List<RewardEntitlementService.Participant> participants = rewardParticipants(run, lifecycleSnapshot);
+            rewards.register(new RewardEntitlementService.Completion(instanceId, context.seed(), failedAt,
+                    score.finalSnapshot(), participants, context.floor().rewards()));
+            run.participants().stream().map(getServer()::getPlayer).filter(java.util.Objects::nonNull)
+                    .forEach(player -> player.sendMessage(ScoreResultRenderer.render(score)));
+        } catch (RuntimeException exception) {
+            getLogger().warning("instance=" + instanceId + " failed result persistence failed: "
+                    + exception.getClass().getSimpleName() + ": " + exception.getMessage());
+        }
+    }
+
+    private List<RewardEntitlementService.Participant> rewardParticipants(
+            RunPreparationService.RunSnapshot run, PlayerLifecycleService.InstanceSnapshot lifecycleSnapshot) {
+        var lifecyclePlayers = lifecycleSnapshot.players().stream().collect(
+                java.util.stream.Collectors.toMap(PlayerLifecycleService.PlayerSnapshot::playerId, value -> value));
+        return run.participants().stream()
+                .map(lifecyclePlayers::get)
+                .filter(java.util.Objects::nonNull)
+                .filter(player -> player.state() != PlayerLifecycleService.PlayerState.REMOVED)
+                .map(player -> new RewardEntitlementService.Participant(player.playerId(), true,
+                        getServer().getPlayer(player.playerId()) != null))
+                .toList();
+    }
+
+    private ScoreService.ScoreReport calculateScore(RunPreparationService.RunSnapshot run,
+                                                     PlayerLifecycleService.InstanceSnapshot lifecycleSnapshot,
+                                                     boolean successful, Instant endedAt) {
+        var lifecyclePlayers = lifecycleSnapshot.players().stream().collect(
+                java.util.stream.Collectors.toMap(PlayerLifecycleService.PlayerSnapshot::playerId, value -> value));
+        int totalSecrets = phaseSeven.info(run.instanceId()).map(value -> value.secrets().size()).orElse(0);
+        int foundSecrets = phaseSeven.info(run.instanceId()).map(value -> (int) value.secrets().stream()
+                .filter(SecretDiscoveryService.SecretSnapshot::discovered).count()).orElse(0);
+        int deaths = run.participants().stream().map(lifecyclePlayers::get).filter(java.util.Objects::nonNull)
+                .mapToInt(PlayerLifecycleService.PlayerSnapshot::deaths).sum();
+        Duration elapsed = run.startedAt() == null ? Duration.ZERO
+                : Duration.between(run.startedAt(), endedAt);
+        if (elapsed.isNegative()) elapsed = Duration.ZERO;
+        return new ScoreService().calculateReport(
+                new ScoreService.ScoreInput(successful, deaths, elapsed, foundSecrets, totalSecrets), List.of());
+    }
+
+    private boolean hasActiveCompletionGroup(UUID instanceId) {
+        return lifecycle != null && lifecycle.info(instanceId).map(snapshot -> snapshot.players().stream()
+                .anyMatch(player -> player.online() && player.state() == PlayerLifecycleService.PlayerState.ALIVE))
+                .orElse(false);
+    }
+
+    private void handleDeadlineNotice(RunPreparationService.DeadlineNotice notice) {
+        RunPreparationService.RunSnapshot run = runPreparation.info(notice.instanceId()).orElse(null);
+        if (run == null) return;
+        List<Player> players = run.participants().stream().map(getServer()::getPlayer)
+                .filter(java.util.Objects::nonNull).toList();
+        switch (notice.event()) {
+            case PREPARATION_WARNING -> notifyDeadline(players,
+                    "<yellow>Class selection closes in <white>1 minute</white>.</yellow>");
+            case RUN_WARNING -> notifyDeadline(players,
+                    "<yellow>Dungeon time limit expires in <white>1 minute</white>.</yellow>");
+            case RUN_FAILED -> {
+                notifyDeadline(players, "<red>Dungeon failed: <white>" + notice.detail() + "</white>.</red>");
+                players.forEach(player -> showLifecycleTitle(player, "<red>Dungeon Failed</red>",
+                        "<yellow>Reading period: 10 seconds</yellow>", 5, 40, 10));
+            }
+            case COMPLETION_WARNING -> notifyDeadline(players,
+                    "<yellow>Reward chest closes in <white>1 minute</white>.</yellow>");
+            case COMPLETION_COUNTDOWN -> players.forEach(player -> showLifecycleTitle(player,
+                    "<red>Reward chest closing</red>", "<yellow>In <white>" + notice.secondsRemaining()
+                            + "</white> seconds</yellow>", 0, 25, 5));
+            default -> { }
+        }
+    }
+
+    private static void notifyDeadline(List<Player> players, String message) {
+        players.forEach(player -> player.sendMessage(MiniMessageUtils.miniMessage(message)));
     }
 
     private void notifyCombatRoom(CombatRoomService.RoomNotice notice) {
@@ -539,6 +623,12 @@ public final class DungeonCrawlers extends JavaPlugin {
                         .map(value -> getServer().getPlayer(value.playerId()))
                         .filter(java.util.Objects::nonNull)
                         .forEach(BukkitGhostState::exit));
+                RunPreparationService.RunSnapshot run = runPreparation.info(notice.instanceId()).orElse(null);
+                if (run != null && (run.state() == RunPreparationService.RunState.RUNNING
+                        || run.state() == RunPreparationService.RunState.BOSS)) {
+                    if (runPreparation.fail(notice.instanceId(), notice.detail()).successful()) return;
+                }
+                if (run != null && run.state() == RunPreparationService.RunState.FAILED) return;
                 if (phaseFiveCommand != null) {
                     phaseFiveCommand.wipeFromLifecycle(notice.instanceId(), notice.detail());
                 }

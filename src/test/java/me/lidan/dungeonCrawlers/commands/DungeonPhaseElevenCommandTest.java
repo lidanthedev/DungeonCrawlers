@@ -124,6 +124,7 @@ class DungeonPhaseElevenCommandTest {
                 INSTANCE, RunPreparationService.RunState.RUNNING,
                 List.of(ACTIVE, OFFLINE, REMOVED), List.of("tank"), java.util.Map.of(), true,
                 Instant.parse("2026-08-22T00:00:00Z"), Instant.parse("2026-08-22T00:01:00Z"),
+                Instant.parse("2026-08-22T01:01:00Z"), null, null, null,
                 true, Instant.parse("2026-08-22T00:01:00Z"),
                 new DoorService.DoorSnapshot(INSTANCE, new Point(0, 0, 0), Facing.NORTH,
                         DoorService.DoorState.OPEN));

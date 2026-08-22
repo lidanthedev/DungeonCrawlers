@@ -20,10 +20,18 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 /** Coordinates the player-facing PREPARING phase and its one-shot start door. */
 public final class RunPreparationService {
+    public static final Duration PREPARATION_WARNING = Duration.ofMinutes(4);
     public static final Duration PREPARATION_TIMEOUT = Duration.ofMinutes(5);
+    public static final Duration RUN_WARNING = Duration.ofMinutes(59);
+    public static final Duration RUN_TIMEOUT = Duration.ofMinutes(60);
+    public static final Duration FAILED_READING_PERIOD = Duration.ofSeconds(10);
+    public static final Duration COMPLETION_WARNING = Duration.ofMinutes(1);
+    public static final Duration COMPLETION_TIMEOUT = Duration.ofMinutes(5);
+    public static final Duration COMPLETION_FINAL_COUNTDOWN = Duration.ofSeconds(10);
 
     private final DoorService doors;
     private final CentralUpdateService updates;
@@ -33,6 +41,9 @@ public final class RunPreparationService {
     private final boolean failOnFirstRoomActivation;
     private final Consumer<String> diagnostics;
     private final Consumer<UUID> instanceCanceller;
+    private Consumer<UUID> failureHandler = ignored -> { };
+    private Predicate<UUID> activeGroup = ignored -> true;
+    private Consumer<DeadlineNotice> deadlineNotices = ignored -> { };
     private final Map<UUID, MutableRun> runs = new LinkedHashMap<>();
 
     public RunPreparationService(DoorService doors, CentralUpdateService updates,
@@ -63,6 +74,15 @@ public final class RunPreparationService {
         this.failOnFirstRoomActivation = failOnFirstRoomActivation;
         this.diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
         this.instanceCanceller = Objects.requireNonNull(instanceCanceller, "instanceCanceller");
+    }
+
+    /** Configures the platform callbacks used when a deadline changes the run lifecycle. */
+    public synchronized void configureDeadlineHandlers(Consumer<UUID> failureHandler,
+                                                        Predicate<UUID> activeGroup,
+                                                        Consumer<DeadlineNotice> deadlineNotices) {
+        this.failureHandler = Objects.requireNonNull(failureHandler, "failureHandler");
+        this.activeGroup = Objects.requireNonNull(activeGroup, "activeGroup");
+        this.deadlineNotices = Objects.requireNonNull(deadlineNotices, "deadlineNotices");
     }
 
     public synchronized PreparationResult registerGenerated(UUID instanceId, PartySnapshot party,
@@ -152,6 +172,7 @@ public final class RunPreparationService {
                 if (!transition.accepted()) throw new IllegalStateException(transition.detail());
                 run.state = RunState.RUNNING;
                 run.startedAt = clock.instant();
+                run.runDeadline = run.startedAt.plus(RUN_TIMEOUT);
             });
         } catch (RuntimeException exception) {
             String detail = exception.getMessage() == null
@@ -199,6 +220,24 @@ public final class RunPreparationService {
         return PhaseResult.success("boss defeated; completion pending", run.snapshot());
     }
 
+    /** Starts the five-minute completed-result period after rewards are durably finalized. */
+    public synchronized PhaseResult markCompleted(UUID instanceId) {
+        MutableRun run = runs.get(Objects.requireNonNull(instanceId, "instanceId"));
+        if (run == null) return PhaseResult.failure("unknown run " + instanceId);
+        if (run.state == RunState.COMPLETED) return PhaseResult.success("run already completed", run.snapshot());
+        if (run.state != RunState.COMPLETION_PENDING) {
+            return PhaseResult.failure("run is not completion pending: " + run.state);
+        }
+        StateTransitionService.TransitionResult transition = transitions.transition(
+                InstanceState.COMPLETION_PENDING, InstanceState.COMPLETED);
+        if (!transition.accepted()) return PhaseResult.failure(transition.detail());
+        run.state = RunState.COMPLETED;
+        run.completedAt = clock.instant();
+        run.completionDeadline = run.completedAt.plus(COMPLETION_TIMEOUT);
+        run.lastCompletionCountdown = -1;
+        return PhaseResult.success("run completed; reward period started", run.snapshot());
+    }
+
     /** Marks an active run failed without performing cleanup. */
     public synchronized PhaseResult fail(UUID instanceId, String detail) {
         MutableRun run = runs.get(Objects.requireNonNull(instanceId, "instanceId"));
@@ -208,11 +247,7 @@ public final class RunPreparationService {
         if (run.state != RunState.RUNNING && run.state != RunState.BOSS) {
             return PhaseResult.failure("run cannot fail from " + run.state);
         }
-        StateTransitionService.TransitionResult transition = transitions.transition(
-                run.state == RunState.RUNNING ? InstanceState.RUNNING : InstanceState.BOSS,
-                InstanceState.FAILED);
-        if (!transition.accepted()) return PhaseResult.failure(transition.detail());
-        run.state = RunState.FAILED;
+        transitionToFailed(run, detail, clock.instant());
         return PhaseResult.success(detail, run.snapshot());
     }
 
@@ -265,19 +300,122 @@ public final class RunPreparationService {
 
     private synchronized void update(UUID instanceId, MutableRun run, Instant now) {
         if (runs.get(instanceId) != run) return;
-        if (run.state != RunState.PREPARING || now.isBefore(run.preparationDeadline)) {
-            run.lastUpdated = now;
+        run.lastUpdated = now;
+        switch (run.state) {
+            case PREPARING -> updatePreparing(instanceId, run, now);
+            case RUNNING, BOSS -> updateRunning(instanceId, run, now);
+            case FAILED -> updateFailed(instanceId, run, now);
+            case COMPLETED -> updateCompleted(instanceId, run, now);
+            default -> { }
+        }
+    }
+
+    private void updatePreparing(UUID instanceId, MutableRun run, Instant now) {
+        if (!run.preparationWarningSent && inWarningWindow(now, run.preparationDeadline, PREPARATION_WARNING)) {
+            run.preparationWarningSent = true;
+            notifyDeadline(new DeadlineNotice(instanceId, DeadlineEvent.PREPARATION_WARNING,
+                    secondsRemaining(now, run.preparationDeadline), "preparation deadline is approaching"));
+        }
+        if (!now.isBefore(run.preparationDeadline)) {
+            notifyDeadline(new DeadlineNotice(instanceId, DeadlineEvent.PREPARATION_EXPIRED, 0,
+                    "preparation timed out"));
+            closeAfterDeadline(instanceId, run, "preparation timed out");
+        }
+    }
+
+    private void updateRunning(UUID instanceId, MutableRun run, Instant now) {
+        if (run.runDeadline == null) return;
+        if (!run.runWarningSent && inWarningWindow(now, run.runDeadline, RUN_WARNING)) {
+            run.runWarningSent = true;
+            notifyDeadline(new DeadlineNotice(instanceId, DeadlineEvent.RUN_WARNING,
+                    secondsRemaining(now, run.runDeadline), "run deadline is approaching"));
+        }
+        if (!now.isBefore(run.runDeadline)) {
+            transitionToFailed(run, "run time limit reached", now);
+        }
+    }
+
+    private void updateFailed(UUID instanceId, MutableRun run, Instant now) {
+        if (run.failedDeadline == null || now.isBefore(run.failedDeadline)) return;
+        notifyDeadline(new DeadlineNotice(instanceId, DeadlineEvent.FAILED_CLOSING, 0,
+                "failed run reading period ended"));
+        closeAfterDeadline(instanceId, run, "failed run reading period ended");
+    }
+
+    private void updateCompleted(UUID instanceId, MutableRun run, Instant now) {
+        boolean active;
+        try {
+            active = activeGroup.test(instanceId);
+        } catch (RuntimeException exception) {
+            diagnose("instance=" + instanceId + " active completion group check failed: " + message(exception));
+            active = true;
+        }
+        if (!active) {
+            notifyDeadline(new DeadlineNotice(instanceId, DeadlineEvent.COMPLETION_CLOSED, 0,
+                    "no active participants remain"));
+            closeAfterDeadline(instanceId, run, "completed reward group is empty");
             return;
         }
-        runs.remove(instanceId);
-        updates.remove(instanceId);
-        doors.remove(instanceId);
-        diagnose("instance=" + instanceId + " preparation timed out");
+        if (!run.completionWarningSent && inWarningWindow(now, run.completionDeadline, COMPLETION_WARNING)) {
+            run.completionWarningSent = true;
+            notifyDeadline(new DeadlineNotice(instanceId, DeadlineEvent.COMPLETION_WARNING,
+                    secondsRemaining(now, run.completionDeadline), "reward period is ending soon"));
+        }
+        if (!now.isBefore(run.completionDeadline)) {
+            notifyDeadline(new DeadlineNotice(instanceId, DeadlineEvent.COMPLETION_CLOSED, 0,
+                    "completed reward period ended"));
+            closeAfterDeadline(instanceId, run, "completed reward period ended");
+            return;
+        }
+        long remaining = secondsRemaining(now, run.completionDeadline);
+        if (remaining > 0 && remaining <= COMPLETION_FINAL_COUNTDOWN.toSeconds()
+                && remaining != run.lastCompletionCountdown) {
+            run.lastCompletionCountdown = remaining;
+            notifyDeadline(new DeadlineNotice(instanceId, DeadlineEvent.COMPLETION_COUNTDOWN, remaining,
+                    "reward period closes soon"));
+        }
+    }
+
+    private void transitionToFailed(MutableRun run, String detail, Instant now) {
+        InstanceState current = run.state == RunState.RUNNING ? InstanceState.RUNNING : InstanceState.BOSS;
+        StateTransitionService.TransitionResult transition = transitions.transition(current, InstanceState.FAILED);
+        if (!transition.accepted()) throw new IllegalStateException(transition.detail());
+        run.state = RunState.FAILED;
+        run.failedDeadline = now.plus(FAILED_READING_PERIOD);
+        notifyDeadline(new DeadlineNotice(run.instanceId, DeadlineEvent.RUN_FAILED, 0, detail));
+        try {
+            failureHandler.accept(run.instanceId);
+        } catch (RuntimeException exception) {
+            diagnose("instance=" + run.instanceId + " failure handling failed: " + message(exception));
+        }
+    }
+
+    private void closeAfterDeadline(UUID instanceId, MutableRun run, String detail) {
+        diagnose("instance=" + instanceId + " " + detail);
         try {
             instanceCanceller.accept(instanceId);
         } catch (RuntimeException exception) {
-            diagnose("instance=" + instanceId + " timeout cancellation failed: " + message(exception));
+            diagnose("instance=" + instanceId + " deadline cleanup failed: " + message(exception));
         }
+        if (runs.get(instanceId) == run) cleanup(instanceId);
+    }
+
+    private void notifyDeadline(DeadlineNotice notice) {
+        try {
+            deadlineNotices.accept(notice);
+        } catch (RuntimeException exception) {
+            diagnose("instance=" + notice.instanceId() + " deadline notice failed: " + message(exception));
+        }
+    }
+
+    private static boolean inWarningWindow(Instant now, Instant deadline, Duration warning) {
+        return !now.isBefore(deadline.minus(warning)) && now.isBefore(deadline);
+    }
+
+    private static long secondsRemaining(Instant now, Instant deadline) {
+        Duration remaining = Duration.between(now, deadline);
+        if (remaining.isZero() || remaining.isNegative()) return 0;
+        return remaining.getSeconds() + (remaining.getNano() == 0 ? 0 : 1);
     }
 
     private void diagnose(String message) {
@@ -292,7 +430,21 @@ public final class RunPreparationService {
         return throwable.getMessage() == null ? throwable.getClass().getSimpleName() : throwable.getMessage();
     }
 
-    public enum RunState { PREPARING, RUNNING, BOSS, COMPLETION_PENDING, FAILED }
+    public enum RunState { PREPARING, RUNNING, BOSS, COMPLETION_PENDING, COMPLETED, FAILED }
+
+    public enum DeadlineEvent {
+        PREPARATION_WARNING, PREPARATION_EXPIRED, RUN_WARNING, RUN_FAILED,
+        FAILED_CLOSING, COMPLETION_WARNING, COMPLETION_COUNTDOWN, COMPLETION_CLOSED
+    }
+
+    public record DeadlineNotice(UUID instanceId, DeadlineEvent event, long secondsRemaining, String detail) {
+        public DeadlineNotice {
+            Objects.requireNonNull(instanceId, "instanceId");
+            Objects.requireNonNull(event, "event");
+            Objects.requireNonNull(detail, "detail");
+            if (secondsRemaining < 0) throw new IllegalArgumentException("secondsRemaining must not be negative");
+        }
+    }
 
     public record DoorBlockLookup(UUID instanceId, DoorService.DoorState state) {
         public DoorBlockLookup { Objects.requireNonNull(instanceId); Objects.requireNonNull(state); }
@@ -301,7 +453,9 @@ public final class RunPreparationService {
     public record RunSnapshot(UUID instanceId, RunState state, List<UUID> participants,
                               List<String> allowedClasses, Map<UUID, String> selectedClasses,
                               boolean snapshotsReady, Instant preparationDeadline, Instant startedAt,
-                              boolean firstRoomActivated, Instant lastUpdated, DoorService.DoorSnapshot door) {
+                              Instant runDeadline, Instant failedDeadline, Instant completedAt,
+                              Instant completionDeadline, boolean firstRoomActivated, Instant lastUpdated,
+                              DoorService.DoorSnapshot door) {
         public RunSnapshot {
             Objects.requireNonNull(instanceId); Objects.requireNonNull(state);
             participants = List.copyOf(participants); allowedClasses = List.copyOf(allowedClasses);
@@ -364,6 +518,14 @@ public final class RunPreparationService {
         private RunState state = RunState.PREPARING;
         private boolean snapshotsReady;
         private Instant startedAt;
+        private Instant runDeadline;
+        private Instant failedDeadline;
+        private Instant completedAt;
+        private Instant completionDeadline;
+        private boolean preparationWarningSent;
+        private boolean runWarningSent;
+        private boolean completionWarningSent;
+        private long lastCompletionCountdown = -1;
         private boolean firstRoomActivated;
         private Instant lastUpdated;
         private DoorService.DoorSnapshot door;
@@ -382,8 +544,8 @@ public final class RunPreparationService {
 
         private RunSnapshot snapshot() {
             return new RunSnapshot(instanceId, state, participants, allowedClasses,
-                    selectedClasses, snapshotsReady, preparationDeadline, startedAt, firstRoomActivated,
-                    lastUpdated, door);
+                    selectedClasses, snapshotsReady, preparationDeadline, startedAt, runDeadline,
+                    failedDeadline, completedAt, completionDeadline, firstRoomActivated, lastUpdated, door);
         }
     }
 }

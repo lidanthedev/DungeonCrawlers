@@ -381,6 +381,10 @@ public final class PortalEncounterService {
         if (!transition.successful()) {
             return finalizationFailure(state, "run completion transition failed: " + transition.detail());
         }
+        RunPreparationService.PhaseResult completed = runs.markCompleted(state.instanceId);
+        if (!completed.successful()) {
+            return finalizationFailure(state, "run completion deadline failed to start: " + completed.detail());
+        }
         state.status = Status.COMPLETION_PENDING;
         state.detail = detail + "; reward location=" + state.rewardChest;
         updates.removeSupplemental(state.instanceId, state.callback);

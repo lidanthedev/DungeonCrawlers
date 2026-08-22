@@ -252,12 +252,34 @@ public final class DungeonPhaseFiveCommand {
 
     /** Called by the admin instance-cancel path before generation cleanup. */
     public void cancelFromAdmin(UUID instanceId) {
-        if (runs.info(instanceId).isPresent()) abort(instanceId, "preparation cancelled");
+        RunPreparationService.RunSnapshot snapshot = runs.info(instanceId).orElse(null);
+        if (snapshot != null) {
+            switch (snapshot.state()) {
+                case FAILED -> abort(instanceId, "failed run reading period ended", "failed run closed");
+                case COMPLETED -> abort(instanceId, "completed reward period ended", "run closed");
+                default -> abort(instanceId, "preparation cancelled");
+            }
+        }
         else {
             if (phaseNine != null) phaseNine.cleanup(instanceId);
             if (lifecycle != null) lifecycle.cleanup(instanceId);
             if (phaseSeven != null) phaseSeven.cleanup(instanceId);
             if (combat != null) combat.cleanup(instanceId);
+        }
+    }
+
+    /** Closes a run after the central deadline service has finished its reading or reward period. */
+    public void closeFromDeadline(UUID instanceId) {
+        RunPreparationService.RunSnapshot snapshot = runs.info(instanceId).orElse(null);
+        if (snapshot == null) {
+            cancelFromAdmin(instanceId);
+            return;
+        }
+        switch (snapshot.state()) {
+            case PREPARING -> abort(instanceId, "preparation timed out", "preparation deadline ended");
+            case FAILED -> abort(instanceId, "failed run reading period ended", "failed run closed");
+            case COMPLETED -> abort(instanceId, "completed reward period ended", "run closed");
+            default -> cancelFromAdmin(instanceId);
         }
     }
 

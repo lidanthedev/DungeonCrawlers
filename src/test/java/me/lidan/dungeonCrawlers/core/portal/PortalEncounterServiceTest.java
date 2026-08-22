@@ -87,8 +87,10 @@ class PortalEncounterServiceTest {
         UUID boss = started.bossEntity();
         assertTrue(service.onBossDeath(instance, boss).accepted());
         assertEquals(PortalEncounterService.Status.COMPLETION_PENDING, service.info(instance).orElseThrow().status());
-        assertEquals(RunPreparationService.RunState.COMPLETION_PENDING,
+        assertEquals(RunPreparationService.RunState.COMPLETED,
                 runs.info(instance).orElseThrow().state());
+        assertEquals(START.plus(RunPreparationService.COMPLETION_TIMEOUT),
+                runs.info(instance).orElseThrow().completionDeadline());
         assertEquals(instance, service.rewardAt(service.info(instance).orElseThrow().rewardChest()).orElseThrow());
     }
 
@@ -115,6 +117,7 @@ class PortalEncounterServiceTest {
         assertNotEquals(boss, secondBoss);
         assertTrue(service.onBossDeath(instance, secondBoss).accepted());
         assertEquals(PortalEncounterService.Status.COMPLETION_PENDING, service.info(instance).orElseThrow().status());
+        assertEquals(RunPreparationService.RunState.COMPLETED, runs.info(instance).orElseThrow().state());
         var snapshot = service.info(instance).orElseThrow();
         assertNotEquals(snapshot.bossSpawn(), snapshot.rewardChest());
         assertEquals(instance, service.rewardAt(snapshot.rewardChest()).orElseThrow());
