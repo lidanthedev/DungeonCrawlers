@@ -178,12 +178,12 @@ public final class RewardClaimService {
                         "reward claim service did not restore")));
     }
 
-    /** Retries every owned/pending claim for a player, normally called on join. */
+    /** Retries every owned/pending/quarantined claim for a player, normally called on join. */
     public void deliverPending(Player player) {
         deliverPending(player, result -> { });
     }
 
-    /** Retries every owned/pending claim and reports each recovery result on the main thread. */
+    /** Retries every owned/pending/quarantined claim and reports each recovery result on the main thread. */
     public void deliverPending(Player player, Consumer<DeliveryResult> callback) {
         Objects.requireNonNull(player, "player");
         Objects.requireNonNull(callback, "callback");
@@ -195,7 +195,8 @@ public final class RewardClaimService {
                         .filter(record -> record.current.playerId().equals(player.getUniqueId()))
                         .filter(record -> record.current.offers().values().stream()
                                 .anyMatch(offer -> offer.state() == OfferState.OWNED
-                                        || offer.state() == OfferState.DELIVERY_PENDING))
+                                        || offer.state() == OfferState.DELIVERY_PENDING
+                                        || offer.state() == OfferState.OWNED_DELIVERY_QUARANTINED))
                         .map(record -> record.current.instanceId()).distinct().toList();
             }
             instances.forEach(instance -> deliver(instance, player.getUniqueId(), player, result -> {

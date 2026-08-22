@@ -6,6 +6,7 @@ import com.google.gson.JsonParser;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.RewardDefinition;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.RewardItem;
 import me.lidan.dungeonCrawlers.core.reward.RewardEntitlementService;
+import me.lidan.dungeonCrawlers.core.reward.RewardModels.ItemPayload;
 import me.lidan.dungeonCrawlers.core.score.DungeonRank;
 import me.lidan.dungeonCrawlers.core.score.ScoreService;
 import me.lidan.dungeonCrawlers.integration.CaveItemsGateway;
@@ -452,6 +453,51 @@ class RewardClaimServiceTest {
                 .mapToInt(ItemStack::getAmount).sum());
     }
 
+    @Test
+    void deliverPendingRecoversQuarantinedPartialDelivery() {
+        PlayerMock online = new PlayerMock(MockBukkit.getMock(), "Claimant", PLAYER);
+        MockBukkit.getMock().addPlayer(online);
+        RewardClaimService claims = new RewardClaimService(clock(), entitlementsWithTwoItems(), items(),
+                successfulEconomy());
+        AtomicReference<RewardClaimService.ClaimResult> claim = new AtomicReference<>();
+
+        claims.claim(INSTANCE, PLAYER, "combo", online, claim::set);
+
+        assertTrue(claim.get().successful(), claim.get().detail());
+        UUID offerId = claim.get().offerId();
+        List<ItemPayload> payloads = claims.info(INSTANCE, PLAYER).orElseThrow().offers().get(offerId).items();
+        assertEquals(2, payloads.size());
+
+        ItemPayload blockedPayload = payloads.get(1);
+        ItemStack conflicting = ItemStack.deserializeBytes(blockedPayload.serializedItem());
+        conflicting = RewardClaimService.markPending(conflicting, offerId, UUID.randomUUID(),
+                blockedPayload.itemId());
+        int conflictingSlot = online.getInventory().firstEmpty();
+        online.getInventory().setItem(conflictingSlot, conflicting);
+
+        AtomicReference<RewardClaimService.DeliveryResult> partialDelivery = new AtomicReference<>();
+        claims.deliver(INSTANCE, PLAYER, online, partialDelivery::set);
+
+        assertFalse(partialDelivery.get().successful());
+        assertTrue(partialDelivery.get().detail().startsWith("delivery was quarantined"));
+        assertEquals(OfferState.OWNED_DELIVERY_QUARANTINED,
+                claims.info(INSTANCE, PLAYER).orElseThrow().offers().get(offerId).state());
+        assertTrue(Arrays.stream(online.getInventory().getContents())
+                .anyMatch(item -> item != null && payloads.getFirst().itemId().equals(RewardClaimService.itemId(item).orElse(null))));
+
+        online.getInventory().setItem(conflictingSlot, null);
+        AtomicReference<RewardClaimService.DeliveryResult> recoveredDelivery = new AtomicReference<>();
+        claims.deliverPending(online, recoveredDelivery::set);
+
+        assertTrue(recoveredDelivery.get().successful(), recoveredDelivery.get().detail());
+        assertEquals(OfferState.DELIVERED,
+                claims.info(INSTANCE, PLAYER).orElseThrow().offers().get(offerId).state());
+        assertEquals(1, online.getInventory().all(Material.GOLD_INGOT).values().stream()
+                .mapToInt(ItemStack::getAmount).sum());
+        assertEquals(1, online.getInventory().all(Material.OAK_LOG).values().stream()
+                .mapToInt(ItemStack::getAmount).sum());
+    }
+
     private static RewardEntitlementService entitlements() {
         RewardDefinition gold = new RewardDefinition(true, 5, 0, 1, false,
                 List.of(new RewardItem("GOLD", 1, 1, 1)));
@@ -468,6 +514,23 @@ class RewardClaimServiceTest {
         service.register(new RewardEntitlementService.Completion(INSTANCE, 42, COMPLETED, finalScore,
                 List.of(new RewardEntitlementService.Participant(PLAYER, true, true)),
                 Map.of("gold", gold, "wood", wood)));
+        return service;
+    }
+
+    private static RewardEntitlementService entitlementsWithTwoItems() {
+        RewardDefinition combo = new RewardDefinition(true, 5, 0, 2, true,
+                List.of(new RewardItem("GOLD", 1, 1, 1), new RewardItem("WOOD", 1, 1, 1)));
+        RewardEntitlementService service = new RewardEntitlementService(clock(),
+                Set.of("GOLD", "WOOD")::contains);
+        ScoreService.ScoreResult score = new ScoreService.ScoreResult(100, 100, 100, 0, 300,
+                DungeonRank.S_PLUS, List.of());
+        ScoreService.FinalScoreSnapshot finalScore = new ScoreService.FinalScoreSnapshot(
+                new ScoreService.ScoreInput(true, 0, Duration.ofMinutes(1), 0, 0),
+                score.skill(), score.time(), score.exploration(), score.bonus(), score.total(),
+                score.rank(), score.bonusFacts());
+        service.register(new RewardEntitlementService.Completion(INSTANCE, 42, COMPLETED, finalScore,
+                List.of(new RewardEntitlementService.Participant(PLAYER, true, true)),
+                Map.of("combo", combo)));
         return service;
     }
 
