@@ -62,6 +62,7 @@ import me.lidan.dungeonCrawlers.integration.BukkitPortalBossListener;
 import me.lidan.dungeonCrawlers.integration.BukkitPortalParticipantGateway;
 import me.lidan.dungeonCrawlers.integration.BukkitRewardChestListener;
 import me.lidan.dungeonCrawlers.integration.BukkitRewardMailboxListener;
+import me.lidan.dungeonCrawlers.integration.BukkitReloadProtectionListener;
 import me.lidan.dungeonCrawlers.integration.ThrottledDungeonActionBar;
 import me.lidan.dungeonCrawlers.integration.BukkitWorldProtectionListener;
 import me.lidan.dungeonCrawlers.integration.BukkitDungeonRunListener;
@@ -445,6 +446,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         registerEvent(new BukkitPortalBossListener(this, phaseNine, runPreparation, generationWorldName));
         registerEvent(new BukkitRewardChestListener(phaseNine, generationWorldName, phaseElevenCommand::openRewards));
         registerEvent(rewardMailboxListener);
+        registerEvent(new BukkitReloadProtectionListener(this::hasCompletionPending));
         // PlugMan-style reloads do not emit PlayerJoinEvent; repair any durable snapshots for players
         // who stayed online while the plugin was restarted.
         Bukkit.getOnlinePlayers().forEach(phaseFiveCommand::recoverOnJoin);
