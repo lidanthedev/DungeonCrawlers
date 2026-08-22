@@ -16,6 +16,7 @@ public final class CentralUpdateService {
     private final Clock clock;
     private final Consumer<String> diagnostics;
     private final Map<UUID, List<Consumer<Instant>>> updates = new LinkedHashMap<>();
+    private boolean frozen;
 
     public CentralUpdateService(Clock clock, Consumer<String> diagnostics) {
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -25,6 +26,7 @@ public final class CentralUpdateService {
     public synchronized boolean register(UUID instanceId, Consumer<Instant> update) {
         Objects.requireNonNull(instanceId, "instanceId");
         Objects.requireNonNull(update, "update");
+        if (frozen) return false;
         if (updates.containsKey(instanceId)) return false;
         updates.put(instanceId, new ArrayList<>(List.of(update)));
         return true;
@@ -62,6 +64,7 @@ public final class CentralUpdateService {
         Objects.requireNonNull(now, "now");
         Map<UUID, List<Consumer<Instant>>> snapshot;
         synchronized (this) {
+            if (frozen) return new TickReport(now, 0, List.of());
             snapshot = new LinkedHashMap<>();
             updates.forEach((instanceId, callbacks) -> snapshot.put(instanceId, List.copyOf(callbacks)));
         }
@@ -102,6 +105,15 @@ public final class CentralUpdateService {
 
     public synchronized void clear() {
         updates.clear();
+    }
+
+    /** Stops callbacks before plugin-owned services are restored or torn down during disable. */
+    public synchronized void freeze() {
+        frozen = true;
+    }
+
+    public synchronized boolean frozen() {
+        return frozen;
     }
 
     private static String message(Throwable throwable) {

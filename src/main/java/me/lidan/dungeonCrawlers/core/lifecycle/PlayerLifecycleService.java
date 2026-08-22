@@ -26,6 +26,7 @@ public final class PlayerLifecycleService {
     private final Clock clock;
     private final Consumer<Notice> notices;
     private final Map<UUID, MutableInstance> instances = new LinkedHashMap<>();
+    private boolean frozen;
 
     public PlayerLifecycleService(CentralUpdateService updates, Clock clock, Consumer<Notice> notices) {
         this.updates = Objects.requireNonNull(updates, "updates");
@@ -36,6 +37,7 @@ public final class PlayerLifecycleService {
     public synchronized RegistrationResult register(UUID instanceId, Collection<UUID> participants) {
         UUID id = Objects.requireNonNull(instanceId, "instanceId");
         Objects.requireNonNull(participants, "participants");
+        if (frozen) return RegistrationResult.failure("player lifecycle is frozen for plugin disable");
         List<UUID> ordered = participants.stream().map(value -> Objects.requireNonNull(value, "participant"))
                 .distinct().sorted().toList();
         if (ordered.isEmpty()) return RegistrationResult.failure("lifecycle requires at least one participant");
@@ -198,9 +200,14 @@ public final class PlayerLifecycleService {
         new ArrayList<>(instances.keySet()).forEach(this::cleanup);
     }
 
+    /** Prevents late lifecycle ticks while online players are restored during disable. */
+    public synchronized void freezeForDisable() {
+        frozen = true;
+    }
+
     private synchronized void tick(UUID instanceId, Instant now) {
         MutableInstance state = instances.get(instanceId);
-        if (state == null || !state.running || state.wiped) return;
+        if (frozen || state == null || !state.running || state.wiped) return;
         for (MutablePlayer player : state.players.values()) {
             if (!player.online || player.state != PlayerState.GHOST || player.reviveAt == null) continue;
             if (!now.isBefore(player.reviveAt)) {

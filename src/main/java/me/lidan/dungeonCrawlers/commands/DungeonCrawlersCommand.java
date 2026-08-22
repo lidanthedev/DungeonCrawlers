@@ -53,6 +53,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 @Command("dungeon")
@@ -72,13 +73,14 @@ public final class DungeonCrawlersCommand {
     private final ScoreService scores = new ScoreService();
     private final GenerationService generation;
     private final Consumer<UUID> preparationCancel;
+    private final BooleanSupplier reloadBlocked;
 
     public DungeonCrawlersCommand(JavaPlugin plugin, CompatibilityService compatibility,
                                   BoostedCustomConfig mainConfig,
                                   ConfigRegistryService configRegistry, PlayerReservationService reservations,
                                   DurableRepository durableRepository) {
         this(plugin, compatibility, mainConfig, configRegistry, reservations, durableRepository,
-                null, ignored -> { });
+                null, ignored -> { }, () -> false);
     }
 
     public DungeonCrawlersCommand(JavaPlugin plugin, CompatibilityService compatibility,
@@ -86,6 +88,15 @@ public final class DungeonCrawlersCommand {
                                   ConfigRegistryService configRegistry, PlayerReservationService reservations,
                                   DurableRepository durableRepository, GenerationService generation,
                                   Consumer<UUID> preparationCancel) {
+        this(plugin, compatibility, mainConfig, configRegistry, reservations, durableRepository, generation,
+                preparationCancel, () -> false);
+    }
+
+    public DungeonCrawlersCommand(JavaPlugin plugin, CompatibilityService compatibility,
+                                  BoostedCustomConfig mainConfig,
+                                  ConfigRegistryService configRegistry, PlayerReservationService reservations,
+                                  DurableRepository durableRepository, GenerationService generation,
+                                  Consumer<UUID> preparationCancel, BooleanSupplier reloadBlocked) {
         this.plugin = plugin;
         this.compatibility = compatibility;
         this.mainConfig = mainConfig;
@@ -94,6 +105,7 @@ public final class DungeonCrawlersCommand {
         this.durableRepository = durableRepository;
         this.generation = generation;
         this.preparationCancel = preparationCancel;
+        this.reloadBlocked = reloadBlocked;
         this.parties = PartyProviders.forServer(plugin.getServer());
     }
 
@@ -127,6 +139,7 @@ public final class DungeonCrawlersCommand {
         }
         sendReloadMessage(sender, "<yellow>Force reload: cancelling all running dungeons before reloading...</yellow>");
         plugin.getServer().getScheduler().runTask(plugin, () -> {
+            if (reloadIsBlocked(sender)) return;
             reservations.pauseAdmission();
             List<UUID> active = generation.instances().stream()
                     .filter(instance -> instance.status() != GenerationService.InstanceStatus.DESTROYED)
@@ -149,6 +162,19 @@ public final class DungeonCrawlersCommand {
                     + "</white> dungeon(s); waiting for cleanup...</yellow>");
             awaitForceReload(sender, 0);
         });
+    }
+
+    private boolean reloadIsBlocked(CommandSender sender) {
+        try {
+            if (!reloadBlocked.getAsBoolean()) return false;
+        } catch (RuntimeException exception) {
+            sendReloadMessage(sender, "<red>[FAIL] force reload safety check failed; no state was changed: "
+                    + exception.getMessage() + "</red>");
+            return true;
+        }
+        sendReloadMessage(sender, "<red>[FAIL] force reload is refused while reward completion is pending; "
+                + "wait for the reward period to close.</red>");
+        return true;
     }
 
     private void awaitForceReload(CommandSender sender, int polls) {

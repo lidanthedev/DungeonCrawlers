@@ -101,4 +101,19 @@ class CentralUpdateServiceTest {
         service.tick(Instant.EPOCH);
         assertEquals(List.of("primary"), calls);
     }
+
+    @Test
+    void freezeStopsRacingTicksAndRejectsNewRegistrations() {
+        CentralUpdateService service = new CentralUpdateService(Clock.systemUTC(), ignored -> { });
+        UUID instance = UUID.randomUUID();
+        int[] calls = {0};
+        assertTrue(service.register(instance, ignored -> calls[0]++));
+
+        service.freeze();
+
+        assertTrue(service.frozen());
+        assertEquals(0, service.tick(Instant.EPOCH).attempted());
+        assertEquals(0, calls[0]);
+        assertFalse(service.register(UUID.randomUUID(), ignored -> { }));
+    }
 }

@@ -408,7 +408,8 @@ public final class DungeonCrawlers extends JavaPlugin {
         Lamp<BukkitCommandActor> commandHandler = commandHandlerBuilder.build();
         commandHandler.register(new DungeonCrawlersCommand(this,
                 new CompatibilityService(this, mainConfig, configRegistry), mainConfig, configRegistry,
-                reservations, durableRepository, generation, phaseFiveCommand::cancelFromAdmin));
+                reservations, durableRepository, generation, phaseFiveCommand::cancelFromAdmin,
+                this::hasCompletionPending));
         commandHandler.register(new DungeonAuthoringCommand(this, mainConfig, configRegistry, reservations, authoring,
                 generation::activeTemplateIds, progressBars));
         commandHandler.register(new DungeonGenerationCommand(configRegistry,
@@ -535,6 +536,11 @@ public final class DungeonCrawlers extends JavaPlugin {
         return lifecycle != null && lifecycle.info(instanceId).map(snapshot -> snapshot.players().stream()
                 .anyMatch(player -> player.online() && player.state() == PlayerLifecycleService.PlayerState.ALIVE))
                 .orElse(false);
+    }
+
+    private boolean hasCompletionPending() {
+        return runPreparation != null && runPreparation.snapshots().stream()
+                .anyMatch(snapshot -> snapshot.state() == RunPreparationService.RunState.COMPLETION_PENDING);
     }
 
     private void handleDeadlineNotice(RunPreparationService.DeadlineNotice notice) {

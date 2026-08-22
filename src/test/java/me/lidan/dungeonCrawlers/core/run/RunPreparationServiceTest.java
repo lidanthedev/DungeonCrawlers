@@ -127,6 +127,28 @@ class RunPreparationServiceTest {
     }
 
     @Test
+    void disableFreezeStopsDeadlineCallbacksAndRejectsNewPreparations() {
+        UUID player = UUID.randomUUID();
+        UUID instance = UUID.randomUUID();
+        CentralUpdateService updates = new CentralUpdateService(Clock.fixed(START, ZoneOffset.UTC), ignored -> { });
+        AtomicInteger cancellations = new AtomicInteger();
+        RunPreparationService service = new RunPreparationService(new DoorService(), updates,
+                new StateTransitionService(), Clock.fixed(START, ZoneOffset.UTC), ignored -> { },
+                ignored -> { }, ignored -> cancellations.incrementAndGet());
+        service.registerGenerated(instance, new PartySnapshot(player, List.of(player), true), List.of("tank"),
+                Map.of("tank", classDefinition("tank")), new Point(0, 64, 0), Facing.NORTH);
+
+        service.freezeForDisable();
+        updates.tick(START.plus(RunPreparationService.PREPARATION_TIMEOUT));
+
+        assertTrue(service.frozen());
+        assertEquals(0, cancellations.get());
+        assertFalse(service.registerGenerated(UUID.randomUUID(), new PartySnapshot(player, List.of(player), true),
+                List.of("tank"), Map.of("tank", classDefinition("tank")), new Point(0, 64, 0), Facing.NORTH)
+                .successful());
+    }
+
+    @Test
     void preparationTimeoutCancelsGeneratedInstanceAndRemovesRegistration() {
         UUID player = UUID.randomUUID();
         UUID instance = UUID.randomUUID();
