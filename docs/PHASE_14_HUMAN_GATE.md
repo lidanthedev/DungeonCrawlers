@@ -89,5 +89,10 @@ restart matrix remain release-blocking follow-up checks for this phase.
   reported `discovered=1 cleared=1`; chat reported `Reward delivered to your inventory.` and
   reward info showed claim `fad3c504-a8b5-3138-990d-69b7dbddf27d` in `DELIVERED`. Operations
   remained idle with no queued or in-flight repository work.
+- 2026-08-23: Single-player ghost drill on instance `923cacf8-d09c-4a1b-b7a3-f83ea1992d6c`
+  passed the admin ghost transition, then correctly entered `no online active alive player
+  remains`, failed-reading cleanup, and player restoration. A subsequent `cc reload all` left
+  operations clean. A ghost surviving reload cannot be exercised with one participant because
+  the run closes immediately; a second active participant is required for that case.
 
 See [PHASE_14_OPERATIONS_RUNBOOK.md](PHASE_14_OPERATIONS_RUNBOOK.md) for backup and rollback steps.
