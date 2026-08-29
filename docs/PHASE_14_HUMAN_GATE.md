@@ -46,8 +46,9 @@ diagnostic only: it must not release a clearing slot or reservation automaticall
   confirm disable/rejoin delivers the exact item once with no automatic debit retry.
 - [ ] Confirm an ambiguous `DEBIT_ATTEMPTED` record remains reconciliation-required after reload;
   no automatic charge/refund/retry occurs.
-- [ ] Restart with an offline captured player and confirm the durable snapshot is restored on
-  the next join; an unsuccessful restore remains pending for retry.
+- [x] Disable/reload with an offline captured player and confirm the durable snapshot is restored
+  on the next join; an unsuccessful restore remains pending for retry. A full server restart is
+  still not separately exercised.
 - [ ] Trigger a cleanup past 30 seconds with the test gateway and confirm one `[OPS]` deadline
   alert while the slot and reservation remain blocked.
 
@@ -119,5 +120,12 @@ restart matrix remain release-blocking follow-up checks for this phase.
   `snapshots_restored online=2 offline_retained=true`; startup recovery discovered and cleared
   one run. Both players confirmed they returned to their exact pre-dungeon locations, and final
   operations reported zero active instances, reservations, occupied slots, and repository work.
+- 2026-08-29: Offline snapshot reload drill on instance `4e41ff32-6c93-4e1c-b9c7-875702e1053b`
+  closed `LidanTheGamer_` while the run was active, then ran `cc reload all`. On rejoin, the
+  client reported `[PASS] recovery restore=exact snapshot location restored`; the captured
+  location `[1158.722052881312, 311.0, 66.54000463954272]` and rotation `[-174.14871,
+  17.249968]` matched exactly. Recovery reported `discovered=1 cleared=1`, and final operations
+  were clean with zero active instances, reservations, occupied slots, cleanup alerts, or
+  repository work.
 
 See [PHASE_14_OPERATIONS_RUNBOOK.md](PHASE_14_OPERATIONS_RUNBOOK.md) for backup and rollback steps.
