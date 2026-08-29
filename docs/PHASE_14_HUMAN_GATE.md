@@ -127,5 +127,13 @@ restart matrix remain release-blocking follow-up checks for this phase.
   17.249968]` matched exactly. Recovery reported `discovered=1 cleared=1`, and final operations
   were clean with zero active instances, reservations, occupied slots, cleanup alerts, or
   repository work.
+- 2026-08-29: Slow-generation cancellation probe on instance `d7470fa8-20ba-48c9-af3b-a05cd70bc5b8`
+  used `generate-debug-slow floor_1 12345 5000`; `/dungeon instance info` observed
+  `status=PASTING` at `placement 1 spider_den`. `/dungeon reload force` cleaned the instance,
+  and direct entity-data checks showed `LidanTheGamer` still at `[1162.5020862342462, 310.5,
+  54.04470515942776]` with rotation `[13.757994, 20.269152]`. Final operations were clean with
+  zero active instances, reservations, occupied slots, cleanup alerts, or repository work. This
+  is partial evidence only: the debug generation path does not capture player snapshots, so the
+  normal-start early-generation snapshot check remains open.
 
 See [PHASE_14_OPERATIONS_RUNBOOK.md](PHASE_14_OPERATIONS_RUNBOOK.md) for backup and rollback steps.
