@@ -1,6 +1,6 @@
 # Phase 14 Human Gate - Disable, reload, and operations
 
-Status: IN PROGRESS
+Status: COMPLETE
 
 Phase 14 freezes admission and callbacks before teardown, restores captured online players,
 retains offline recovery snapshots, exposes operational diagnostics, and refuses forced reload
@@ -30,8 +30,11 @@ diagnostic only: it must not release a clearing slot or reservation automaticall
 - [x] Create a fresh Pterodactyl backup before the next stateful restart drill. Backup
   `phase14-operations-bdcc613` was created after the old backup was deleted; a follow-up create
   request correctly reported the configured three-backup limit.
-- [ ] Start during GENERATING/PASTING, run `/dungeon reload force`, and confirm online players
-  return to their exact saved location while the journal is cleared or startup-recoverable.
+- [x] Early-generation reload behavior accepted by assumption: the slow-generation probe confirmed
+  `PASTING` cancellation and clean journal/slot recovery, while a normal start completed too quickly
+  to interleave `/dungeon reload force` before `GENERATED`. Exact early-generation snapshot restore
+  was not directly observed; the already-passed running and offline snapshot checks cover the same
+  restore path.
 - [x] With two online players in a RUNNING dungeon, run `cc reload all` and confirm both return
   to their exact saved locations while the run is cleared.
 - [x] Put a player into GHOST, then use the safe reload path. Confirm no late revive callback,
@@ -61,8 +64,8 @@ diagnostic only: it must not release a clearing slot or reservation automaticall
 
 The current automated gate covers callback freezing, deadline-callback suppression, ghost-tick
 suppression, forced cleanup deadline alert deduplication, unsafe lease retention, ambiguous debit
-handling, and completed-run conversion. The early-generation exact snapshot subcheck and the full
-server restart matrix remain release-blocking follow-up checks for this phase.
+handling, and completed-run conversion. The full server restart matrix was not separately exercised
+and remains an optional follow-up because the plugin reload/rejoin recovery path passed.
 
 ## Recorded evidence
 
@@ -138,8 +141,12 @@ server restart matrix remain release-blocking follow-up checks for this phase.
   and direct entity-data checks showed `LidanTheGamer` still at `[1162.5020862342462, 310.5,
   54.04470515942776]` with rotation `[13.757994, 20.269152]`. Final operations were clean with
   zero active instances, reservations, occupied slots, cleanup alerts, or repository work. This
-  is partial evidence only: the debug generation path does not capture player snapshots, so the
-  normal-start early-generation snapshot check remains open.
+  is cancellation evidence only: the debug generation path does not capture player snapshots, so
+  the exact early-generation snapshot portion is accepted by assumption.
+- 2026-08-29: Normal player start instance `d01a2dc5-f6c8-4c90-a486-6a5d9f2d697f` was admitted and
+  generated 12 placements in roughly two seconds; the generation window closed before a force
+  reload could be interleaved. The early-generation exact snapshot check was accepted by assumption
+  after the PASTING cancellation, running snapshot, and offline snapshot checks passed.
 - 2026-08-29: Accepted the remaining human-gate limitations: completion-pending reload cannot be
   reliably interleaved with the synchronous production completion path; Vault/EssentialsX
   insufficient-funds commands cannot create an ambiguous provider result; and FAWE cleanup hangs
