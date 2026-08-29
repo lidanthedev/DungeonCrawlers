@@ -1,6 +1,6 @@
 # Phase 14 Human Gate - Disable, reload, and operations
 
-Status: COMPLETE
+Status: IN PROGRESS
 
 Phase 14 freezes admission and callbacks before teardown, restores captured online players,
 retains offline recovery snapshots, exposes operational diagnostics, and refuses forced reload
@@ -27,9 +27,10 @@ diagnostic only: it must not release a clearing slot or reservation automaticall
 - [x] Idle `/dungeon operations` reports `activeInstances=0`, `reservations=0`,
   `occupiedSlots=0`, and an idle repository.
 - [x] Idle `/dungeon reload force` completes without leaving admission paused.
-- [x] Create a fresh Pterodactyl backup before the next stateful restart drill. Backup
-  `phase14-operations-bdcc613` was created after the old backup was deleted; a follow-up create
-  request correctly reported the configured three-backup limit.
+- [ ] Create a fresh Pterodactyl backup before the next stateful restart drill while retaining
+  `phase14-operations-bdcc613` until the replacement succeeds. If Pterodactyl enforces the
+  configured three-backup limit, stop the drill and escalate; do not delete the existing backup or
+  claim this gate passed.
 - [x] Early-generation reload behavior accepted by assumption: the slow-generation probe confirmed
   `PASTING` cancellation and clean journal/slot recovery, while a normal start completed too quickly
   to interleave `/dungeon reload force` before `GENERATED`. Exact early-generation snapshot restore
@@ -81,8 +82,10 @@ and remains an optional follow-up because the plugin reload/rejoin recovery path
   request was refused at the configured three-backup limit; existing backups were left untouched.
 - 2026-08-23: reload-dispatch guard checkpoint `206985c` passed the full clean build and was
   deployed with JAR SHA-256 `24c6853d412114fe0905474f3ba0cdfc3e4720a71c48337e2043789dac18cd18`.
-- 2026-08-23: Pterodactyl backup `phase14-operations-bdcc613` was created and locked before the
-  stateful restart drills; a second create request was refused at the three-backup limit.
+- 2026-08-23: Pterodactyl backup `phase14-operations-bdcc613` was created after the prior backup
+  had been deleted, so it does not satisfy the current retain-until-replacement backup gate. A
+  follow-up create request was refused at the configured three-backup limit; the existing backup
+  must be retained and the next replacement attempt must stop and escalate if the limit remains.
 - 2026-08-23: Debug generation instance `e4ac9f30-fcf9-4b29-90cd-343fc359e53e` was admitted with
   the maximum 5-second delay, then `/dungeon reload force` canceled it. The client reported a
   passing reload hash; operations ended with zero active instances, reservations, and occupied
