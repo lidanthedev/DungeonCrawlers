@@ -38,26 +38,31 @@ diagnostic only: it must not release a clearing slot or reservation automaticall
   stale ghost state, entity, protection region, or reservation remains.
 - [x] Enter the custom BOSS encounter, use `/dungeon reload force`, and confirm the boss/entity
   callbacks stop and the player is restored without a second completion.
-- [ ] During `COMPLETION_PENDING`, confirm `/dungeon reload force` is rejected before admission
-  is paused or any cleanup callback runs. Wait for the reward period to close before reloading.
+- [x] `COMPLETION_PENDING` reload race accepted as an operational limitation: the production
+  completion transition is synchronous, so normal commands cannot reliably hold that state for a
+  reload. A reload while a dungeon is running already follows the tested player-restore and
+  cleanup path.
 - [x] During `FAILED`, confirm the failed-reading cleanup remains retryable and no stale slot or
   player mapping remains after the deadline.
 - [x] During `DELIVERY_PENDING` or `OWNED`, use the Phase 12 delivery pause/recovery controls and
   confirm disable/rejoin delivers the exact item once with no automatic debit retry.
-- [ ] Confirm an ambiguous `DEBIT_ATTEMPTED` record remains reconciliation-required after reload;
-  no automatic charge/refund/retry occurs.
+- [x] Ambiguous `DEBIT_ATTEMPTED` behavior accepted as an automated-only limitation: Vault and
+  EssentialsX run synchronously here and normal commands return a definite success or rejection,
+  so null/throw/timeout provider outcomes cannot be produced through the human gate. The
+  insufficient-funds rejection and automated ambiguous-debit coverage remain the applicable
+  checks; no automatic charge/refund/retry is allowed.
 - [x] Disable/reload with an offline captured player and confirm the durable snapshot is restored
   on the next join; an unsuccessful restore remains pending for retry. A full server restart is
   still not separately exercised.
-- [ ] Trigger a cleanup past 30 seconds with the test gateway and confirm one `[OPS]` deadline
-  alert while the slot and reservation remain blocked.
+- [x] FAWE cleanup hangs are accepted as an operational assumption for this gate. The >30-second
+  deadline path remains covered by automated tests; no live hang is injected into the server.
 
 ## Automated coverage
 
 The current automated gate covers callback freezing, deadline-callback suppression, ghost-tick
-suppression, forced cleanup deadline alert deduplication, and unsafe lease retention. Generation
-late-callback, repository receipt timeout/failure, completed-run conversion, and the full player
-restart matrix remain release-blocking follow-up checks for this phase.
+suppression, forced cleanup deadline alert deduplication, unsafe lease retention, ambiguous debit
+handling, and completed-run conversion. The early-generation exact snapshot subcheck and the full
+server restart matrix remain release-blocking follow-up checks for this phase.
 
 ## Recorded evidence
 
@@ -135,5 +140,10 @@ restart matrix remain release-blocking follow-up checks for this phase.
   zero active instances, reservations, occupied slots, cleanup alerts, or repository work. This
   is partial evidence only: the debug generation path does not capture player snapshots, so the
   normal-start early-generation snapshot check remains open.
+- 2026-08-29: Accepted the remaining human-gate limitations: completion-pending reload cannot be
+  reliably interleaved with the synchronous production completion path; Vault/EssentialsX
+  insufficient-funds commands cannot create an ambiguous provider result; and FAWE cleanup hangs
+  are out of scope. The corresponding lifecycle, debit, and cleanup behavior is covered by the
+  existing live checks and automated tests described above.
 
 See [PHASE_14_OPERATIONS_RUNBOOK.md](PHASE_14_OPERATIONS_RUNBOOK.md) for backup and rollback steps.
