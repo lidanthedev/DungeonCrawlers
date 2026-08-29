@@ -17,6 +17,7 @@ public final class CentralUpdateService {
     private final Consumer<String> diagnostics;
     private final Map<UUID, List<Consumer<Instant>>> updates = new LinkedHashMap<>();
     private boolean frozen;
+    private int activeTicks;
 
     public CentralUpdateService(Clock clock, Consumer<String> diagnostics) {
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -67,26 +68,34 @@ public final class CentralUpdateService {
             if (frozen) return new TickReport(now, 0, List.of());
             snapshot = new LinkedHashMap<>();
             updates.forEach((instanceId, callbacks) -> snapshot.put(instanceId, List.copyOf(callbacks)));
+            activeTicks++;
         }
-        List<UUID> failures = new ArrayList<>();
-        for (Map.Entry<UUID, List<Consumer<Instant>>> entry : snapshot.entrySet()) {
-            boolean failed = false;
-            for (Consumer<Instant> callback : entry.getValue()) {
-                try {
-                    callback.accept(now);
-                } catch (RuntimeException exception) {
-                    failed = true;
+        try {
+            List<UUID> failures = new ArrayList<>();
+            for (Map.Entry<UUID, List<Consumer<Instant>>> entry : snapshot.entrySet()) {
+                boolean failed = false;
+                for (Consumer<Instant> callback : entry.getValue()) {
                     try {
-                        diagnostics.accept("instance=" + entry.getKey() + " central update failed: "
-                                + message(exception));
-                    } catch (RuntimeException ignored) {
-                        // Diagnostics are best-effort; one consumer must not stop the update loop.
+                        callback.accept(now);
+                    } catch (RuntimeException exception) {
+                        failed = true;
+                        try {
+                            diagnostics.accept("instance=" + entry.getKey() + " central update failed: "
+                                    + message(exception));
+                        } catch (RuntimeException ignored) {
+                            // Diagnostics are best-effort; one consumer must not stop the update loop.
+                        }
                     }
                 }
+                if (failed) failures.add(entry.getKey());
             }
-            if (failed) failures.add(entry.getKey());
+            return new TickReport(now, snapshot.size(), failures);
+        } finally {
+            synchronized (this) {
+                activeTicks--;
+                if (activeTicks == 0) notifyAll();
+            }
         }
-        return new TickReport(now, snapshot.size(), failures);
     }
 
     public synchronized Set<UUID> registeredInstances() {
@@ -108,8 +117,19 @@ public final class CentralUpdateService {
     }
 
     /** Stops callbacks before plugin-owned services are restored or torn down during disable. */
-    public synchronized void freeze() {
-        frozen = true;
+    public void freeze() {
+        boolean interrupted = false;
+        synchronized (this) {
+            frozen = true;
+            while (activeTicks > 0) {
+                try {
+                    wait();
+                } catch (InterruptedException exception) {
+                    interrupted = true;
+                }
+            }
+        }
+        if (interrupted) Thread.currentThread().interrupt();
     }
 
     public synchronized boolean frozen() {
