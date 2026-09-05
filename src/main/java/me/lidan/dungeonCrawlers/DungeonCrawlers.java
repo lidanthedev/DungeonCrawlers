@@ -636,11 +636,22 @@ public final class DungeonCrawlers extends JavaPlugin {
                         .filter(java.util.Objects::nonNull)
                         .forEach(BukkitGhostState::exit));
                 RunPreparationService.RunSnapshot run = runPreparation.info(notice.instanceId()).orElse(null);
+                boolean allParticipantsOffline = allParticipantsOffline(notice.instanceId());
                 if (run != null && (run.state() == RunPreparationService.RunState.RUNNING
                         || run.state() == RunPreparationService.RunState.BOSS)) {
-                    if (runPreparation.fail(notice.instanceId(), notice.detail()).successful()) return;
+                    if (runPreparation.fail(notice.instanceId(), notice.detail()).successful()) {
+                        if (allParticipantsOffline && phaseFiveCommand != null) {
+                            phaseFiveCommand.wipeFromLifecycle(notice.instanceId(), notice.detail());
+                        }
+                        return;
+                    }
                 }
-                if (run != null && run.state() == RunPreparationService.RunState.FAILED) return;
+                if (run != null && run.state() == RunPreparationService.RunState.FAILED) {
+                    if (allParticipantsOffline && phaseFiveCommand != null) {
+                        phaseFiveCommand.wipeFromLifecycle(notice.instanceId(), notice.detail());
+                    }
+                    return;
+                }
                 if (phaseFiveCommand != null) {
                     phaseFiveCommand.wipeFromLifecycle(notice.instanceId(), notice.detail());
                 }
@@ -651,6 +662,15 @@ public final class DungeonCrawlers extends JavaPlugin {
 
     static boolean shouldRestoreRemovedPlayer(Player player, String generationWorldName) {
         return player == null || generationWorldName.equals(player.getWorld().getName());
+    }
+
+    static boolean allParticipantsOffline(PlayerLifecycleService.InstanceSnapshot snapshot) {
+        return !snapshot.players().isEmpty()
+                && snapshot.players().stream().allMatch(player -> !player.online());
+    }
+
+    private boolean allParticipantsOffline(UUID instanceId) {
+        return lifecycle.info(instanceId).map(DungeonCrawlers::allParticipantsOffline).orElse(false);
     }
 
     private Duration remainingGhostDuration(Instant reviveAt) {
