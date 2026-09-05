@@ -29,9 +29,11 @@ open.
   and reconnect preserves the deadline without resetting it. The ghost/reconnect behavior passed,
   but the numeric death-count line was not captured. Use `/dungeon player info <instance-id> <player>`
   and record `deaths=1` and the unchanged `reviveAt`.
-- [ ] Coordinate both players logging out, then rejoining. Confirm a wiped run cannot be resurrected
-  by either reconnect, no late ghost revive occurs, and a player restored after the failed-reading
-  period is visible and no longer invulnerable or non-collidable. Repeat this after commit `c599156`.
+- [ ] Coordinate both players logging out, then rejoining. Confirm the last disconnect marks the run
+  failed and cleans the dungeon immediately, without waiting for the failed-reading period. Confirm a
+  wiped run cannot be resurrected by either reconnect, no late ghost revive occurs, and the retained
+  snapshot restores each player once, visibly, without invulnerability or non-collision. Repeat this
+  after commits `db49f05` and `3a8af6a`.
 - [x] Have both players enter the same boss portal at the same time. Confirm exactly one countdown
   owner, one countdown callback, and one boss start; the other entry must not create a second
   countdown.
@@ -62,8 +64,9 @@ The phase tests cover simultaneous secret discovery, lethal transitions and wipe
 state, logout/reconnect after wipe, exact preparation and active-run warning boundaries, portal
 ownership, recovered reward-session initialization, world-change leave handling, cross-world
 teleport bypass, bounded ghost invisibility, wiped-reconnect ghost suppression, and ghost cleanup
-after player restoration. Existing reservation, door, reward-claim, callback-freeze, and cleanup tests
-remain part of the full suite.
+after player restoration. The all-participants-offline wipe path also uses immediate cleanup while
+retaining reconnect snapshots. Existing reservation, door, reward-claim, callback-freeze, and cleanup
+tests remain part of the full suite.
 
 ## Recorded evidence
 
@@ -114,3 +117,12 @@ remain part of the full suite.
   instances, reservations, occupied slots, cleanup failures, deadline alerts, late callbacks, and
   repository work. `dungeon config validate` passed with hash
   `b6d42cd6079e48e58af252c5e8ce51587e044e3b5d58bc42d481752379b9ee0d`.
+- 2026-09-06: Commits `db49f05` and `3a8af6a` make an all-participants-offline wipe clean the run
+  immediately after failed-result persistence instead of waiting through the ten-second reading
+  period. The cleanup path retains offline snapshots for reconnect and avoids restoring a player from
+  inside the quitting event. Focused and full Java 21 tests passed. JAR SHA-256 was
+  `a910f246b1dcdf8f4370b4ef38f5141410c88882d6f784b31a7db0b3de0dd313`; it uploaded to server
+  `fa696721`, and `cc reload all` completed. Post-reload `dungeon operations` reported zero active
+  instances, reservations, occupied slots, cleanup failures, deadline alerts, late callbacks, and
+  repository work. `dungeon config validate` passed with hash
+  `2d114238db68b044bd4a0b2cf4761d59343c5fabb9bfb603f9e0e033737ece43`.
