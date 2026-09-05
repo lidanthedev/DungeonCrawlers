@@ -20,6 +20,9 @@ backup gate passed or change its retain-until-replacement requirement.
 - [ ] With two players in the same RUNNING run, trigger lethal damage at the same time. Confirm
   each player transitions at most once, deaths do not increment twice, and the run emits one wipe
   when no online active alive player remains.
+- [ ] Disconnect one ALIVE participant from a RUNNING run. Confirm the participant becomes an
+  offline `GHOST`, the death count increases exactly once, the 60-second revive deadline is set,
+  and reconnect preserves the deadline without resetting it.
 - [ ] Coordinate both players logging out, then rejoining. Confirm a wiped run cannot be resurrected
   by either reconnect and no late ghost revive occurs.
 - [ ] Have both players enter the same boss portal at the same time. Confirm exactly one countdown
@@ -29,12 +32,15 @@ backup gate passed or change its retain-until-replacement requirement.
   session and rolled offers, with no reroll or duplicate reward entitlement.
 - [ ] Repeat the Phase 9 countdown cleanup check and confirm the portal callback and countdown owner
   are removed exactly once.
+- [ ] Start a fresh run and confirm the preparation and active-run warning messages appear one minute
+  before their respective deadlines, not one minute after the run starts.
 
 ## Automated coverage
 
-The phase tests cover simultaneous secret discovery, lethal transitions and wipe, logout/reconnect
-after wipe, portal ownership, and recovered reward-session initialization. Existing reservation,
-door, reward-claim, callback-freeze, and cleanup tests remain part of the full suite.
+The phase tests cover simultaneous secret discovery, lethal transitions and wipe, disconnect-to-ghost
+state, logout/reconnect after wipe, exact preparation and active-run warning boundaries, portal
+ownership, and recovered reward-session initialization. Existing reservation, door, reward-claim,
+callback-freeze, and cleanup tests remain part of the full suite.
 
 ## Recorded evidence
 

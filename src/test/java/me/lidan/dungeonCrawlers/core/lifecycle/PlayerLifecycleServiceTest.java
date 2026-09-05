@@ -96,6 +96,36 @@ class PlayerLifecycleServiceTest {
     }
 
     @Test
+    void disconnectingAlivePlayerBecomesGhostAndCountsAsDeath() {
+        UUID instance = UUID.randomUUID();
+        UUID disconnected = UUID.randomUUID();
+        UUID alive = UUID.randomUUID();
+        CentralUpdateService updates = new CentralUpdateService(Clock.fixed(START, ZoneOffset.UTC), ignored -> { });
+        PlayerLifecycleService service = new PlayerLifecycleService(updates, Clock.fixed(START, ZoneOffset.UTC),
+                ignored -> { });
+        assertTrue(updates.register(instance, ignored -> { }));
+        assertTrue(service.register(instance, List.of(disconnected, alive)).successful());
+        assertTrue(service.start(instance).successful());
+
+        var result = service.disconnect(instance, disconnected);
+
+        assertTrue(result.successful());
+        assertEquals(PlayerLifecycleService.Event.DISCONNECTED, result.event());
+        var snapshot = service.player(instance, disconnected).orElseThrow();
+        assertEquals(PlayerLifecycleService.PlayerState.GHOST, snapshot.state());
+        assertFalse(snapshot.online());
+        assertEquals(1, snapshot.deaths());
+        assertEquals(START.plus(PlayerLifecycleService.REVIVE_DURATION), snapshot.reviveAt());
+
+        assertTrue(service.reconnect(instance, disconnected).successful());
+        var reconnected = service.player(instance, disconnected).orElseThrow();
+        assertEquals(PlayerLifecycleService.PlayerState.GHOST, reconnected.state());
+        assertTrue(reconnected.online());
+        assertEquals(snapshot.reviveAt(), reconnected.reviveAt());
+        assertEquals(1, reconnected.deaths());
+    }
+
+    @Test
     void escapedPlayerIsRemovedAndCannotBeRevivedLater() {
         UUID instance = UUID.randomUUID();
         UUID player = UUID.randomUUID();
