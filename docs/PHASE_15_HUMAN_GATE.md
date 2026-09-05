@@ -65,3 +65,12 @@ part of the full suite.
   showed DungeonCrawlers enabled. The reload also emitted an unrelated EssentialsX/Paper command-tree
   stack trace during PlugMan re-registration; the server settled and DungeonCrawlers diagnostics
   remained clean.
+- 2026-09-05: Cross-world leave handling was deployed in JAR commit `3f3ab22` with SHA-256
+  `73466111208a5792b812d55006e18d021d1a19cdf47cc246a15139de7d2a0ebe`. `cc reload all`
+  reloaded DungeonCrawlers successfully; operations, config validation, and repository diagnostics
+  all passed with no active instances, blockers, queued work, or in-flight work. The live `/spawn`
+  and administrator teleport checks remain open.
+- 2026-09-05: Live admin smoke test on disposable instance `62a58935-72e5-40a6-a92d-276de2d51425`
+  teleported `LidanTheGamer` into `minecraft:dungeon_instances`, accepted `/spawn`, and confirmed
+  the player changed to `minecraft:deepmines`. The debug instance cleanup completed successfully;
+  the participant leave/restore check still requires the physical start-door flow.
