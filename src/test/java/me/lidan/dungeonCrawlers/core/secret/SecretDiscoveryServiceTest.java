@@ -29,6 +29,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -55,6 +58,39 @@ class SecretDiscoveryServiceTest {
         assertEquals(11.0, service.aggregate(instance, null, Map.of(StatType.STRENGTH, 1.0))
                 .get(StatType.STRENGTH));
         assertEquals(player, service.secrets(instance).getFirst().foundBy());
+    }
+
+    @Test
+    void simultaneousDiscoveryAwardsOneBlessing() throws Exception {
+        UUID instance = UUID.randomUUID();
+        UUID firstPlayer = UUID.randomUUID();
+        UUID secondPlayer = UUID.randomUUID();
+        BlessingDefinition blessing = new BlessingDefinition("power", "Power", Material.STONE,
+                BlessingStacking.LEVELS, 2, StatModifiers.empty());
+        SecretDiscoveryService service = new SecretDiscoveryService(() -> config(blessing));
+        assertTrue(service.register(instance, 1234, floor(), plan(instance), Set.of(firstPlayer, secondPlayer))
+                .successful());
+        CountDownLatch start = new CountDownLatch(1);
+
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var first = executor.submit(() -> {
+                start.await();
+                return service.discover(instance, firstPlayer, new Point(2, 1, 2));
+            });
+            var second = executor.submit(() -> {
+                start.await();
+                return service.discover(instance, secondPlayer, new Point(2, 1, 2));
+            });
+            start.countDown();
+            var results = List.of(first.get(5, TimeUnit.SECONDS), second.get(5, TimeUnit.SECONDS));
+            assertEquals(1, results.stream().filter(value -> value.status() == SecretDiscoveryService.Status.DISCOVERED)
+                    .count());
+            assertEquals(1, results.stream()
+                    .filter(value -> value.status() == SecretDiscoveryService.Status.ALREADY_DISCOVERED).count());
+        }
+
+        assertEquals(Map.of("power", 1), service.blessingLevels(instance));
+        assertTrue(Set.of(firstPlayer, secondPlayer).contains(service.secrets(instance).getFirst().foundBy()));
     }
 
     @Test
