@@ -35,9 +35,10 @@ backup gate passed or change its retain-until-replacement requirement.
 - [ ] Start a fresh run and confirm the preparation and active-run warning messages appear one minute
   before their respective deadlines, not one minute after the run starts.
 - [ ] While a participant is in a dungeon, run `/spawn` and confirm EssentialsX can change their
-  world, the participant is removed and restored, and the command is not cancelled by
-  DungeonCrawlers. As an admin, teleport into the dungeon and back to another world; confirm
-  cross-world teleports are not blocked while same-world dungeon bounds protection remains active.
+  world, the participant is removed and remains at the requested destination, and the command is
+  not cancelled by DungeonCrawlers. Reconnect once and confirm the old snapshot is not applied.
+  As an admin, teleport into the dungeon and back to another world; confirm cross-world teleports
+  are not blocked while same-world dungeon bounds protection remains active.
 
 ## Automated coverage
 
@@ -73,4 +74,12 @@ part of the full suite.
 - 2026-09-05: Live admin smoke test on disposable instance `62a58935-72e5-40a6-a92d-276de2d51425`
   teleported `LidanTheGamer` into `minecraft:dungeon_instances`, accepted `/spawn`, and confirmed
   the player changed to `minecraft:deepmines`. The debug instance cleanup completed successfully;
-  the participant leave/restore check still requires the physical start-door flow.
+  the participant destination-preserving leave check still requires the physical start-door flow.
+- 2026-09-05: Destination-preserving world-change exit was committed in `1688d85`. Java 21 clean
+  build, full tests, and external-plugin shading verification passed. JAR SHA-256 was
+  `07a22e6039a190b9198aa6b571fe2a56fda312879861595b416bf4eef4acd21b`; it uploaded to server
+  `fa696721`, and `cc reload all` completed. Post-reload operations reported zero active instances,
+  reservations, occupied slots, cleanup failures, deadline alerts, late callbacks, queued work,
+  and in-flight repository work. Configuration validation passed with hash
+  `b6d42cd6079e48e58af252c5e8ce51587e044e3b5d58bc42d481752379b9ee0d`. The physical participant
+  `/spawn` plus reconnect check remains open.
