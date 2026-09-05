@@ -641,14 +641,16 @@ public final class DungeonCrawlers extends JavaPlugin {
                         || run.state() == RunPreparationService.RunState.BOSS)) {
                     if (runPreparation.fail(notice.instanceId(), notice.detail()).successful()) {
                         if (allParticipantsOffline && phaseFiveCommand != null) {
-                            phaseFiveCommand.wipeFromLifecycle(notice.instanceId(), notice.detail());
+                            phaseFiveCommand.wipeFromLifecycleAfterAllDisconnects(
+                                    notice.instanceId(), notice.detail());
                         }
                         return;
                     }
                 }
                 if (run != null && run.state() == RunPreparationService.RunState.FAILED) {
                     if (allParticipantsOffline && phaseFiveCommand != null) {
-                        phaseFiveCommand.wipeFromLifecycle(notice.instanceId(), notice.detail());
+                        phaseFiveCommand.wipeFromLifecycleAfterAllDisconnects(
+                                notice.instanceId(), notice.detail());
                     }
                     return;
                 }

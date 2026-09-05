@@ -290,8 +290,17 @@ public final class DungeonPhaseFiveCommand {
 
     /** Completes cleanup after the running-player lifecycle wipes an active instance. */
     public void wipeFromLifecycle(UUID instanceId, String reason) {
+        wipeFromLifecycle(instanceId, reason, false);
+    }
+
+    /** Immediately closes an all-disconnected wipe while retaining every snapshot for reconnect recovery. */
+    public void wipeFromLifecycleAfterAllDisconnects(UUID instanceId, String reason) {
+        wipeFromLifecycle(instanceId, reason, true);
+    }
+
+    private void wipeFromLifecycle(UUID instanceId, String reason, boolean retainSnapshotsForReconnect) {
         if (runs.info(instanceId).isPresent()) {
-            abort(instanceId, reason, "run wiped");
+            abort(instanceId, reason, "run wiped", retainSnapshotsForReconnect);
         } else {
             if (phaseNine != null) phaseNine.cleanup(instanceId);
             if (lifecycle != null) lifecycle.cleanup(instanceId);
@@ -607,6 +616,10 @@ public final class DungeonPhaseFiveCommand {
     }
 
     private void abort(UUID instanceId, String reason, String outcome) {
+        abort(instanceId, reason, outcome, false);
+    }
+
+    private void abort(UUID instanceId, String reason, String outcome, boolean retainSnapshotsForReconnect) {
         if (phaseNine != null) phaseNine.cleanup(instanceId);
         if (lifecycle != null) lifecycle.cleanup(instanceId);
         if (phaseSeven != null) phaseSeven.cleanup(instanceId);
@@ -618,7 +631,7 @@ public final class DungeonPhaseFiveCommand {
         SpawnProvider fallback = new BukkitSpawnProvider(server, "");
         saved.forEach((playerId, snapshot) -> {
             Player player = server.getPlayer(playerId);
-            if (player != null) {
+            if (player != null && !retainSnapshotsForReconnect) {
                 authorizeRestore(playerId, snapshot, fallback);
                 var restored = BukkitPlayerRecovery.restore(player, snapshot, server, fallback);
                 if (restored.successful()) {
