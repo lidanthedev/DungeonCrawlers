@@ -51,7 +51,9 @@ public final class DungeonPhaseEightCommand {
         UUID id = parse(sender, instanceId);
         if (id == null) return;
         lifecycle.player(id, player.getUniqueId()).ifPresentOrElse(value -> send(sender, "<green>[PASS] instance=" + id
-                        + " player=" + playerLabel(player) + " state=" + value.state() + "</green>"),
+                        + " player=" + playerLabel(player) + " state=" + value.state()
+                        + " deaths=" + value.deaths() + " reviveAt="
+                        + (value.reviveAt() == null ? "none" : value.reviveAt()) + "</green>"),
                 () -> send(sender, "<red>[FAIL] unknown lifecycle player</red>"));
     }
 

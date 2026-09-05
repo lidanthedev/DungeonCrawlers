@@ -16,6 +16,7 @@ import me.lidan.dungeonCrawlers.core.lifecycle.PlayerLifecycleService;
 import me.lidan.dungeonCrawlers.core.portal.PortalEncounterService;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
 import me.lidan.dungeonCrawlers.integration.BukkitDoorBlockService;
+import me.lidan.dungeonCrawlers.integration.BukkitGhostState;
 import me.lidan.dungeonCrawlers.integration.BukkitPlayerRecovery;
 import me.lidan.dungeonCrawlers.integration.DungeonActionBar;
 import me.lidan.dungeonCrawlers.integration.PartyProvider;
@@ -344,6 +345,7 @@ public final class DungeonPhaseFiveCommand {
         authorizeRestore(playerId, snapshot, fallback);
         var restored = BukkitPlayerRecovery.restore(player, snapshot, server, fallback);
         if (restored.successful()) {
+            BukkitGhostState.exit(player);
             deleteSnapshotAfterRestore(snapshot);
         } else {
             pendingRecovery.put(playerId, snapshot);
@@ -361,6 +363,8 @@ public final class DungeonPhaseFiveCommand {
         me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot snapshot = saved == null
                 ? null : saved.remove(playerId);
         if (saved != null && saved.isEmpty()) captured.remove(instanceId);
+        Player player = server.getPlayer(playerId);
+        if (player != null) BukkitGhostState.exit(player);
         if (snapshot != null) deleteSnapshotAfterRestore(snapshot);
         cancelEmptyPreparation(instanceId);
     }
@@ -439,6 +443,7 @@ public final class DungeonPhaseFiveCommand {
                 authorizeRestore(playerId, snapshot, fallback);
                 var result = BukkitPlayerRecovery.restore(player, snapshot, server, fallback);
                 if (result.successful()) {
+                    BukkitGhostState.exit(player);
                     deleteSnapshotAfterRestore(snapshot);
                     restored++;
                 } else {
@@ -462,6 +467,7 @@ public final class DungeonPhaseFiveCommand {
         authorizeRestore(player.getUniqueId(), snapshot, fallback);
         var restored = BukkitPlayerRecovery.restore(player, snapshot, server, fallback);
         if (restored.successful()) {
+            BukkitGhostState.exit(player);
             if (pending) pendingRecovery.remove(player.getUniqueId(), snapshot);
             deleteSnapshotAfterRestore(snapshot);
         } else {
@@ -616,6 +622,7 @@ public final class DungeonPhaseFiveCommand {
                 authorizeRestore(playerId, snapshot, fallback);
                 var restored = BukkitPlayerRecovery.restore(player, snapshot, server, fallback);
                 if (restored.successful()) {
+                    BukkitGhostState.exit(player);
                     deleteSnapshotAfterRestore(snapshot);
                     player.sendMessage(MiniMessageUtils.miniMessage("<red>[FAIL] " + reason + "; "
                             + outcome + " and player restored</red>"));

@@ -5,6 +5,7 @@ import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.Test;
 
@@ -51,6 +52,25 @@ class BukkitDungeonLifecycleListenerTest {
         listener.onChangedWorld(new PlayerChangedWorldEvent(player, normalWorld));
 
         verify(leaveHandler, never()).accept(player);
+    }
+
+    @Test
+    void wipedReconnectDoesNotScheduleGhostPresentation() {
+        UUID playerId = UUID.randomUUID();
+        UUID instanceId = UUID.randomUUID();
+        Player player = mock(Player.class);
+        RunPreparationService runs = mock(RunPreparationService.class);
+        PlayerLifecycleService lifecycle = mock(PlayerLifecycleService.class);
+        when(player.getUniqueId()).thenReturn(playerId);
+        when(runs.instanceFor(playerId)).thenReturn(Optional.of(instanceId));
+        when(lifecycle.reconnect(instanceId, playerId))
+                .thenReturn(PlayerLifecycleService.TransitionResult.failure("instance is wiped"));
+
+        BukkitDungeonLifecycleListener listener = new BukkitDungeonLifecycleListener(lifecycle, runs, mock(Plugin.class),
+                Clock.fixed(Instant.EPOCH, ZoneOffset.UTC), "dungeon_instances", ignored -> { }, ignored -> { });
+        listener.onJoin(new PlayerJoinEvent(player, "join"));
+
+        verify(lifecycle, never()).player(instanceId, playerId);
     }
 
     private static BukkitDungeonLifecycleListener listener(RunPreparationService runs,

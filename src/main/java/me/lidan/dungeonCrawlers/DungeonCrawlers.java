@@ -591,14 +591,14 @@ public final class DungeonCrawlers extends JavaPlugin {
         switch (notice.event()) {
             case GHOSTED -> {
                 if (player == null) return;
-                BukkitGhostState.enter(player);
+                BukkitGhostState.enter(player, remainingGhostDuration(notice.reviveAt()));
                 showLifecycleTitle(player, "", "<yellow>" + notice.detail() + "</yellow>", 0, 30, 5);
                 player.sendMessage(MiniMessageUtils.miniMessage(
                         "<gray>You are a ghost. You will revive in 60 seconds if the run remains active.</gray>"));
             }
             case GHOST_COUNTDOWN, RECONNECTED -> {
                 if (player == null || notice.reviveAt() == null) return;
-                BukkitGhostState.refresh(player);
+                BukkitGhostState.refresh(player, remainingGhostDuration(notice.reviveAt()));
                 showLifecycleTitle(player, "", "<yellow>" + notice.detail() + "</yellow>", 0, 25, 5);
             }
             case REVIVED -> {
@@ -651,6 +651,12 @@ public final class DungeonCrawlers extends JavaPlugin {
 
     static boolean shouldRestoreRemovedPlayer(Player player, String generationWorldName) {
         return player == null || generationWorldName.equals(player.getWorld().getName());
+    }
+
+    private Duration remainingGhostDuration(Instant reviveAt) {
+        if (reviveAt == null) return Duration.ofMillis(50);
+        Duration remaining = Duration.between(phaseClock().instant(), reviveAt);
+        return remaining.isNegative() || remaining.isZero() ? Duration.ofMillis(50) : remaining;
     }
 
     private static void showLifecycleTitle(Player player, String title, String subtitle,

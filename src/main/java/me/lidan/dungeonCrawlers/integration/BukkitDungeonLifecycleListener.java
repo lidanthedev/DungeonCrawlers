@@ -22,6 +22,8 @@ import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.plugin.Plugin;
 
 import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -152,8 +154,8 @@ public final class BukkitDungeonLifecycleListener implements Listener {
         recoveryOnJoin.accept(event.getPlayer());
         runs.instanceFor(event.getPlayer().getUniqueId())
                 .ifPresent(id -> {
-                    lifecycle.reconnect(id, event.getPlayer().getUniqueId());
-                    if (lifecycle.player(id, event.getPlayer().getUniqueId())
+                    var reconnect = lifecycle.reconnect(id, event.getPlayer().getUniqueId());
+                    if (reconnect.successful() && lifecycle.player(id, event.getPlayer().getUniqueId())
                             .map(value -> value.state() == PlayerLifecycleService.PlayerState.GHOST).orElse(false)) {
                         scheduleGhostEnter(id, event.getPlayer());
                     }
@@ -162,11 +164,18 @@ public final class BukkitDungeonLifecycleListener implements Listener {
 
     private void scheduleGhostEnter(UUID instanceId, Player player) {
         plugin.getServer().getScheduler().runTask(plugin, () -> {
-            if (player.isOnline() && lifecycle.player(instanceId, player.getUniqueId())
-                    .map(value -> value.state() == PlayerLifecycleService.PlayerState.GHOST).orElse(false)) {
-                BukkitGhostState.enter(player);
+            if (!player.isOnline()) return;
+            var state = lifecycle.player(instanceId, player.getUniqueId()).orElse(null);
+            if (state != null && state.state() == PlayerLifecycleService.PlayerState.GHOST
+                    && state.reviveAt() != null) {
+                BukkitGhostState.enter(player, remainingGhostDuration(state.reviveAt()));
             }
         });
+    }
+
+    private Duration remainingGhostDuration(Instant reviveAt) {
+        Duration remaining = Duration.between(clock.instant(), reviveAt);
+        return remaining.isNegative() || remaining.isZero() ? Duration.ofMillis(50) : remaining;
     }
 
     private boolean isGhost(Player player) {
