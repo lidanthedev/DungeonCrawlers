@@ -440,7 +440,7 @@ public final class DungeonCrawlers extends JavaPlugin {
                 teleportPermits, phaseClock()));
         registerEvent(new BukkitDungeonRunListener(phaseFiveCommand, runPreparation, generationWorldName, phaseSeven));
         registerEvent(new BukkitDungeonLifecycleListener(lifecycle, runPreparation, this, phaseClock(),
-                phaseFiveCommand::recoverOnJoin, phaseFiveCommand::leaveFromSpawn));
+                generationWorldName, phaseFiveCommand::recoverOnJoin, phaseFiveCommand::leaveFromDungeon));
         registerEvent(new BukkitCombatListener(combat, entityIdentity, generationWorldName, () -> disabling,
                 bossIdentity, phaseNine));
         registerEvent(new BukkitPortalBossListener(this, phaseNine, runPreparation, generationWorldName));

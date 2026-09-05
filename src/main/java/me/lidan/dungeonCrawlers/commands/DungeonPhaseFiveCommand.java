@@ -354,8 +354,8 @@ public final class DungeonPhaseFiveCommand {
         cancelEmptyPreparation(instanceId);
     }
 
-    /** Handles the server's /spawn command as a dungeon leave request. */
-    public void leaveFromSpawn(Player player) {
+    /** Handles a player leaving a dungeon as a dungeon leave request. */
+    public void leaveFromDungeon(Player player) {
         UUID playerId = player.getUniqueId();
         UUID instanceId = runs.instanceFor(playerId).orElse(null);
         if (instanceId == null) return;

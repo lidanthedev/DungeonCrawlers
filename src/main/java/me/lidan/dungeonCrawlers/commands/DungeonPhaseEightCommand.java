@@ -35,7 +35,7 @@ public final class DungeonPhaseEightCommand {
             send(player, "<red>[FAIL] you are not in a running dungeon</red>");
             return;
         }
-        phaseFive.leaveFromSpawn(player);
+        phaseFive.leaveFromDungeon(player);
     }
 
     @Subcommand("leave")

@@ -122,7 +122,7 @@ public final class BukkitWorldProtectionListener implements Listener {
     public void onMove(PlayerMoveEvent event) {
         Location from = event.getFrom();
         Location to = event.getTo();
-        if (to == null || sameBlock(from, to)) return;
+        if (to == null || changesWorld(from, to) || sameBlock(from, to)) return;
         if (!policy.canTeleport(event.getPlayer().getUniqueId(), from.getWorld().getName(), point(from),
                 to.getWorld().getName(), point(to), false, regions.get()).allowed()) event.setTo(from);
     }
@@ -134,8 +134,13 @@ public final class BukkitWorldProtectionListener implements Listener {
         if (to == null) return;
         boolean authorized = permits.consume(event.getPlayer().getUniqueId(), to.getWorld().getName(), point(to),
                 clock.instant());
+        if (changesWorld(from, to)) return;
         if (!policy.canTeleport(event.getPlayer().getUniqueId(), from.getWorld().getName(), point(from),
                 to.getWorld().getName(), point(to), authorized, regions.get()).allowed()) event.setCancelled(true);
+    }
+
+    private static boolean changesWorld(Location from, Location to) {
+        return !from.getWorld().equals(to.getWorld());
     }
 
     private static boolean sameBlock(Location first, Location second) {

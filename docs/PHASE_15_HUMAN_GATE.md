@@ -34,13 +34,18 @@ backup gate passed or change its retain-until-replacement requirement.
   are removed exactly once.
 - [ ] Start a fresh run and confirm the preparation and active-run warning messages appear one minute
   before their respective deadlines, not one minute after the run starts.
+- [ ] While a participant is in a dungeon, run `/spawn` and confirm EssentialsX can change their
+  world, the participant is removed and restored, and the command is not cancelled by
+  DungeonCrawlers. As an admin, teleport into the dungeon and back to another world; confirm
+  cross-world teleports are not blocked while same-world dungeon bounds protection remains active.
 
 ## Automated coverage
 
 The phase tests cover simultaneous secret discovery, lethal transitions and wipe, disconnect-to-ghost
 state, logout/reconnect after wipe, exact preparation and active-run warning boundaries, portal
-ownership, and recovered reward-session initialization. Existing reservation, door, reward-claim,
-callback-freeze, and cleanup tests remain part of the full suite.
+ownership, recovered reward-session initialization, world-change leave handling, and cross-world
+teleport bypass. Existing reservation, door, reward-claim, callback-freeze, and cleanup tests remain
+part of the full suite.
 
 ## Recorded evidence
 
