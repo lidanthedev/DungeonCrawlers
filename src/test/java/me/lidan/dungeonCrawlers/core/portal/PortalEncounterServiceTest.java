@@ -24,11 +24,15 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -92,6 +96,43 @@ class PortalEncounterServiceTest {
         assertEquals(START.plus(RunPreparationService.COMPLETION_TIMEOUT),
                 runs.info(instance).orElseThrow().completionDeadline());
         assertEquals(instance, service.rewardAt(service.info(instance).orElseThrow().rewardChest()).orElseThrow());
+    }
+
+    @Test
+    void simultaneousPortalEntriesHaveOneCountdownOwner() throws Exception {
+        UUID instance = UUID.randomUUID();
+        UUID firstPlayer = UUID.randomUUID();
+        UUID secondPlayer = UUID.randomUUID();
+        List<UUID> players = List.of(firstPlayer, secondPlayer);
+        Clock clock = Clock.fixed(START, ZoneOffset.UTC);
+        CentralUpdateService updates = new CentralUpdateService(clock, ignored -> { });
+        RunPreparationService runs = runningRun(instance, players, updates, clock);
+        FakeEntities entities = new FakeEntities();
+        FakeParticipants participants = new FakeParticipants(players);
+        PortalEncounterService service = service(updates, runs, clock, entities, participants,
+                EncounterFactoryRegistry.withBasic());
+        assertTrue(service.register(instance, floor("basic"), plan(instance)).successful());
+        CountDownLatch start = new CountDownLatch(1);
+
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var first = executor.submit(() -> {
+                start.await();
+                return service.enterPortal(instance, firstPlayer);
+            });
+            var second = executor.submit(() -> {
+                start.await();
+                return service.enterPortal(instance, secondPlayer);
+            });
+            start.countDown();
+            var results = List.of(first.get(5, TimeUnit.SECONDS), second.get(5, TimeUnit.SECONDS));
+            assertEquals(1, results.stream().filter(PortalEncounterService.PortalResult::successful).count());
+        }
+
+        var snapshot = service.info(instance).orElseThrow();
+        assertEquals(PortalEncounterService.Status.COUNTDOWN, snapshot.status());
+        assertTrue(players.contains(snapshot.countdownOwner()));
+        assertEquals(2, updates.callbackCount(instance));
+        assertEquals(Map.of(instance, snapshot.countdownOwner()), service.portalLocations().countdownOwners());
     }
 
     @Test
@@ -194,17 +235,22 @@ class PortalEncounterServiceTest {
 
     private static RunPreparationService runningRun(UUID instance, UUID player,
                                                      CentralUpdateService updates, Clock clock) {
+        return runningRun(instance, List.of(player), updates, clock);
+    }
+
+    private static RunPreparationService runningRun(UUID instance, List<UUID> players,
+                                                     CentralUpdateService updates, Clock clock) {
         RunPreparationService runs = new RunPreparationService(new DoorService(), updates,
                 new StateTransitionService(), clock, ignored -> { });
         runs.registerGenerated(instance, new me.lidan.dungeonCrawlers.core.party.PartySnapshot(
-                player, List.of(player), true), List.of("tank"),
+                players.getFirst(), players, players.size() == 1), List.of("tank"),
                 java.util.Map.of("tank", new me.lidan.dungeonCrawlers.config.registry.ConfigModels.ClassDefinition(
                         "tank", "Tank", Material.STONE,
                         me.lidan.dungeonCrawlers.config.registry.ConfigModels.StatModifiers.empty())),
                 new Point(0, 0, 0), me.lidan.dungeonCrawlers.core.template.TemplateModels.Facing.NORTH);
         runs.markSnapshotsReady(instance);
-        runs.selectClass(instance, player, "tank");
-        assertTrue(runs.openDoor(instance, player).successful());
+        players.forEach(player -> assertTrue(runs.selectClass(instance, player, "tank").successful()));
+        assertTrue(runs.openDoor(instance, players.getFirst()).successful());
         return runs;
     }
 
@@ -264,7 +310,9 @@ class PortalEncounterServiceTest {
         private final List<Point> teleports = new ArrayList<>();
         private final List<String> titles = new ArrayList<>();
 
-        private FakeParticipants(UUID player) { players = List.of(player); }
+        private FakeParticipants(UUID player) { this(List.of(player)); }
+
+        private FakeParticipants(List<UUID> players) { this.players = List.copyOf(players); }
 
         @Override
         public List<UUID> activePlayers(UUID instanceId) { return players; }

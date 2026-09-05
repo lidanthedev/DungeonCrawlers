@@ -440,7 +440,7 @@ public final class DungeonCrawlers extends JavaPlugin {
                 teleportPermits, phaseClock()));
         registerEvent(new BukkitDungeonRunListener(phaseFiveCommand, runPreparation, generationWorldName, phaseSeven));
         registerEvent(new BukkitDungeonLifecycleListener(lifecycle, runPreparation, this, phaseClock(),
-                phaseFiveCommand::recoverOnJoin, phaseFiveCommand::leaveFromSpawn));
+                generationWorldName, phaseFiveCommand::recoverOnJoin, phaseFiveCommand::leaveFromDungeon));
         registerEvent(new BukkitCombatListener(combat, entityIdentity, generationWorldName, () -> disabling,
                 bossIdentity, phaseNine));
         registerEvent(new BukkitPortalBossListener(this, phaseNine, runPreparation, generationWorldName));
@@ -622,7 +622,11 @@ public final class DungeonCrawlers extends JavaPlugin {
             case REMOVED -> {
                 if (player != null) BukkitGhostState.exit(player);
                 if (phaseFiveCommand != null && notice.playerId() != null) {
-                    phaseFiveCommand.restoreRemovedPlayer(notice.instanceId(), notice.playerId());
+                    if (shouldRestoreRemovedPlayer(player, generationWorldName)) {
+                        phaseFiveCommand.restoreRemovedPlayer(notice.instanceId(), notice.playerId());
+                    } else {
+                        phaseFiveCommand.removeAfterWorldChange(notice.instanceId(), notice.playerId());
+                    }
                 }
             }
             case WIPED -> {
@@ -643,6 +647,10 @@ public final class DungeonCrawlers extends JavaPlugin {
             }
             default -> { }
         }
+    }
+
+    static boolean shouldRestoreRemovedPlayer(Player player, String generationWorldName) {
+        return player == null || generationWorldName.equals(player.getWorld().getName());
     }
 
     private static void showLifecycleTitle(Player player, String title, String subtitle,

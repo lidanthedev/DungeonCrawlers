@@ -17,6 +17,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -52,6 +55,30 @@ class RewardEntitlementServiceTest {
         var activeOffer = service.preview(INSTANCE, ACTIVE, "wooden").orElseThrow();
         assertNotEquals(activeOffer.offerId(), first.offerId());
         assertFalse(activeOffer.rolls().isEmpty());
+    }
+
+    @Test
+    void simultaneousRecoveredOpensShareOneSessionAndStableRolls() throws Exception {
+        RewardEntitlementService service = service(Set.of("a", "b", "c", "d"));
+        service.register(completion(List.of(new RewardEntitlementService.Participant(OFFLINE, true, false))));
+        CountDownLatch start = new CountDownLatch(1);
+
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var first = executor.submit(() -> {
+                start.await();
+                return service.open(INSTANCE, OFFLINE);
+            });
+            var second = executor.submit(() -> {
+                start.await();
+                return service.open(INSTANCE, OFFLINE);
+            });
+            start.countDown();
+            var firstOpen = first.get(5, TimeUnit.SECONDS).orElseThrow();
+            var secondOpen = second.get(5, TimeUnit.SECONDS).orElseThrow();
+            assertEquals(firstOpen, secondOpen);
+            assertEquals(firstOpen.offers().get("wooden"),
+                    service.preview(INSTANCE, OFFLINE, "wooden").orElseThrow());
+        }
     }
 
     @Test

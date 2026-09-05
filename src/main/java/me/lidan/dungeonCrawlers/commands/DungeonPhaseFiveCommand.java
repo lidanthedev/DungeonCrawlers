@@ -354,8 +354,19 @@ public final class DungeonPhaseFiveCommand {
         cancelEmptyPreparation(instanceId);
     }
 
-    /** Handles the server's /spawn command as a dungeon leave request. */
-    public void leaveFromSpawn(Player player) {
+    /** Removes a player who already changed worlds, consuming their snapshot without moving them. */
+    public void removeAfterWorldChange(UUID instanceId, UUID playerId) {
+        runs.removeParticipant(instanceId, playerId);
+        Map<UUID, me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot> saved = captured.get(instanceId);
+        me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot snapshot = saved == null
+                ? null : saved.remove(playerId);
+        if (saved != null && saved.isEmpty()) captured.remove(instanceId);
+        if (snapshot != null) deleteSnapshotAfterRestore(snapshot);
+        cancelEmptyPreparation(instanceId);
+    }
+
+    /** Handles a player leaving a dungeon as a dungeon leave request. */
+    public void leaveFromDungeon(Player player) {
         UUID playerId = player.getUniqueId();
         UUID instanceId = runs.instanceFor(playerId).orElse(null);
         if (instanceId == null) return;
@@ -366,7 +377,8 @@ public final class DungeonPhaseFiveCommand {
                     + "</" + (result.successful() ? "green" : "red") + ">"));
             return;
         }
-        restoreRemovedPlayer(instanceId, playerId);
+        if (player.getWorld().getName().equals(generationWorldName)) restoreRemovedPlayer(instanceId, playerId);
+        else removeAfterWorldChange(instanceId, playerId);
     }
 
     private void cancelEmptyPreparation(UUID instanceId) {
