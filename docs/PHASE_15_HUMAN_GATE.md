@@ -10,43 +10,60 @@ races.
 The Phase 14 backup gate remains independently in progress; this document does not claim that
 backup gate passed or change its retain-until-replacement requirement.
 
+The 2026-09-06 two-client check supplied partial live evidence and exposed a stale ghost-visibility
+case after a wiped run. That case is fixed and deployed below. Checks that were not exercised remain
+open.
+
 ## Required checks
 
-- [ ] Run the Java 21 clean build, full tests, deploy the JAR, and run `cc reload all` on server
+- [x] Run the Java 21 clean build, full tests, deploy the JAR, and run `cc reload all` on server
   `fa696721`.
-- [ ] With two players in the same run, trigger the same secret at the same time. Confirm exactly
+- [x] With two players in the same run, trigger the same secret at the same time. Confirm exactly
   one discovery and blessing award, while the other player receives `Secret already found`; no
   duplicate blessing or discovery is allowed.
-- [ ] With two players in the same RUNNING run, trigger lethal damage at the same time. Confirm
+- [x] With two players in the same RUNNING run, trigger lethal damage at the same time. Confirm
   each player transitions at most once, deaths do not increment twice, and the run emits one wipe
   when no online active alive player remains.
 - [ ] Disconnect one ALIVE participant from a RUNNING run. Confirm the participant becomes an
   offline `GHOST`, the death count increases exactly once, the 60-second revive deadline is set,
-  and reconnect preserves the deadline without resetting it.
+  and reconnect preserves the deadline without resetting it. The ghost/reconnect behavior passed,
+  but the numeric death-count line was not captured. Use `/dungeon player info <instance-id> <player>`
+  and record `deaths=1` and the unchanged `reviveAt`.
 - [ ] Coordinate both players logging out, then rejoining. Confirm a wiped run cannot be resurrected
-  by either reconnect and no late ghost revive occurs.
-- [ ] Have both players enter the same boss portal at the same time. Confirm exactly one countdown
+  by either reconnect, no late ghost revive occurs, and a player restored after the failed-reading
+  period is visible and no longer invulnerable or non-collidable. Repeat this after commit `c599156`.
+- [x] Have both players enter the same boss portal at the same time. Confirm exactly one countdown
   owner, one countdown callback, and one boss start; the other entry must not create a second
   countdown.
-- [ ] Reopen or reconnect reward views at the same time. Confirm each participant keeps the same
-  session and rolled offers, with no reroll or duplicate reward entitlement.
-- [ ] Repeat the Phase 9 countdown cleanup check and confirm the portal callback and countdown owner
-  are removed exactly once.
-- [ ] Start a fresh run and confirm the preparation and active-run warning messages appear one minute
-  before their respective deadlines, not one minute after the run starts.
-- [ ] While a participant is in a dungeon, run `/spawn` and confirm EssentialsX can change their
+- [ ] Close and reopen the reward GUI, then have each participant disconnect and rejoin before running
+  `/dungeon reward open <instance-id>` again. Compare `/dungeon reward info <instance-id>` before and
+  after. Each participant must keep the same rolled offers and session, with no reroll or duplicate
+  reward entitlement.
+- [ ] Repeat the Phase 9 cleanup check. Run `/dungeon portal start <instance-id>`, verify
+  `/dungeon portal status <instance-id>` shows `COUNTDOWN`, run `/dungeon portal abort <instance-id>`,
+  and verify the next status has no active owner. Repeat with `/dungeon boss cleanup <instance-id>`
+  during an active boss, then check `dungeon operations` and `dungeon repository` for no leftovers.
+- [x] Start a fresh run without selecting a class or opening the door and confirm the preparation
+  warning appears one minute before its deadline. The live check produced `Class selection closes in
+  1 minute.` after four minutes.
+- [ ] Continue a run after opening the door and confirm the active-run warning appears one minute
+  before its deadline, not one minute after the run starts.
+- [x] While a participant is in a dungeon, run `/spawn` and confirm EssentialsX can change their
   world, the participant is removed and remains at the requested destination, and the command is
-  not cancelled by DungeonCrawlers. Reconnect once and confirm the old snapshot is not applied.
-  As an admin, teleport into the dungeon and back to another world; confirm cross-world teleports
-  are not blocked while same-world dungeon bounds protection remains active.
+  not cancelled by DungeonCrawlers. The live `/spawn` check passed. As an admin, teleport into the
+  dungeon and back to another world; confirm cross-world teleports are not blocked while same-world
+  dungeon bounds protection remains active.
+- [ ] After the participant `/spawn` check, reconnect once and confirm the old snapshot is not
+  applied.
 
 ## Automated coverage
 
 The phase tests cover simultaneous secret discovery, lethal transitions and wipe, disconnect-to-ghost
 state, logout/reconnect after wipe, exact preparation and active-run warning boundaries, portal
-ownership, recovered reward-session initialization, world-change leave handling, and cross-world
-teleport bypass. Existing reservation, door, reward-claim, callback-freeze, and cleanup tests remain
-part of the full suite.
+ownership, recovered reward-session initialization, world-change leave handling, cross-world
+teleport bypass, bounded ghost invisibility, wiped-reconnect ghost suppression, and ghost cleanup
+after player restoration. Existing reservation, door, reward-claim, callback-freeze, and cleanup tests
+remain part of the full suite.
 
 ## Recorded evidence
 
@@ -83,3 +100,17 @@ part of the full suite.
   and in-flight repository work. Configuration validation passed with hash
   `b6d42cd6079e48e58af252c5e8ce51587e044e3b5d58bc42d481752379b9ee0d`. The physical participant
   `/spawn` plus reconnect check remains open.
+- 2026-09-06: User live feedback confirmed one secret award for simultaneous secret clicks,
+  simultaneous lethal handling, disconnect/reconnect ghost behavior, one boss-portal countdown,
+  the preparation warning, and `/spawn`. The death count was not read during the check. The same
+  feedback exposed a player remaining invisible after a wiped run restored them; reward-view
+  reconnect, Phase 9 cleanup, and the active-run warning were not exercised.
+- 2026-09-06: Commit `c599156` bounds ghost invisibility to the remaining revive duration, prevents
+  a failed reconnect into a wiped run from scheduling ghost presentation, and clears ghost state on
+  every successful snapshot restore or world-change exit. Focused tests and the Java 21 clean build,
+  full test suite, and external-plugin shading verification passed. JAR SHA-256 was
+  `db013c6fd4680bc7bccdb1cfd703d6dd99dca2dc0b4ed9c53372c32acb316c12`; it uploaded to server
+  `fa696721`, and `cc reload all` completed. Post-reload `dungeon operations` reported zero active
+  instances, reservations, occupied slots, cleanup failures, deadline alerts, late callbacks, and
+  repository work. `dungeon config validate` passed with hash
+  `b6d42cd6079e48e58af252c5e8ce51587e044e3b5d58bc42d481752379b9ee0d`.
