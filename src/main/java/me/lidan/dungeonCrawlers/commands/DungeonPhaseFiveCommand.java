@@ -37,6 +37,7 @@ import revxrsal.commands.bukkit.annotation.CommandPermission;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -45,6 +46,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -75,6 +77,8 @@ public final class DungeonPhaseFiveCommand {
             = new LinkedHashMap<>();
     private final Map<UUID, me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot> pendingRecovery
             = new LinkedHashMap<>();
+    private final Map<UUID, me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot> snapshotCleanupPending
+            = new ConcurrentHashMap<>();
 
     public DungeonPhaseFiveCommand(ConfigRegistryService configRegistry, PartyProvider parties,
                                    GenerationService generation, RunPreparationService runs,
@@ -340,7 +344,7 @@ public final class DungeonPhaseFiveCommand {
         authorizeRestore(playerId, snapshot, fallback);
         var restored = BukkitPlayerRecovery.restore(player, snapshot, server, fallback);
         if (restored.successful()) {
-            snapshots.delete(playerId);
+            deleteSnapshotAfterRestore(snapshot);
         } else {
             pendingRecovery.put(playerId, snapshot);
         }
@@ -384,9 +388,54 @@ public final class DungeonPhaseFiveCommand {
         }
         snapshots.read(playerId).whenCompleteAsync((stored, failure) -> {
             if (failure != null || stored.isEmpty()) return;
-            if (runs.instanceFor(playerId).isPresent() || !player.isOnline()) return;
-            restoreAfterJoin(player, stored.orElseThrow(), false);
+            var snapshot = stored.orElseThrow();
+            var cleanup = snapshotCleanupPending.get(playerId);
+            if (cleanup != null) {
+                deleteSnapshotAfterRestore(cleanup);
+                return;
+            }
+            snapshots.wasRestored(snapshot).whenCompleteAsync((alreadyRestored, markerFailure) -> {
+                if (markerFailure != null || Boolean.TRUE.equals(alreadyRestored)) {
+                    if (Boolean.TRUE.equals(alreadyRestored)) deleteSnapshotAfterRestore(snapshot);
+                    return;
+                }
+                if (runs.instanceFor(playerId).isPresent() || !player.isOnline()) return;
+                restoreAfterJoin(player, snapshot, false);
+            }, mainThread);
         }, mainThread);
+    }
+
+    /**
+     * Restores every captured online player during plugin disable while retaining offline snapshots for the
+     * normal join recovery path. The durable delete is deliberately asynchronous; the repository close at the
+     * end of disable drains that write without blocking the Paper thread on an unbounded operation.
+     */
+    public int restoreOnlinePlayersForDisable() {
+        SpawnProvider fallback = new BukkitSpawnProvider(server, "");
+        int restored = 0;
+        for (Map<UUID, me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot> saved
+                : new ArrayList<>(captured.values())) {
+            for (Map.Entry<UUID, me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot> entry
+                    : new ArrayList<>(saved.entrySet())) {
+                UUID playerId = entry.getKey();
+                me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot snapshot = entry.getValue();
+                Player player = server.getPlayer(playerId);
+                if (player == null || !player.isOnline()) {
+                    pendingRecovery.put(playerId, snapshot);
+                    continue;
+                }
+                authorizeRestore(playerId, snapshot, fallback);
+                var result = BukkitPlayerRecovery.restore(player, snapshot, server, fallback);
+                if (result.successful()) {
+                    deleteSnapshotAfterRestore(snapshot);
+                    restored++;
+                } else {
+                    pendingRecovery.put(playerId, snapshot);
+                }
+            }
+        }
+        captured.clear();
+        return restored;
     }
 
     private void prunePendingRecovery() {
@@ -402,7 +451,7 @@ public final class DungeonPhaseFiveCommand {
         var restored = BukkitPlayerRecovery.restore(player, snapshot, server, fallback);
         if (restored.successful()) {
             if (pending) pendingRecovery.remove(player.getUniqueId(), snapshot);
-            snapshots.delete(player.getUniqueId());
+            deleteSnapshotAfterRestore(snapshot);
         } else {
             pendingRecovery.put(player.getUniqueId(), snapshot);
         }
@@ -423,6 +472,14 @@ public final class DungeonPhaseFiveCommand {
                         new Point(location.getBlockX(), location.getBlockY(), location.getBlockZ()))));
         permits.authorize(playerId, destinations,
                 clock.instant().plus(DungeonGenerationCommand.TELEPORT_PERMIT_DURATION));
+    }
+
+    private void deleteSnapshotAfterRestore(
+            me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot snapshot) {
+        snapshotCleanupPending.put(snapshot.playerId(), snapshot);
+        snapshots.deleteAfterRestore(snapshot).whenComplete((ignored, failure) -> {
+            if (failure == null) snapshotCleanupPending.remove(snapshot.playerId(), snapshot);
+        });
     }
 
     private void preparePlayers(UUID instanceId, me.lidan.dungeonCrawlers.core.party.PartySnapshot party,
@@ -547,7 +604,7 @@ public final class DungeonPhaseFiveCommand {
                 authorizeRestore(playerId, snapshot, fallback);
                 var restored = BukkitPlayerRecovery.restore(player, snapshot, server, fallback);
                 if (restored.successful()) {
-                    snapshots.delete(playerId);
+                    deleteSnapshotAfterRestore(snapshot);
                     player.sendMessage(MiniMessageUtils.miniMessage("<red>[FAIL] " + reason + "; "
                             + outcome + " and player restored</red>"));
                 } else {

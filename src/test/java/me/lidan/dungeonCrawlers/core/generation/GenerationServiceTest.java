@@ -196,6 +196,27 @@ class GenerationServiceTest {
     }
 
     @Test
+    void cleanupDeadlineAlertsOnceWithoutReleasingUnsafeLease() {
+        Fixture fixture = fixture(1);
+        fixture.world.clears.add(new CompletableFuture<>());
+        UUID player = UUID.randomUUID();
+        var started = fixture.start(player);
+
+        fixture.service.cancel(started.instanceId());
+
+        var first = fixture.service.checkCleanupDeadlines(
+                CLOCK.instant().plus(GenerationService.CLEANUP_DEADLINE));
+        var second = fixture.service.checkCleanupDeadlines(
+                CLOCK.instant().plus(GenerationService.CLEANUP_DEADLINE).plusSeconds(1));
+
+        assertEquals(1, first.size());
+        assertTrue(second.isEmpty());
+        assertEquals(SlotAllocator.SlotState.CLEARING, fixture.slots.lookup(0).orElseThrow().state());
+        assertTrue(fixture.reservations.lookup(player).isPresent());
+        assertEquals(1, fixture.service.operations().cleanupDeadlineAlerts());
+    }
+
+    @Test
     void capacityRejectionLeavesNoSecondReservationJournalOrLease() {
         Fixture fixture = fixture(1);
         fixture.world.pastes.add(new CompletableFuture<>());

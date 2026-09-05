@@ -17,9 +17,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlayerSnapshotServiceTest {
@@ -94,15 +97,49 @@ class PlayerSnapshotServiceTest {
         assertTrue(new PlayerSnapshotService(repository).read(UUID.randomUUID()).join().isEmpty());
     }
 
+    @Test
+    void failedDeleteLeavesDurableRestoreMarkerForRecovery() {
+        FakeRepository repository = new FakeRepository();
+        PlayerSnapshotService service = new PlayerSnapshotService(repository);
+        PlayerRecoverySnapshot snapshot = new PlayerRecoverySnapshot(UUID.randomUUID(), UUID.randomUUID(), "world",
+                1, 2, 3, 0, 0, "SURVIVAL", 20, 20, 0, 0, 0, 300, 400, Instant.EPOCH);
+        assertTrue(service.save(snapshot).accepted());
+        repository.failDeletes = true;
+
+        assertThrows(CompletionException.class, () -> service.deleteAfterRestore(snapshot).join());
+
+        PlayerSnapshotService afterRestart = new PlayerSnapshotService(repository);
+        assertTrue(afterRestart.wasRestored(snapshot).join());
+        assertEquals(snapshot, afterRestart.read(snapshot.playerId()).join().orElseThrow());
+    }
+
+    @Test
+    void successfulDeleteRemovesSnapshotAndRestoreMarker() {
+        FakeRepository repository = new FakeRepository();
+        PlayerSnapshotService service = new PlayerSnapshotService(repository);
+        PlayerRecoverySnapshot snapshot = new PlayerRecoverySnapshot(UUID.randomUUID(), UUID.randomUUID(), "world",
+                1, 2, 3, 0, 0, "SURVIVAL", 20, 20, 0, 0, 0, 300, 400, Instant.EPOCH);
+        assertTrue(service.save(snapshot).accepted());
+
+        service.deleteAfterRestore(snapshot).join();
+
+        assertTrue(service.read(snapshot.playerId()).join().isEmpty());
+        assertFalse(service.wasRestored(snapshot).join());
+    }
+
     private static final class FakeRepository implements DurableRepository {
         private DurableWrite lastWrite;
         private final Map<Key, DurableRecord> records = new HashMap<>();
-        private long persistedVersion = -1;
-        private String persistedKey;
+        private final Map<Key, Long> persistedVersions = new HashMap<>();
+        private final Map<Key, String> persistedKeys = new HashMap<>();
+        private boolean failDeletes;
 
         @Override public boolean reserveTerminalLane(UUID instanceId) { return true; }
         @Override public void releaseTerminalLane(UUID instanceId) { }
         @Override public DurableSubmission submit(DurableWrite write) {
+            Key key = new Key(write.namespace(), write.recordId());
+            long persistedVersion = persistedVersions.getOrDefault(key, -1L);
+            String persistedKey = persistedKeys.get(key);
             if (persistedVersion >= write.recordVersion()
                     && !(write.recordVersion() == persistedVersion
                     && write.idempotencyKey().equals(persistedKey))) {
@@ -111,9 +148,9 @@ class PlayerSnapshotServiceTest {
                         CompletableFuture.failedFuture(failure), "accepted");
             }
             lastWrite = write;
-            persistedVersion = write.recordVersion();
-            persistedKey = write.idempotencyKey();
-            records.put(new Key(write.namespace(), write.recordId()),
+            persistedVersions.put(key, write.recordVersion());
+            persistedKeys.put(key, write.idempotencyKey());
+            records.put(key,
                     new DurableRecord(write.namespace(), write.recordId(), write.payload(), "checksum",
                             Path.of("snapshot.bin")));
             var receipt = new DurableWriteReceipt(write.operationId(), write.idempotencyKey(), write.recordVersion(),
@@ -127,9 +164,11 @@ class PlayerSnapshotServiceTest {
         }
         @Override public CompletableFuture<List<DurableRecord>> list(String namespace) { return CompletableFuture.completedFuture(List.of()); }
         @Override public CompletableFuture<Void> delete(String namespace, String recordId) {
-            records.remove(new Key(namespace, recordId));
-            persistedVersion = -1;
-            persistedKey = null;
+            if (failDeletes) return CompletableFuture.failedFuture(new IllegalStateException("delete failed"));
+            Key key = new Key(namespace, recordId);
+            records.remove(key);
+            persistedVersions.remove(key);
+            persistedKeys.remove(key);
             return CompletableFuture.completedFuture(null);
         }
         @Override public RepositoryDiagnostics diagnostics() { return new RepositoryDiagnostics(1, 0, 0, 0, 0, false); }

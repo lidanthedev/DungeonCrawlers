@@ -45,6 +45,7 @@ public final class RunPreparationService {
     private Predicate<UUID> activeGroup = ignored -> true;
     private Consumer<DeadlineNotice> deadlineNotices = ignored -> { };
     private final Map<UUID, MutableRun> runs = new LinkedHashMap<>();
+    private boolean frozen;
 
     public RunPreparationService(DoorService doors, CentralUpdateService updates,
                                  StateTransitionService transitions, Clock clock,
@@ -95,6 +96,7 @@ public final class RunPreparationService {
         Objects.requireNonNull(classes, "classes");
         Objects.requireNonNull(doorCenter, "doorCenter");
         Objects.requireNonNull(outward, "outward");
+        if (frozen) return PreparationResult.failure("run preparation is frozen for plugin disable");
         MutableRun existing = runs.get(instanceId);
         if (existing != null) return PreparationResult.failure("preparation already registered");
         if (allowedClasses.isEmpty()) return PreparationResult.failure("floor has no allowed classes");
@@ -290,6 +292,19 @@ public final class RunPreparationService {
         return runs.values().stream().map(MutableRun::snapshot).toList();
     }
 
+    /** Stops deadline callbacks before the plugin restores online player snapshots. */
+    public synchronized void freezeForDisable() {
+        frozen = true;
+    }
+
+    public synchronized boolean frozen() {
+        return frozen;
+    }
+
+    public synchronized void cleanupAll() {
+        new ArrayList<>(runs.keySet()).forEach(this::cleanup);
+    }
+
     public synchronized PreparationResult cleanup(UUID instanceId) {
         MutableRun run = runs.remove(Objects.requireNonNull(instanceId, "instanceId"));
         if (run == null) return PreparationResult.success("preparation already cleaned", null);
@@ -299,7 +314,7 @@ public final class RunPreparationService {
     }
 
     private synchronized void update(UUID instanceId, MutableRun run, Instant now) {
-        if (runs.get(instanceId) != run) return;
+        if (frozen || runs.get(instanceId) != run) return;
         run.lastUpdated = now;
         switch (run.state) {
             case PREPARING -> updatePreparing(instanceId, run, now);

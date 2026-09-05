@@ -8,8 +8,14 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -100,5 +106,68 @@ class CentralUpdateServiceTest {
 
         service.tick(Instant.EPOCH);
         assertEquals(List.of("primary"), calls);
+    }
+
+    @Test
+    void freezeStopsRacingTicksAndRejectsNewRegistrations() {
+        CentralUpdateService service = new CentralUpdateService(Clock.systemUTC(), ignored -> { });
+        UUID instance = UUID.randomUUID();
+        int[] calls = {0};
+        assertTrue(service.register(instance, ignored -> calls[0]++));
+
+        service.freeze();
+
+        assertTrue(service.frozen());
+        assertEquals(0, service.tick(Instant.EPOCH).attempted());
+        assertEquals(0, calls[0]);
+        assertFalse(service.register(UUID.randomUUID(), ignored -> { }));
+    }
+
+    @Test
+    void freezeWaitsForCopiedCallbacksUntilTheTickFinishes() throws Exception {
+        CentralUpdateService service = new CentralUpdateService(Clock.systemUTC(), ignored -> { });
+        UUID instance = UUID.randomUUID();
+        CountDownLatch primaryStarted = new CountDownLatch(1);
+        CountDownLatch releasePrimary = new CountDownLatch(1);
+        CountDownLatch supplementalStarted = new CountDownLatch(1);
+        CountDownLatch releaseSupplemental = new CountDownLatch(1);
+        assertTrue(service.register(instance, ignored -> {
+            primaryStarted.countDown();
+            await(releasePrimary);
+        }));
+        assertTrue(service.registerSupplemental(instance, ignored -> {
+            supplementalStarted.countDown();
+            await(releaseSupplemental);
+        }));
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            var tick = executor.submit(() -> service.tick(Instant.EPOCH));
+            assertTrue(primaryStarted.await(1, TimeUnit.SECONDS));
+            var freeze = executor.submit(service::freeze);
+
+            assertThrows(TimeoutException.class, () -> freeze.get(100, TimeUnit.MILLISECONDS));
+            releasePrimary.countDown();
+            assertTrue(supplementalStarted.await(1, TimeUnit.SECONDS));
+            assertThrows(TimeoutException.class, () -> freeze.get(100, TimeUnit.MILLISECONDS));
+            releaseSupplemental.countDown();
+
+            tick.get(1, TimeUnit.SECONDS);
+            freeze.get(1, TimeUnit.SECONDS);
+            assertTrue(service.frozen());
+        } finally {
+            releasePrimary.countDown();
+            releaseSupplemental.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(1, TimeUnit.SECONDS)) throw new AssertionError("callback release timed out");
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(exception);
+        }
     }
 }

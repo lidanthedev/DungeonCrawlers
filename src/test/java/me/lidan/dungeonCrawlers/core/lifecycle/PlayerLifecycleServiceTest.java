@@ -135,4 +135,24 @@ class PlayerLifecycleServiceTest {
         assertEquals(PlayerLifecycleService.PlayerState.ALIVE, service.player(instance, ghost).orElseThrow().state());
         assertEquals(alive, service.player(instance, ghost).orElseThrow().reviveTarget());
     }
+
+    @Test
+    void disableFreezePreventsAQueuedGhostTickFromReviving() {
+        UUID instance = UUID.randomUUID();
+        UUID ghost = UUID.randomUUID();
+        UUID alive = UUID.randomUUID();
+        CentralUpdateService updates = new CentralUpdateService(Clock.fixed(START, ZoneOffset.UTC), ignored -> { });
+        PlayerLifecycleService service = new PlayerLifecycleService(updates, Clock.fixed(START, ZoneOffset.UTC),
+                ignored -> { });
+        assertTrue(updates.register(instance, ignored -> { }));
+        assertTrue(service.register(instance, List.of(ghost, alive)).successful());
+        assertTrue(service.start(instance).successful());
+        service.lethal(instance, ghost, START);
+
+        service.freezeForDisable();
+        updates.tick(START.plusSeconds(60));
+
+        assertEquals(PlayerLifecycleService.PlayerState.GHOST,
+                service.player(instance, ghost).orElseThrow().state());
+    }
 }
