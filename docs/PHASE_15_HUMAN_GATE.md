@@ -42,3 +42,11 @@ door, reward-claim, callback-freeze, and cleanup tests remain part of the full s
   transitions, logout/reconnect after wipe, portal ownership, and recovered reward sessions. The
   full Java test suite passed on the Phase 15 branch. Live two-client checks and the deploy
   checkpoint remain open.
+- 2026-09-05: Java 21 clean build, full tests, and external-plugin shading verification passed. JAR
+  SHA-256 was `fdf8628e8f9f5267f80347133b690a0905fe618a760f8a2e02438b9dcd2607ea`; it uploaded to
+  server `fa696721`, and `cc reload all` completed. Final operations reported zero active instances,
+  reservations, occupied slots, cleanup alerts, and repository work. Config validation passed with
+  hash `b6d42cd6079e48e58af252c5e8ce51587e044e3b5d58bc42d481752379b9ee0d`, and the plugin list
+  showed DungeonCrawlers enabled. The reload also emitted an unrelated EssentialsX/Paper command-tree
+  stack trace during PlugMan re-registration; the server settled and DungeonCrawlers diagnostics
+  remained clean.
