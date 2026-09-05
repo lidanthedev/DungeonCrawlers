@@ -29,11 +29,12 @@ open.
   and reconnect preserves the deadline without resetting it. The ghost/reconnect behavior passed,
   but the numeric death-count line was not captured. Use `/dungeon player info <instance-id> <player>`
   and record `deaths=1` and the unchanged `reviveAt`.
-- [ ] Coordinate both players logging out, then rejoining. Confirm the last disconnect marks the run
+- [x] Coordinate both players logging out, then rejoining. Confirm the last disconnect marks the run
   failed and cleans the dungeon immediately, without waiting for the failed-reading period. Confirm a
   wiped run cannot be resurrected by either reconnect, no late ghost revive occurs, and the retained
   snapshot restores each player once, visibly, without invulnerability or non-collision. Repeat this
-  after commits `db49f05` and `3a8af6a`.
+  after commits `db49f05` and `3a8af6a`. The live check passed: the last disconnect failed and cleaned
+  the run immediately, and reconnect did not resurrect it.
 - [x] Have both players enter the same boss portal at the same time. Confirm exactly one countdown
   owner, one countdown callback, and one boss start; the other entry must not create a second
   countdown.
@@ -126,3 +127,6 @@ tests remain part of the full suite.
   instances, reservations, occupied slots, cleanup failures, deadline alerts, late callbacks, and
   repository work. `dungeon config validate` passed with hash
   `2d114238db68b044bd4a0b2cf4761d59343c5fabb9bfb603f9e0e033737ece43`.
+- 2026-09-06: User confirmed the all-participants-offline live check passed: the last disconnect failed
+  and cleaned the dungeon immediately, and reconnect did not resurrect the wiped run. The
+  all-disconnected cleanup check is now passed.
