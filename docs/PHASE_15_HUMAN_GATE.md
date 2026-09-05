@@ -44,12 +44,16 @@ callback-freeze, and cleanup tests remain part of the full suite.
 
 ## Recorded evidence
 
+- 2026-09-05: Corrected preparation and active-run warning windows to emit one minute before their
+  deadlines. Active-run disconnects now record one death and transition an `ALIVE` participant to
+  offline `GHOST` while preserving the revive deadline across reconnect. Focused and full Java 21
+  tests passed for both fixes.
 - 2026-09-05: Deterministic Phase 15 race tests passed for secret discovery, party lethal/wipe
   transitions, logout/reconnect after wipe, portal ownership, and recovered reward sessions. The
-  full Java test suite passed on the Phase 15 branch. Live two-client checks and the deploy
-  checkpoint remain open.
-- 2026-09-05: Java 21 clean build, full tests, and external-plugin shading verification passed. JAR
-  SHA-256 was `fdf8628e8f9f5267f80347133b690a0905fe618a760f8a2e02438b9dcd2607ea`; it uploaded to
+  full Java test suite passed on the Phase 15 branch. Live two-client checks remain open.
+- 2026-09-05: Java 21 clean build, full tests, and external-plugin shading verification passed for
+  the warning and disconnect fixes. JAR SHA-256 was
+  `b407410ca1685f678eea42ed5421b218ce4ba1f5c89a597e1735c529713ba3b9`; it uploaded to
   server `fa696721`, and `cc reload all` completed. Final operations reported zero active instances,
   reservations, occupied slots, cleanup alerts, and repository work. Config validation passed with
   hash `b6d42cd6079e48e58af252c5e8ce51587e044e3b5d58bc42d481752379b9ee0d`, and the plugin list
