@@ -24,9 +24,9 @@ import java.util.function.Predicate;
 
 /** Coordinates the player-facing PREPARING phase and its one-shot start door. */
 public final class RunPreparationService {
-    public static final Duration PREPARATION_WARNING = Duration.ofMinutes(4);
+    public static final Duration PREPARATION_WARNING = Duration.ofMinutes(1);
     public static final Duration PREPARATION_TIMEOUT = Duration.ofMinutes(5);
-    public static final Duration RUN_WARNING = Duration.ofMinutes(59);
+    public static final Duration RUN_WARNING = Duration.ofMinutes(1);
     public static final Duration RUN_TIMEOUT = Duration.ofMinutes(60);
     public static final Duration FAILED_READING_PERIOD = Duration.ofSeconds(10);
     public static final Duration COMPLETION_WARNING = Duration.ofMinutes(1);

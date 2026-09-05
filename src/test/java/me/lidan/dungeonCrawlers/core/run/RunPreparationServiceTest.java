@@ -184,8 +184,13 @@ class RunPreparationServiceTest {
         service.registerGenerated(instance, new PartySnapshot(player, List.of(player), true), List.of("tank"),
                 Map.of("tank", classDefinition("tank")), new Point(0, 64, 0), Facing.NORTH);
 
-        updates.tick(START.plus(RunPreparationService.PREPARATION_WARNING));
-        updates.tick(START.plus(RunPreparationService.PREPARATION_WARNING));
+        Instant warning = START.plus(RunPreparationService.PREPARATION_TIMEOUT)
+                .minus(RunPreparationService.PREPARATION_WARNING);
+        updates.tick(warning.minusSeconds(1));
+        assertEquals(0, notices.stream().filter(value -> value.event()
+                == RunPreparationService.DeadlineEvent.PREPARATION_WARNING).count());
+        updates.tick(warning);
+        updates.tick(warning);
 
         assertEquals(1, notices.stream().filter(value -> value.event()
                 == RunPreparationService.DeadlineEvent.PREPARATION_WARNING).count());
@@ -214,8 +219,13 @@ class RunPreparationServiceTest {
         service.openDoor(instance, player);
         service.enterBoss(instance);
 
-        updates.tick(START.plus(RunPreparationService.RUN_WARNING));
-        updates.tick(START.plus(RunPreparationService.RUN_WARNING));
+        Instant warning = START.plus(RunPreparationService.RUN_TIMEOUT)
+                .minus(RunPreparationService.RUN_WARNING);
+        updates.tick(warning.minusSeconds(1));
+        assertEquals(0, notices.stream().filter(value -> value.event()
+                == RunPreparationService.DeadlineEvent.RUN_WARNING).count());
+        updates.tick(warning);
+        updates.tick(warning);
         assertEquals(RunPreparationService.RunState.BOSS, service.info(instance).orElseThrow().state());
         assertEquals(1, notices.stream().filter(value -> value.event()
                 == RunPreparationService.DeadlineEvent.RUN_WARNING).count());
