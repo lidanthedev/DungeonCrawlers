@@ -146,7 +146,8 @@ public final class BukkitDungeonLifecycleListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(PlayerQuitEvent event) {
         runs.instanceFor(event.getPlayer().getUniqueId())
-                .ifPresent(id -> lifecycle.disconnect(id, event.getPlayer().getUniqueId()));
+                .ifPresent(id -> lifecycle.disconnect(id, event.getPlayer().getUniqueId(),
+                        ghostOnDisconnect(id)));
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -176,6 +177,14 @@ public final class BukkitDungeonLifecycleListener implements Listener {
     private Duration remainingGhostDuration(Instant reviveAt) {
         Duration remaining = Duration.between(clock.instant(), reviveAt);
         return remaining.isNegative() || remaining.isZero() ? Duration.ofMillis(50) : remaining;
+    }
+
+    private boolean ghostOnDisconnect(UUID instanceId) {
+        return runs.info(instanceId)
+                .map(RunPreparationService.RunSnapshot::state)
+                .map(state -> state == RunPreparationService.RunState.RUNNING
+                        || state == RunPreparationService.RunState.BOSS)
+                .orElse(false);
     }
 
     private boolean isGhost(Player player) {

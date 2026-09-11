@@ -79,19 +79,26 @@ public final class PlayerLifecycleService {
     }
 
     public synchronized TransitionResult disconnect(UUID instanceId, UUID playerId) {
+        return disconnect(instanceId, playerId, true);
+    }
+
+    /** Marks a player offline, optionally applying the active-run disconnect-to-ghost transition. */
+    public synchronized TransitionResult disconnect(UUID instanceId, UUID playerId, boolean ghostOnDisconnect) {
         MutableInstance state = instance(instanceId);
         MutablePlayer player = state == null ? null : state.players.get(Objects.requireNonNull(playerId, "playerId"));
         if (state == null) return TransitionResult.failure("unknown lifecycle instance");
         if (player == null) return TransitionResult.failure("player is not a participant");
         if (!player.online) return TransitionResult.success(Event.DISCONNECTED, "player already offline", snapshot(state));
         player.online = false;
-        if (state.running && player.state == PlayerState.ALIVE) {
+        if (ghostOnDisconnect && state.running && player.state == PlayerState.ALIVE) {
             TransitionResult ghost = transitionToGhost(state, player, clock.instant(), false);
             if (ghost.event() == Event.WIPED) return ghost;
             return TransitionResult.success(Event.DISCONNECTED,
                     "player disconnected and became a ghost", ghost.snapshot(), player.id);
         }
-        if (state.running && noOnlineAlive(state)) return wipe(state, "no online active alive player remains", null);
+        if (ghostOnDisconnect && state.running && noOnlineAlive(state)) {
+            return wipe(state, "no online active alive player remains", null);
+        }
         return TransitionResult.success(Event.DISCONNECTED, "player disconnected", snapshot(state), player.id);
     }
 

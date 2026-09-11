@@ -16,6 +16,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlayerLifecycleServiceTest {
@@ -123,6 +124,26 @@ class PlayerLifecycleServiceTest {
         assertTrue(reconnected.online());
         assertEquals(snapshot.reviveAt(), reconnected.reviveAt());
         assertEquals(1, reconnected.deaths());
+    }
+
+    @Test
+    void disconnectWithoutGhostTransitionPreservesAliveState() {
+        UUID instance = UUID.randomUUID();
+        UUID player = UUID.randomUUID();
+        CentralUpdateService updates = new CentralUpdateService(Clock.fixed(START, ZoneOffset.UTC), ignored -> { });
+        PlayerLifecycleService service = new PlayerLifecycleService(updates, Clock.fixed(START, ZoneOffset.UTC),
+                ignored -> { });
+        assertTrue(updates.register(instance, ignored -> { }));
+        assertTrue(service.register(instance, List.of(player)).successful());
+        assertTrue(service.start(instance).successful());
+
+        assertTrue(service.disconnect(instance, player, false).successful());
+
+        var snapshot = service.player(instance, player).orElseThrow();
+        assertEquals(PlayerLifecycleService.PlayerState.ALIVE, snapshot.state());
+        assertFalse(snapshot.online());
+        assertEquals(0, snapshot.deaths());
+        assertNull(snapshot.reviveAt());
     }
 
     @Test
