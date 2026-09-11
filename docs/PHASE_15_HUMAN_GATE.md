@@ -14,6 +14,13 @@ The 2026-09-06 two-client check supplied partial live evidence and exposed a sta
 case after a wiped run. That case is fixed and deployed below. Checks that were not exercised remain
 open.
 
+## Test controls
+
+The active-run deadline can be checked without waiting an hour. After opening the start door, run
+`/dungeon tick reset-test`, then `/dungeon tick advance-test 3540`; the run should emit its one-minute
+warning. Advancing another 60 seconds forces the deadline, and advancing 10 more seconds completes
+failed-run cleanup. These admin commands use the same central deadline callbacks as the normal tick.
+
 ## Required checks
 
 - [x] Run the Java 21 clean build, full tests, deploy the JAR, and run `cc reload all` on server
@@ -41,17 +48,20 @@ open.
 - [ ] Close and reopen the reward GUI, then have each participant disconnect and rejoin before running
   `/dungeon reward open <instance-id>` again. Compare `/dungeon reward info <instance-id>` before and
   after. Each participant must keep the same rolled offers and session, with no reroll or duplicate
-  reward entitlement. The check is currently blocked: disconnecting while viewing rewards incorrectly
-  changed the participant to `GHOST`; after revival, reward selection still worked.
-- [ ] Repeat the Phase 9 cleanup check. Run `/dungeon portal start <instance-id>`, verify
+  reward entitlement. The previous check exposed a bug where disconnecting while viewing rewards
+  incorrectly changed the participant to `GHOST`; commit `84b0e3f` fixes it, but this live recheck is
+  still required. After revival, reward selection still worked.
+- [x] Repeat the Phase 9 cleanup check. Run `/dungeon portal start <instance-id>`, verify
   `/dungeon portal status <instance-id>` shows `COUNTDOWN`, run `/dungeon portal abort <instance-id>`,
   and verify the next status has no active owner. Repeat with `/dungeon boss cleanup <instance-id>`
   during an active boss, then check `dungeon operations` and `dungeon repository` for no leftovers.
+  The live portal and boss-cleanup verification passed.
 - [x] Start a fresh run without selecting a class or opening the door and confirm the preparation
   warning appears one minute before its deadline. The live check produced `Class selection closes in
   1 minute.` after four minutes, then correctly kicked the participant when the deadline expired.
 - [ ] Continue a run after opening the door and confirm the active-run warning appears one minute
-  before its deadline, not one minute after the run starts.
+  before its deadline, not one minute after the run starts. Use the test controls above instead of
+  waiting 59 minutes.
 - [x] While a participant is in a dungeon, run `/spawn` and confirm EssentialsX can change their
   world, the participant is removed and remains at the requested destination, and the command is
   not cancelled by DungeonCrawlers. The live `/spawn` check passed. As an admin, teleport into the
@@ -135,6 +145,11 @@ tests remain part of the full suite.
   `reviveAt`; reconnect worked. Class-selection expiry correctly kicked the participant, and the
   `/spawn` plus reconnect check did not restore the old snapshot. Disconnecting from the reward view
   incorrectly entered `GHOST`; reward selection worked after revival, so the reward reconnect check
-  remains open. The active-run deadline check was intentionally deferred because it requires waiting
-  nearly 59 minutes; portal entry was reported working, but the separate Phase 9 cleanup sequence was
-  not recorded.
+  remains open. Portal and boss-cleanup verification subsequently passed. The active-run deadline
+  check remains open; the test-tick controls above avoid waiting nearly 59 minutes.
+- 2026-09-12: Commit `84b0e3f` prevents disconnects during the completed reward period from creating a
+  ghost while still recording the participant offline. Focused lifecycle tests and the full Java 21
+  clean build passed. JAR SHA-256 was
+  `ec3a204b9a985d188e001150f27e042d27719a364ebc63f960466812f4da15b5`; it uploaded to server
+  `fa696721`, and `cc reload all` enabled DungeonCrawlers successfully. Post-reload operations,
+  configuration validation, and repository diagnostics were clean.
