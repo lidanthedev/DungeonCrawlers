@@ -24,11 +24,11 @@ open.
 - [x] With two players in the same RUNNING run, trigger lethal damage at the same time. Confirm
   each player transitions at most once, deaths do not increment twice, and the run emits one wipe
   when no online active alive player remains.
-- [ ] Disconnect one ALIVE participant from a RUNNING run. Confirm the participant becomes an
+- [x] Disconnect one ALIVE participant from a RUNNING run. Confirm the participant becomes an
   offline `GHOST`, the death count increases exactly once, the 60-second revive deadline is set,
-  and reconnect preserves the deadline without resetting it. The ghost/reconnect behavior passed,
-  but the numeric death-count line was not captured. Use `/dungeon player info <instance-id> <player>`
-  and record `deaths=1` and the unchanged `reviveAt`.
+  and reconnect preserves the deadline without resetting it. The live check on instance
+  `9a0f3f5e-ba12-4aa3-a2f0-a503f95dd340` reported `state=GHOST deaths=1` with a `reviveAt` and
+  reconnected successfully.
 - [x] Coordinate both players logging out, then rejoining. Confirm the last disconnect marks the run
   failed and cleans the dungeon immediately, without waiting for the failed-reading period. Confirm a
   wiped run cannot be resurrected by either reconnect, no late ghost revive occurs, and the retained
@@ -41,14 +41,15 @@ open.
 - [ ] Close and reopen the reward GUI, then have each participant disconnect and rejoin before running
   `/dungeon reward open <instance-id>` again. Compare `/dungeon reward info <instance-id>` before and
   after. Each participant must keep the same rolled offers and session, with no reroll or duplicate
-  reward entitlement.
+  reward entitlement. The check is currently blocked: disconnecting while viewing rewards incorrectly
+  changed the participant to `GHOST`; after revival, reward selection still worked.
 - [ ] Repeat the Phase 9 cleanup check. Run `/dungeon portal start <instance-id>`, verify
   `/dungeon portal status <instance-id>` shows `COUNTDOWN`, run `/dungeon portal abort <instance-id>`,
   and verify the next status has no active owner. Repeat with `/dungeon boss cleanup <instance-id>`
   during an active boss, then check `dungeon operations` and `dungeon repository` for no leftovers.
 - [x] Start a fresh run without selecting a class or opening the door and confirm the preparation
   warning appears one minute before its deadline. The live check produced `Class selection closes in
-  1 minute.` after four minutes.
+  1 minute.` after four minutes, then correctly kicked the participant when the deadline expired.
 - [ ] Continue a run after opening the door and confirm the active-run warning appears one minute
   before its deadline, not one minute after the run starts.
 - [x] While a participant is in a dungeon, run `/spawn` and confirm EssentialsX can change their
@@ -56,8 +57,8 @@ open.
   not cancelled by DungeonCrawlers. The live `/spawn` check passed. As an admin, teleport into the
   dungeon and back to another world; confirm cross-world teleports are not blocked while same-world
   dungeon bounds protection remains active.
-- [ ] After the participant `/spawn` check, reconnect once and confirm the old snapshot is not
-  applied.
+- [x] After the participant `/spawn` check, reconnect once and confirm the old snapshot is not
+  applied. The live check confirmed the participant stayed at the `/spawn` destination.
 
 ## Automated coverage
 
@@ -130,3 +131,10 @@ tests remain part of the full suite.
 - 2026-09-06: User confirmed the all-participants-offline live check passed: the last disconnect failed
   and cleaned the dungeon immediately, and reconnect did not resurrect the wiped run. The
   all-disconnected cleanup check is now passed.
+- 2026-09-12: User confirmed the single-disconnect check with `state=GHOST deaths=1` and a populated
+  `reviveAt`; reconnect worked. Class-selection expiry correctly kicked the participant, and the
+  `/spawn` plus reconnect check did not restore the old snapshot. Disconnecting from the reward view
+  incorrectly entered `GHOST`; reward selection worked after revival, so the reward reconnect check
+  remains open. The active-run deadline check was intentionally deferred because it requires waiting
+  nearly 59 minutes; portal entry was reported working, but the separate Phase 9 cleanup sequence was
+  not recorded.
