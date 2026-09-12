@@ -70,17 +70,21 @@ class SecretDiscoveryServiceTest {
         SecretDiscoveryService service = new SecretDiscoveryService(() -> config(blessing));
         assertTrue(service.register(instance, 1234, floor(), plan(instance), Set.of(firstPlayer, secondPlayer))
                 .successful());
+        CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
 
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var first = executor.submit(() -> {
+                ready.countDown();
                 start.await();
                 return service.discover(instance, firstPlayer, new Point(2, 1, 2));
             });
             var second = executor.submit(() -> {
+                ready.countDown();
                 start.await();
                 return service.discover(instance, secondPlayer, new Point(2, 1, 2));
             });
+            assertTrue(ready.await(5, TimeUnit.SECONDS));
             start.countDown();
             var results = List.of(first.get(5, TimeUnit.SECONDS), second.get(5, TimeUnit.SECONDS));
             assertEquals(1, results.stream().filter(value -> value.status() == SecretDiscoveryService.Status.DISCOVERED)

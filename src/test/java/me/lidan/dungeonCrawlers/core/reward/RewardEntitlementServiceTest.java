@@ -61,17 +61,21 @@ class RewardEntitlementServiceTest {
     void simultaneousRecoveredOpensShareOneSessionAndStableRolls() throws Exception {
         RewardEntitlementService service = service(Set.of("a", "b", "c", "d"));
         service.register(completion(List.of(new RewardEntitlementService.Participant(OFFLINE, true, false))));
+        CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
 
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var first = executor.submit(() -> {
+                ready.countDown();
                 start.await();
                 return service.open(INSTANCE, OFFLINE);
             });
             var second = executor.submit(() -> {
+                ready.countDown();
                 start.await();
                 return service.open(INSTANCE, OFFLINE);
             });
+            assertTrue(ready.await(5, TimeUnit.SECONDS));
             start.countDown();
             var firstOpen = first.get(5, TimeUnit.SECONDS).orElseThrow();
             var secondOpen = second.get(5, TimeUnit.SECONDS).orElseThrow();

@@ -112,17 +112,21 @@ class PortalEncounterServiceTest {
         PortalEncounterService service = service(updates, runs, clock, entities, participants,
                 EncounterFactoryRegistry.withBasic());
         assertTrue(service.register(instance, floor("basic"), plan(instance)).successful());
+        CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
 
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var first = executor.submit(() -> {
+                ready.countDown();
                 start.await();
                 return service.enterPortal(instance, firstPlayer);
             });
             var second = executor.submit(() -> {
+                ready.countDown();
                 start.await();
                 return service.enterPortal(instance, secondPlayer);
             });
+            assertTrue(ready.await(5, TimeUnit.SECONDS));
             start.countDown();
             var results = List.of(first.get(5, TimeUnit.SECONDS), second.get(5, TimeUnit.SECONDS));
             assertEquals(1, results.stream().filter(PortalEncounterService.PortalResult::successful).count());

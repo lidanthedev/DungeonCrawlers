@@ -40,7 +40,6 @@ public final class BukkitGhostState {
     }
 
     public static void exit(Player player) {
-        player.setGameMode(GameMode.SURVIVAL);
         player.removePotionEffect(PotionEffectType.INVISIBILITY);
         player.setInvisible(false);
         player.setInvulnerable(false);
