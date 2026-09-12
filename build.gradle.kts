@@ -53,6 +53,7 @@ dependencies {
         // keep the project's JUnit BOM authoritative for the test engine.
         exclude(group = "org.junit.jupiter", module = "junit-jupiter-api")
     }
+    testImplementation("me.clip:placeholderapi:2.11.6")
     testImplementation(libs.lamp.common)
     testImplementation(libs.paper.api)
     testImplementation(libs.cave.crawlers)

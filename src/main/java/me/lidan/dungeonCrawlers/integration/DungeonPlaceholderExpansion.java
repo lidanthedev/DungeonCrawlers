@@ -118,7 +118,7 @@ public final class DungeonPlaceholderExpansion extends PlaceholderExpansion {
         if (player == null) return "";
         if (key.equals("player_name")) return safePlayerName(player);
         if (key.equals("player_uuid")) return player.getUniqueId() == null ? "" : player.getUniqueId().toString();
-        if (key.startsWith("instance_")) return instanceValue(key);
+        if (key.startsWith("instance_")) return instanceValue(key, player);
 
         Context context = findPlayerContext(player.getUniqueId());
         return context == null ? playerFallback(key) : playerValue(key, context);
@@ -213,16 +213,22 @@ public final class DungeonPlaceholderExpansion extends PlaceholderExpansion {
         }
     }
 
-    private String instanceValue(String key) {
+    private String instanceValue(String key, OfflinePlayer player) {
         int fieldStart = key.indexOf('_', "instance_".length());
         if (fieldStart < 0) return "";
+        String selector = key.substring("instance_".length(), fieldStart);
+        String field = key.substring(fieldStart + 1);
+        if (selector.equals("this")) {
+            Context context = player == null ? null : findPlayerContext(player.getUniqueId());
+            if (field.equals("exists")) return Boolean.toString(context != null);
+            return context == null ? instanceFallback(field) : instanceValue(field, context);
+        }
         UUID instanceId;
         try {
-            instanceId = UUID.fromString(key.substring("instance_".length(), fieldStart));
+            instanceId = UUID.fromString(selector);
         } catch (IllegalArgumentException exception) {
             return "false";
         }
-        String field = key.substring(fieldStart + 1);
         if (field.equals("exists")) return Boolean.toString(findInstanceContext(instanceId) != null);
         Context context = findInstanceContext(instanceId);
         return context == null ? instanceFallback(field) : instanceValue(field, context);
