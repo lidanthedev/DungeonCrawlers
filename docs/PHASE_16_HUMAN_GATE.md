@@ -19,7 +19,7 @@ deadline. The advance is scoped to that instance and is removed during cleanup.
 
 ## Required checks
 
-- [ ] Run a Java 21 clean build and full test suite, deploy the JAR, and run `cc reload all`.
+- [x] Run a Java 21 clean build and full test suite, deploy the JAR, and run `cc reload all`.
 - [ ] Run `/dungeon help` as a normal player and as an administrator. Confirm player commands are
   visible to both, admin commands require their permissions, and debug commands are marked and
   hidden or rejected when debug mode is off.
@@ -63,10 +63,10 @@ resolution, message rendering, configuration validation, reload admission, and G
 Record the build commit, JAR SHA-256, server id, reload result, test commands, and live observations
 here as checks are completed. Do not mark this gate passed until every required check has evidence.
 
-- 2026-09-12: Checkpoint `d2d4c30` passed the Java 21 `./gradlew clean build --no-daemon` with all
+- 2026-09-12: Checkpoint `9e3b62` passed the Java 21 `./gradlew clean build --no-daemon` with all
   244 tests, shadow-JAR verification, and external-plugin shading checks. The deployed JAR
   `build/libs/DungeonCrawlers-1.0.jar` has SHA-256
-  `d3b86da5f9d6b0446e71aee8db896f91c6a0e375024b95fe0c4a55d3ad9d9448`.
+  `6b57fd3d3e0b8c4110abe90d85ab6f92225a3635c450e74429b63729b44fb9e3`.
 - 2026-09-12: The JAR uploaded successfully to Pterodactyl server `fa696721`. `cc reload all`
   reported `DungeonCrawlers reloaded!`; `dungeon config validate` passed with active hash
   `2d114238db68b044bd4a0b2cf4761d59343c5fabb9bfb603f9e0e033737ece43`, and
@@ -77,3 +77,6 @@ here as checks are completed. Do not mark this gate passed until every required 
   debug disabled, `/dungeon operations` correctly returned the debug-only warning. A player-context
   PlaceholderAPI smoke test using `/sudo LidanTheGamer papi parse me
   %dungeoncrawlers_in_dungeon%` returned `false` outside a run.
+- 2026-09-12: A final `cc reload all` completed with `DungeonCrawlers reloaded!`; the subsequent
+  `/dungeon config validate` passed with active hash
+  `2d114238db68b044bd4a0b2cf4761d59343c5fabb9bfb603f9e0e033737ece43`.
