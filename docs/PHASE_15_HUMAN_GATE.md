@@ -1,6 +1,6 @@
 # Phase 15 Human Gate - Concurrent player transitions
 
-Status: IN PROGRESS
+Status: PASS
 
 Phase 15 closes the remaining concurrency checks carried forward from the earlier gates. The
 player-facing state machines must accept one ordered result when two clients act at the same time,
@@ -51,14 +51,13 @@ timers on this server and is intended for disposable admin tests.
 - [x] Have both players enter the same boss portal at the same time. Confirm exactly one countdown
   owner, one countdown callback, and one boss start; the other entry must not create a second
   countdown.
-- [ ] Close and reopen the reward GUI, then have each participant disconnect and rejoin before running
+- [x] Close and reopen the reward GUI, then have each participant disconnect and rejoin before running
   `/dungeon reward open <instance-id>` again. Compare `/dungeon reward info <instance-id>` before and
   after. Each participant must keep the same rolled offers and session, with no reroll or duplicate
   reward entitlement. The previous check exposed a bug where disconnecting while viewing rewards
   incorrectly changed the participant to `GHOST`; commit `84b0e3f` fixes it. The live check on instance
-  `198d96e0-6c01-4bfb-8097-6a0eeaaa1c9f` verified this for `LidanTheGamer_`; repeat the disconnect and
-  reconnect for `LidanTheGamer` before marking the item passed. After revival, reward selection still
-  worked.
+  `198d96e0-6c01-4bfb-8097-6a0eeaaa1c9f` verified both participants retained their offers after
+  reconnect, with no ghost, reroll, or duplicate entitlement, and reward selection still worked.
 - [x] Repeat the Phase 9 cleanup check. Run `/dungeon portal start <instance-id>`, verify
   `/dungeon portal status <instance-id>` shows `COUNTDOWN`, run `/dungeon portal abort <instance-id>`,
   and verify the next status has no active owner. Repeat with `/dungeon boss cleanup <instance-id>`
@@ -190,4 +189,5 @@ tests remain part of the full suite.
 - 2026-09-12: On instance `198d96e0-6c01-4bfb-8097-6a0eeaaa1c9f`, the reward info before and after
   reconnect retained both participants and their exact rolls (`UNDEAD_ESSENCE` amounts 5 and 7).
   `LidanTheGamer_` reconnected without entering `GHOST`, with no reroll, and reward selection still
-  worked. The other participant's reconnect remains to be checked.
+  worked. The user then confirmed the same result for `LidanTheGamer`; the reward reconnect check is
+  passed for both participants.
