@@ -129,23 +129,53 @@ class CentralUpdateServiceTest {
     }
 
     @Test
-    void manualAdvancePersistsAcrossSchedulerTicksAndCanBeReset() {
+    void instanceAdvanceOnlyMovesTargetAndPersistsAcrossSchedulerTicks() {
         Instant start = Instant.parse("2026-01-01T00:00:00Z");
         AdvancingClock clock = new AdvancingClock(start);
-        List<Instant> observed = new ArrayList<>();
+        List<Instant> targetObserved = new ArrayList<>();
+        List<Instant> otherObserved = new ArrayList<>();
         CentralUpdateService service = new CentralUpdateService(clock, ignored -> { });
-        service.register(UUID.randomUUID(), observed::add);
+        UUID target = UUID.randomUUID();
+        UUID other = UUID.randomUUID();
+        service.register(target, targetObserved::add);
+        service.register(other, otherObserved::add);
 
-        CentralUpdateService.TickReport advanced = service.advanceTime(Duration.ofSeconds(60));
+        CentralUpdateService.TickReport advanced = service.advanceInstanceTime(target, Duration.ofSeconds(60));
         assertEquals(start.plusSeconds(60), advanced.now());
+        assertEquals(List.of(start.plusSeconds(60)), targetObserved);
+        assertTrue(otherObserved.isEmpty());
+
         clock.advanceSeconds(2);
         service.tick();
-        assertEquals(List.of(start.plusSeconds(60), start.plusSeconds(62)), observed);
-        assertEquals(start.plusSeconds(62), service.time().schedulerNow());
-        assertEquals(Duration.ofSeconds(60), service.time().manualTimeOffset());
+        assertEquals(List.of(start.plusSeconds(60), start.plusSeconds(62)), targetObserved);
+        assertEquals(List.of(start.plusSeconds(2)), otherObserved);
+        assertEquals(start.plusSeconds(62), service.time(target).orElseThrow().schedulerNow());
+        assertEquals(Duration.ofSeconds(60), service.time(target).orElseThrow().instanceTimeOffset());
+        assertEquals(Duration.ZERO, service.time(other).orElseThrow().instanceTimeOffset());
+    }
 
-        service.resetManualTime();
-        assertEquals(start.plusSeconds(2), service.time().schedulerNow());
+    @Test
+    void removingLastInstanceResetsTestTimeControlsBeforeTheNextRun() {
+        Instant start = Instant.parse("2026-01-01T00:00:00Z");
+        AdvancingClock clock = new AdvancingClock(start);
+        CentralUpdateService service = new CentralUpdateService(clock, ignored -> { });
+        UUID oldInstance = UUID.randomUUID();
+        assertTrue(service.register(oldInstance, ignored -> { }));
+
+        service.setTimeScale(60);
+        clock.advanceSeconds(2);
+        service.advanceInstanceTime(oldInstance, Duration.ofMinutes(1));
+        assertTrue(service.remove(oldInstance));
+
+        List<Instant> freshObserved = new ArrayList<>();
+        UUID freshInstance = UUID.randomUUID();
+        assertTrue(service.register(freshInstance, freshObserved::add));
+        clock.advanceSeconds(1);
+        service.tick();
+
+        assertEquals(List.of(start.plusSeconds(3)), freshObserved);
+        assertEquals(1, service.timeScale());
+        assertEquals(Duration.ZERO, service.time(freshInstance).orElseThrow().instanceTimeOffset());
     }
 
     @Test
