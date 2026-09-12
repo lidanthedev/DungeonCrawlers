@@ -17,9 +17,10 @@ open.
 ## Test controls
 
 The active-run deadline can be checked without waiting an hour. After opening the start door, run
-`/dungeon tick reset-test`, then `/dungeon tick advance-test 3540`; the run should emit its one-minute
+`/dungeon tick reset-test`, then `/dungeon tick advance 3540`; the run should emit its one-minute
 warning. Advancing another 60 seconds forces the deadline, and advancing 10 more seconds completes
-failed-run cleanup. These admin commands use the same central deadline callbacks as the normal tick.
+failed-run cleanup. The older `advance-test` name remains an alias. These admin commands use the same
+central deadline callbacks as the normal tick.
 For a real-time check, run `/dungeon tick speed-test 60` after opening the door: one real second advances
 about one dungeon minute, so the warning should arrive after roughly 59 seconds. Run
 `/dungeon tick speed-reset-test` after the check. The speed control applies to all central DungeonCrawlers
@@ -165,3 +166,12 @@ tests remain part of the full suite.
   returned `60x real time`, the reset command returned `1x real time`, and post-reload operations,
   configuration validation, and repository diagnostics were clean. The active-run warning still
   requires the actual player-facing 60x check.
+- 2026-09-12: Commit `a1153d2` makes `/dungeon tick advance <seconds>` persist its jump in the
+  central scheduler timeline, retains `advance-test` as an alias, and adds `/dungeon tick time`.
+  The Java 21 clean build, full test suite, shadow-JAR shading verification, and live console smoke
+  test passed: `advance 60` was followed by `time` reporting `manualAdvance=60s` and the dungeon
+  timestamp 60 seconds ahead of real time. JAR SHA-256 was
+  `91400e39d7cd0a00257e539ac70a019f338e8925e28e8847a3a7cc440e2badf0`; it uploaded to server
+  `fa696721`, and `cc reload all` enabled DungeonCrawlers successfully. Post-reload operations,
+  configuration validation, and repository diagnostics were clean. The active-run warning still
+  requires the actual player-facing speed or advance check.
