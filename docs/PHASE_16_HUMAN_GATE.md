@@ -17,16 +17,49 @@ The active-run deadline can be tested without waiting an hour. After opening the
 `/dungeon instance time <instance-id>`. Advancing the same instance another 60 seconds forces the
 deadline. The advance is scoped to that instance and is removed during cleanup.
 
+For the remaining diagnostics, use disposable runs with debug enabled. Test generation with
+`/sudo LidanTheGamer dungeon instance generate-debug-slow floor_1 12345 5000`, then use
+`/dungeon instance list` to copy the instance UUID and inspect it with `/dungeon instance info
+<instance-id>`. Confirm the generation status is readable, then run `/dungeon instance cleanup
+<instance-id>` and verify `/dungeon operations` has no leftover work. The delay must stay within
+`0..5000` milliseconds. There is no safe command that injects a FAWE hang or provider failure;
+those failure paths remain covered by automated tests and the Phase 14 operational assumption.
+
+For portal and boss diagnostics, start a disposable normal run with `/sudo LidanTheGamer dungeon
+start floor_1`, select a class, open the start door, and clear rooms until `The portal room is
+ready.` appears. Use the instance UUID from `/dungeon instance list`, then run the following:
+
+```text
+/dungeon portal status <instance-id>
+/dungeon portal start <instance-id>
+/dungeon portal status <instance-id>
+/dungeon portal abort <instance-id>
+/dungeon portal status <instance-id>
+/dungeon boss start <instance-id>
+/dungeon boss info <instance-id>
+/dungeon boss cleanup <instance-id>
+/dungeon operations
+/dungeon repository
+```
+
+The second portal status should show `COUNTDOWN`, the status after abort should show no active
+owner, boss info should report a readable preparing or active encounter, and cleanup should leave
+zero active instances, reservations, occupied slots, queued work, and in-flight work. Real FAWE
+warnings and errors should still be logged after debug is disabled.
+
 ## Required checks
 
 - [x] Run a Java 21 clean build and full test suite, deploy the JAR, and run `cc reload all`.
+- [x] Run `/dungeon help`; the help output rendered successfully.
 - [ ] Run `/dungeon help` as a normal player and as an administrator. Confirm player commands are
   visible to both, admin commands require their permissions, and debug commands are marked and
   hidden or rejected when debug mode is off.
-- [ ] With `debug: false`, run `/dungeon config validate` and a normal `/dungeon start` as an
-  administrator/player as appropriate. Confirm the config result is readable and no debug marker
-  or per-tick spam appears. Enable debug for `/dungeon operations` and `/dungeon repository`,
-  confirm readable summaries with no raw Java record output, then disable debug again.
+- [x] With debug disabled, `/dungeon config validate` returned `Configuration is valid.` and
+  `/dungeon operations` and `/dungeon repository` returned the debug-only unavailable message.
+  After debug was enabled and soft-reloaded, both diagnostics rendered readable summaries with no
+  raw Java record output.
+- [ ] Restore `debug: false`, reload, and run a normal `/dungeon start`. Confirm the config result
+  remains readable and no debug marker or per-tick spam appears.
 - [ ] Enable debug temporarily and verify one debug command can run, then disable it and reload.
   Confirm the setting is validated and the reload reports the active configuration summary without
   leaving a mixed runtime state.
@@ -39,15 +72,17 @@ deadline. The advance is scoped to that instance and is removed during cleanup.
   lore use player-facing labels, locked offers explain the requirement, clicking purchase closes the
   GUI, insufficient funds leaves the offer selectable, and a full inventory rejects delivery without
   creating mailbox overflow.
-- [ ] Reconnect while viewing or reopening rewards for every participant. Confirm no ghost state,
+- [x] Reconnect while viewing or reopening rewards for every participant. Confirm no ghost state,
   no reroll, no duplicate claim, and each player retains the same offers.
-- [ ] Disconnect and reconnect during an active run. Confirm ghost/revive messaging and bounded
+- [x] Disconnect and reconnect during an active run. Confirm ghost/revive messaging and bounded
   invisibility remain correct, then confirm a wiped run cannot be resurrected.
 - [ ] If PlaceholderAPI is installed, check `%dungeoncrawlers_in_dungeon%`,
-  `%dungeoncrawlers_instance_<uuid>_state%`, `%dungeoncrawlers_instance_<uuid>_score%`,
+  `%dungeoncrawlers_instance_<uuid>_state%` using the actual instance UUID,
+  `%dungeoncrawlers_instance_<uuid>_score%`,
   `%dungeoncrawlers_player_deaths%`, and `%dungeoncrawlers_active_instances%` in and outside a run.
-  Confirm unknown or unavailable contexts resolve safely. Repeat the plugin reload with
-  PlaceholderAPI absent if practical and confirm DungeonCrawlers still enables.
+  `instance_this_state` is not a valid direct lookup and correctly returns `false`; the UUID form
+  is the supported syntax. Confirm unknown or unavailable contexts resolve safely. Repeat the plugin
+  reload with PlaceholderAPI absent if practical and confirm DungeonCrawlers still enables.
 - [ ] Run the generation, portal, boss, and cleanup diagnostics with debug enabled only. Confirm
   FAWE failures remain actionable, boss fallback behavior is readable, and real warnings/errors are
   still logged when debug is disabled.
@@ -96,3 +131,16 @@ here as checks are completed. Do not mark this gate passed until every required 
   The JAR uploaded successfully to server `fa696721`; `cc reload all` reported
   `DungeonCrawlers reloaded!`, `dungeon config validate` returned `Configuration is valid.`,
   and `/dungeon instance list` returned `Instances: 0`.
+- 2026-09-12: The human-gate checks for help, configuration, and diagnostics passed for the
+  exercised portion. `/dungeon help` rendered successfully. With debug disabled, configuration
+  validation passed and `/dungeon operations` plus `/dungeon repository` were correctly blocked.
+  After a soft reload with debug enabled, both commands showed readable summaries: active instances,
+  cleanup counts, recovery state, repository capacity, and queue state without raw record output.
+- 2026-09-12: A solo Floor FAST run completed with readable S+ score output, correct class, door,
+  room, portal, boss, reward, and `/spawn` behavior. Reward offers were ordered correctly from left
+  to right. The reward reconnect and active-run ghost/revive checks are carried forward from the
+  passing Phase 15 gate.
+- 2026-09-12: PlaceholderAPI checks resolved `%dungeoncrawlers_instance_6e976170-15cc-4ee3-a253-
+  f76173e64208_state%`, `%dungeoncrawlers_player_deaths%`, and `%dungeoncrawlers_active_instances%`.
+  `%dungeoncrawlers_instance_this_state%` returned `false` because direct instance lookups require
+  a UUID. The remaining unknown-context, debug-reset, and PlaceholderAPI-absent checks are open.
