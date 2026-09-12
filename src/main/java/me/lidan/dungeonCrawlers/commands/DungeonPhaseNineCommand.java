@@ -112,7 +112,7 @@ public final class DungeonPhaseNineCommand {
         } else if (result instanceof PortalEncounterService.BossResult value) {
             successful = value.successful(); detail = value.detail();
         } else {
-            successful = false; detail = String.valueOf(result);
+            successful = false; detail = "unsupported portal operation result";
         }
         DungeonMessages.send(sender, successful ? DungeonMessages.success(detail) : DungeonMessages.error(detail));
     }

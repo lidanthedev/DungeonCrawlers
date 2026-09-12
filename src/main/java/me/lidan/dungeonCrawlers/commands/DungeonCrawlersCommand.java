@@ -425,8 +425,14 @@ public final class DungeonCrawlersCommand {
     @CommandPermission("dungeoncrawlers.admin.debug")
     public void repository(CommandSender sender) {
         if (!debug(sender)) return;
-        DungeonMessages.send(sender, DungeonMessages.info("Repository diagnostics: <white>"
-                + durableRepository.diagnostics() + "</white>"));
+        var diagnostics = durableRepository.diagnostics();
+        DungeonMessages.send(sender, DungeonMessages.info("Repository diagnostics"));
+        DungeonMessages.send(sender, "<gray>capacity=<white>" + diagnostics.normalCapacity()
+                + "</white> in-flight=<white>" + diagnostics.normalInFlight()
+                + "</white> queued=<white>" + diagnostics.queuedOperations()
+                + "</white> terminal reservations=<white>" + diagnostics.terminalReservations()
+                + "</white> terminal in-flight=<white>" + diagnostics.terminalInFlight()
+                + "</white> closed=<white>" + diagnostics.closed() + "</white></gray>");
     }
 
     @Subcommand("reservation race")
@@ -528,7 +534,8 @@ public final class DungeonCrawlersCommand {
         String status = result.status() == PartyProvider.Status.ERROR
                 ? "<red>Party lookup failed.</red>"
                 : "<green>Party lookup passed.</green>";
-        DungeonMessages.send(player, status + " <gray>status=<white>" + result.status()
+        DungeonMessages.send(player, status + " <gray>status=<white>"
+                + result.status().name().toLowerCase(Locale.ROOT)
                 + "</white>, leader=<white>" + result.leader() + "</white>, online members=<white>"
                 + result.onlineMembers() + "</white>, detail=<white>" + result.detail() + "</white></gray>");
     }

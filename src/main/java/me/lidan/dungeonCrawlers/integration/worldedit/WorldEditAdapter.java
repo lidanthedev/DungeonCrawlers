@@ -81,12 +81,12 @@ public final class WorldEditAdapter implements WorldEditGateway {
         Player actor = BukkitAdapter.adapt(player);
         try {
             Region region = WorldEdit.getInstance().getSessionManager().get(actor).getSelection(actor.getWorld());
-            logger.info("[AuthoringCapture] begin size=" + region.getWidth() + "x" + region.getHeight()
+            logger.fine("[AuthoringCapture] begin size=" + region.getWidth() + "x" + region.getHeight()
                     + "x" + region.getLength() + " volume=" + region.getVolume()
                     + " maxDimension=" + maximumDimension + " maxVolume=" + maximumVolume);
             String limitError = limitError(region, maximumDimension, maximumVolume);
             if (limitError != null) {
-                logger.info("[AuthoringCapture] rejected: " + limitError);
+                logger.warning("[AuthoringCapture] rejected: " + limitError);
                 return new CaptureResult(false, limitError, Optional.empty(), new byte[0]);
             }
 
@@ -125,7 +125,7 @@ public final class WorldEditAdapter implements WorldEditGateway {
                     writer.write(clipboard);
                 }
                 long serializedAt = System.nanoTime();
-                logger.info(() -> "[AuthoringCapture] size=" + region.getWidth() + "x" + region.getHeight()
+                logger.fine(() -> "[AuthoringCapture] size=" + region.getWidth() + "x" + region.getHeight()
                         + "x" + region.getLength() + " volume=" + region.getVolume()
                         + " blocks=" + capturedBlocks.size() + " copyAndMetadataMs=" + elapsedMillis(copyStarted, copiedAt)
                         + " selectionMs=" + elapsedMillis(copiedAt, selectedAt)

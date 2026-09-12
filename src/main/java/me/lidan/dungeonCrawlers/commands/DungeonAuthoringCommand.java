@@ -136,8 +136,8 @@ public final class DungeonAuthoringCommand {
         DungeonMessages.send(player, DungeonMessages.success("Markers found: <white>" + markers.size()
                 + "</white>. " + scan.detail()));
         markers.forEach(entry -> DungeonMessages.send(player, "<gray>" + point(entry.getKey()) + " <white>"
-                + entry.getValue().type() + "</white>" + (entry.getValue().is("jigsaw")
-                ? " states=<white>" + entry.getValue().states() + "</white>" : "") + "</gray>"));
+                + entry.getValue().type().toLowerCase(Locale.ROOT) + "</white>" + (entry.getValue().is("jigsaw")
+                ? " states=<white>" + formatMap(entry.getValue().states()) + "</white>" : "") + "</gray>"));
     }
 
     static List<String> markerLegend() {
@@ -396,7 +396,7 @@ public final class DungeonAuthoringCommand {
     }
 
     private void logAuthoring(String message) {
-        if (plugin != null) plugin.getLogger().info("[Authoring] " + message);
+        if (plugin != null) plugin.getLogger().fine("[Authoring] " + message);
     }
 
     private static long elapsedMillis(long startedAt) {
@@ -486,5 +486,12 @@ public final class DungeonAuthoringCommand {
 
     private static String point(Point point) {
         return point.x() + ", " + point.y() + ", " + point.z();
+    }
+
+    private static String formatMap(Map<String, String> values) {
+        if (values.isEmpty()) return "none";
+        return values.entrySet().stream().sorted(Map.Entry.comparingByKey())
+                .map(entry -> entry.getKey() + "=" + entry.getValue())
+                .collect(java.util.stream.Collectors.joining(", "));
     }
 }

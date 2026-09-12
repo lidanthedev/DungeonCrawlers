@@ -157,7 +157,8 @@ public final class DungeonPhaseElevenCommand {
                                     .filter(player -> player.offers().containsValue(offer)).findFirst()
                                     .map(RewardEntitlementService.PlayerEntitlement::playerId).orElse(null))
                             .flatMap(record -> Optional.ofNullable(record.offers().get(offer.offerId())))
-                            .map(value -> " state=" + value.state() + " claim=" + value.offerId()).orElse("");
+                            .map(value -> " state=" + value.state().name().toLowerCase(java.util.Locale.ROOT)
+                                    + " claim=" + value.offerId()).orElse("");
                     DungeonMessages.send(sender, "<gray>reward=<white>" + offer.rewardId()
                             + "</white> locked=<white>" + offer.locked() + "</white> price=<white>"
                             + offer.price() + "</white> rolls=<white>" + formatRolls(offer.rolls())
@@ -179,7 +180,8 @@ public final class DungeonPhaseElevenCommand {
             send(sender, false, "player has no active reward entitlement");
             return;
         }
-        send(sender, true, "player=" + playerLabel(player) + " mode=" + entitlement.mode());
+        send(sender, true, "player=" + playerLabel(player) + " mode="
+                + entitlement.mode().name().toLowerCase(java.util.Locale.ROOT));
         entitlement.offers().values().stream().sorted(java.util.Comparator.comparing(
                         RewardEntitlementService.RewardOffer::rewardId))
                 .forEach(offer -> DungeonMessages.send(sender, "<gray>reward=<white>" + offer.rewardId()
@@ -255,7 +257,8 @@ public final class DungeonPhaseElevenCommand {
             return;
         }
         claims.reconcile(id, parsed, sender.getName(), evidence, result -> send(sender, result.successful(),
-                "claim=" + id + " state=" + result.state() + " detail=" + result.detail()));
+                "claim=" + id + " state=" + result.state().name().toLowerCase(java.util.Locale.ROOT)
+                        + " detail=" + result.detail()));
     }
 
     @Subcommand("reward delivery-pause-test")

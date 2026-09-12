@@ -234,7 +234,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         generation = new GenerationService(reservations, slots, durableRepository, generationWorld,
                 new GenerationPreparationProvider(catalog, authoring, new LayoutPlanner()), generationExecutor,
                 callback -> getServer().getScheduler().runTask(this, callback), getServer()::isPrimaryThread,
-                this::debugLog, phaseClock(), worldName, progress -> {
+                this::generationDiagnostic, phaseClock(), worldName, progress -> {
                     if (progress.terminal()) {
                         if (progress.successful()) progressBars.complete(progress.instanceId(), progress.detail());
                         else progressBars.fail(progress.instanceId(), progress.detail());
@@ -252,7 +252,7 @@ public final class DungeonCrawlers extends JavaPlugin {
     }
 
     private void initializePhaseFourServices(String worldName) {
-        centralUpdates = new CentralUpdateService(phaseClock(), this::debugLog);
+        centralUpdates = new CentralUpdateService(phaseClock(), this::diagnosticWarning);
         doors = new DoorService();
         playerSnapshots = new PlayerSnapshotService(durableRepository);
         protectionPolicy = new WorldProtectionService();
@@ -269,7 +269,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         combat = new CombatRoomService(
                 new BukkitCombatMobGateway(getServer(), this::generationWorld,
                         mythicMobs, entityIdentity),
-                chunkTickets, this::debugLog, this::notifyCombatRoom);
+                chunkTickets, this::diagnosticWarning, this::notifyCombatRoom);
         runPreparation = new RunPreparationService(doors, centralUpdates, new StateTransitionService(), phaseClock(),
                 instanceId -> {
                     var result = combat.activateFirst(instanceId);
@@ -751,7 +751,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         if (runPreparation != null) runPreparation.freezeForDisable();
         if (centralUpdates != null) centralUpdates.freeze();
         if (lifecycle != null) lifecycle.freezeForDisable();
-        getLogger().info("[OPS] event=disable phase=callbacks_frozen admission=paused");
+        getLogger().info("Shutdown: callbacks frozen and admission paused");
 
         if (progressBars != null) progressBars.cancelAll();
         closeAllGuis();
@@ -764,8 +764,8 @@ public final class DungeonCrawlers extends JavaPlugin {
                     .forEach(BukkitGhostState::exit);
         }
         int restored = phaseFiveCommand == null ? 0 : phaseFiveCommand.restoreOnlinePlayersForDisable();
-        getLogger().info("[OPS] event=disable phase=snapshots_restored online=" + restored
-                + " offline_retained=true");
+        getLogger().info("Shutdown: online snapshots restored=" + restored
+                + "; offline recovery retained");
 
         if (phaseSeven != null) phaseSeven.cleanupAll();
         if (phaseNine != null) phaseNine.cleanupAll();
@@ -777,11 +777,26 @@ public final class DungeonCrawlers extends JavaPlugin {
         if (durableRepository != null) durableRepository.close();
         if (generationExecutor != null) generationExecutor.shutdownNow();
         latestScores.clear();
-        getLogger().info("[OPS] event=disable phase=complete journals_retained_for_startup_recovery=true");
+        getLogger().info("Shutdown complete; journals retained for startup recovery");
     }
 
     private void debugLog(String message) {
         if (debugSettings != null && debugSettings.enabled()) getLogger().info("[debug] " + message);
+    }
+
+    private void generationDiagnostic(String message) {
+        String normalized = message.toLowerCase(Locale.ROOT);
+        if (normalized.contains("failed") || normalized.contains("failure")
+                || normalized.contains("deadline") || normalized.contains("blocked")
+                || normalized.contains("callback") || normalized.startsWith("p0 ")) {
+            diagnosticWarning(message);
+        } else {
+            debugLog(message);
+        }
+    }
+
+    private void diagnosticWarning(String message) {
+        getLogger().warning("DungeonCrawlers: " + message);
     }
 
     /**
