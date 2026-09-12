@@ -40,6 +40,9 @@ import java.util.logging.Logger;
 
 @Command("dungeon")
 public final class DungeonAuthoringCommand {
+    private static final String ROOM_PASTE_FAILURE_MESSAGE =
+            "Could not paste the room schematic. Check the server log for details.";
+
     private final ConfigRegistryService configRegistry;
     private final PlayerReservationService reservations;
     private final TemplateAuthoringService authoring;
@@ -209,14 +212,18 @@ public final class DungeonAuthoringCommand {
             byte[] schematic = authoring.schematic(id);
             Point origin = playerPoint(player);
             WorldEditGateway.OperationResult result = worldEdit.paste(player, schematic, origin, rotation);
-            DungeonMessages.send(player, result.successful()
-                    ? DungeonMessages.success("Room schematic pasted at <white>" + point(origin)
-                            + "</white> with rotation <white>" + rotationLabel(rotation) + "</white>.")
-                    : DungeonMessages.error("Could not paste the room schematic: "
-                            + cleanDetail(result.detail())));
+            if (!result.successful()) {
+                logAuthoring("room paste failed id=" + id + " player=" + player.getName()
+                        + " detail=" + result.detail());
+                DungeonMessages.send(player, DungeonMessages.error(ROOM_PASTE_FAILURE_MESSAGE));
+                return;
+            }
+            DungeonMessages.send(player, DungeonMessages.success("Room schematic pasted at <white>" + point(origin)
+                    + "</white> with rotation <white>" + rotationLabel(rotation) + "</white>."));
         } catch (Exception exception) {
-            DungeonMessages.send(player, DungeonMessages.error(
-                    "Could not paste the room schematic. Check the server log for details."));
+            logAuthoring("room paste failed id=" + id + " player=" + player.getName()
+                    + " error=" + message(exception));
+            DungeonMessages.send(player, DungeonMessages.error(ROOM_PASTE_FAILURE_MESSAGE));
         }
     }
 

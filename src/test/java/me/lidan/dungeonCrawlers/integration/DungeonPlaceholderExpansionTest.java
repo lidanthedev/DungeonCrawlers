@@ -63,7 +63,14 @@ class DungeonPlaceholderExpansionTest {
 
         assertEquals("false", expansion.onRequest(player, "instance_this_exists"));
         assertEquals("0", expansion.onRequest(player, "instance_this_players"));
+        for (String field : new String[]{"score", "skill", "time", "exploration", "bonus"}) {
+            assertEquals("0", expansion.onRequest(player, "instance_this_" + field));
+        }
         assertEquals("", expansion.onRequest(player, "instance_this_state"));
+        for (String key : new String[]{"score", "player_score", "player_skill_score", "player_time_score",
+                "player_exploration_score", "player_bonus_score"}) {
+            assertEquals("0", expansion.onRequest(player, key));
+        }
     }
 
     private static DungeonPlaceholderExpansion expansion(RunPreparationService runs) {

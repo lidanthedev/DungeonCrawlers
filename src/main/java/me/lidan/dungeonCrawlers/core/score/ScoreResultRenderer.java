@@ -29,8 +29,8 @@ public final class ScoreResultRenderer {
                 ? "<green><bold>Dungeon Complete!</bold></green>"
                 : "<red><bold>Dungeon Failed!</bold></red>");
         rendered = line(rendered, "<gray>Dungeon Score: <white>" + result.total() + "</white></gray>");
-        rendered = line(rendered, "<gray>Rank: " + rankColor(result.rank()) + "<white>"
-                + displayRank(result.rank()) + "</white></" + rankColorName(result.rank()) + "></gray>");
+        rendered = line(rendered, "<gray>Rank: " + rankColor(result.rank())
+                + displayRank(result.rank()) + "</" + rankColorName(result.rank()) + "></gray>");
         rendered = rendered.append(Component.newline()).append(category("Skill", result.skill(),
                 skillDetails(result, snapshot)));
         rendered = rendered.append(Component.newline()).append(category("Time", result.time(),

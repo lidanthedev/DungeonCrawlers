@@ -418,7 +418,9 @@ public final class DungeonPlaceholderExpansion extends PlaceholderExpansion {
             case "ghost_seconds", "player_respawn_seconds", "players", "alive", "ghosts", "deaths",
                  "player_deaths", "secrets_found", "player_secrets_found", "secrets_total",
                  "player_secrets_total", "player_current_room_secrets", "player_current_room_secrets_found",
-                 "player_current_room_secrets_total", "player_elapsed_seconds" -> "0";
+                 "player_current_room_secrets_total", "player_elapsed_seconds", "score", "player_score",
+                 "player_skill_score", "player_time_score", "player_exploration_score",
+                 "player_bonus_score" -> "0";
             case "secrets", "player_secrets" -> "0/0";
             case "current_room", "player_current_room" -> "0";
             default -> "";
@@ -428,8 +430,9 @@ public final class DungeonPlaceholderExpansion extends PlaceholderExpansion {
     private static String instanceFallback(String field) {
         return switch (field) {
             case "exists" -> "false";
-            case "players", "current_players", "alive", "ghosts", "deaths", "seed", "rooms",
-                 "elapsed_seconds", "reward_seconds_remaining", "timeout_seconds_remaining" -> "0";
+            case "players", "current_players", "alive", "ghosts", "deaths", "seed", "rooms", "score",
+                 "skill", "time", "exploration", "bonus", "elapsed_seconds", "reward_seconds_remaining",
+                 "timeout_seconds_remaining" -> "0";
             default -> "";
         };
     }

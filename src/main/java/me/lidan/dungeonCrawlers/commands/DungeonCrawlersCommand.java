@@ -174,7 +174,7 @@ public final class DungeonCrawlersCommand {
     }
 
     @Subcommand("operations")
-    @CommandPermission("dungeoncrawlers.admin.reload")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void operations(CommandSender sender) {
         if (!debug(sender)) return;
         if (generation == null || durableRepository == null) {

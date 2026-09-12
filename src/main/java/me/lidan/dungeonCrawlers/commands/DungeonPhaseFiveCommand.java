@@ -180,10 +180,18 @@ public final class DungeonPhaseFiveCommand {
             DungeonMessages.send(player, DungeonMessages.error("Unknown floor: <white>" + floorId + "</white>"));
             return;
         }
-        PartySnapshotPolicy.SnapshotResult party = partyPolicy.snapshot(player.getUniqueId(),
-                parties.lookup(player.getUniqueId()), floor.limits().maxPartySize());
+        PartyProvider.PartyLookup lookup = parties.lookup(player.getUniqueId());
+        PartySnapshotPolicy.SnapshotResult party = partyPolicy.snapshot(player.getUniqueId(), lookup,
+                floor.limits().maxPartySize());
         if (!party.successful()) {
-            DungeonMessages.send(player, DungeonMessages.error(party.error()));
+            if (lookup.status() == PartyProvider.Status.ERROR) {
+                server.getLogger().warning("[DungeonCrawlers] Party lookup failed for "
+                        + player.getUniqueId() + ": " + lookup.detail());
+                DungeonMessages.send(player, DungeonMessages.error(
+                        "The dungeon could not be started right now. Please try again later."));
+            } else {
+                DungeonMessages.send(player, DungeonMessages.error(party.error()));
+            }
             return;
         }
         GenerationService.StartResult result = generation.start(new GenerationService.StartRequest(
@@ -325,10 +333,6 @@ public final class DungeonPhaseFiveCommand {
         var result = runs.openDoor(door.orElseThrow().instanceId(), player.getUniqueId());
         if (result.successful()) {
             render(result.door());
-            DungeonMessages.send(player, DungeonMessages.success(result.snapshot().state()
-                    == RunPreparationService.RunState.RUNNING
-                    ? "The start door is open. Your dungeon begins!"
-                    : "The dungeon has already started."));
             if (result.snapshot().state() == RunPreparationService.RunState.RUNNING) {
                 if (lifecycle != null) {
                     var started = lifecycle.start(result.snapshot().instanceId());
@@ -339,8 +343,11 @@ public final class DungeonPhaseFiveCommand {
                         return;
                     }
                 }
+                DungeonMessages.send(player, DungeonMessages.success("The start door is open. Your dungeon begins!"));
                 actionBar.show(player, MiniMessageUtils.miniMessage(
                         "<green>Dungeon started: first room active</green>"));
+            } else {
+                DungeonMessages.send(player, DungeonMessages.success("The dungeon has already started."));
             }
         } else {
             if (result.rollbackRequired()) abort(door.orElseThrow().instanceId(), result.detail());
