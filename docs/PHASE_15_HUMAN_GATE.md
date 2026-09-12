@@ -55,8 +55,10 @@ timers on this server and is intended for disposable admin tests.
   `/dungeon reward open <instance-id>` again. Compare `/dungeon reward info <instance-id>` before and
   after. Each participant must keep the same rolled offers and session, with no reroll or duplicate
   reward entitlement. The previous check exposed a bug where disconnecting while viewing rewards
-  incorrectly changed the participant to `GHOST`; commit `84b0e3f` fixes it, but this live recheck is
-  still required. After revival, reward selection still worked.
+  incorrectly changed the participant to `GHOST`; commit `84b0e3f` fixes it. The live check on instance
+  `198d96e0-6c01-4bfb-8097-6a0eeaaa1c9f` verified this for `LidanTheGamer_`; repeat the disconnect and
+  reconnect for `LidanTheGamer` before marking the item passed. After revival, reward selection still
+  worked.
 - [x] Repeat the Phase 9 cleanup check. Run `/dungeon portal start <instance-id>`, verify
   `/dungeon portal status <instance-id>` shows `COUNTDOWN`, run `/dungeon portal abort <instance-id>`,
   and verify the next status has no active owner. Repeat with `/dungeon boss cleanup <instance-id>`
@@ -185,3 +187,7 @@ tests remain part of the full suite.
 - 2026-09-12: The user also confirmed the instance-scoped deadline check reached
   `Dungeon failed: run time limit reached.`, emitted the expected failed score, and completed failed-run
   cleanup with the player restored. The instance-scoped advance path is working as intended.
+- 2026-09-12: On instance `198d96e0-6c01-4bfb-8097-6a0eeaaa1c9f`, the reward info before and after
+  reconnect retained both participants and their exact rolls (`UNDEAD_ESSENCE` amounts 5 and 7).
+  `LidanTheGamer_` reconnected without entering `GHOST`, with no reroll, and reward selection still
+  worked. The other participant's reconnect remains to be checked.
