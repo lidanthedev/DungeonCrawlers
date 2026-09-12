@@ -80,3 +80,11 @@ here as checks are completed. Do not mark this gate passed until every required 
 - 2026-09-12: A final `cc reload all` completed with `DungeonCrawlers reloaded!`; the subsequent
   `/dungeon config validate` passed with active hash
   `2d114238db68b044bd4a0b2cf4761d59343c5fabb9bfb603f9e0e033737ece43`.
+- 2026-09-12: Checkpoint `9bfbc70` passed `./gradlew clean build --no-daemon` on Java 21,
+  including the full test suite, shadow-JAR verification, and external-plugin shading checks.
+  The resulting `build/libs/DungeonCrawlers-1.0.jar` has SHA-256
+  `401184ac1d0e2145b46a1da76593f415d4a42317d87dc083dc9c8873165c9c67`.
+- 2026-09-12: The checkpoint JAR uploaded successfully to Pterodactyl server `fa696721`.
+  `cc reload all` reported `DungeonCrawlers reloaded!`; `dungeon config validate` returned
+  `Configuration is valid.`, and console `/dungeon instance list` rendered `Instances: 0`.
+  The known `[Progress] Couldn't get the number...` lines were filtered from review.
