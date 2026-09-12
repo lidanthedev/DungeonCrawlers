@@ -17,10 +17,11 @@ open.
 ## Test controls
 
 The active-run deadline can be checked without waiting an hour. After opening the start door, run
-`/dungeon tick reset-test`, then `/dungeon tick advance 3540`; the run should emit its one-minute
-warning. Advancing another 60 seconds forces the deadline, and advancing 10 more seconds completes
-failed-run cleanup. The older `advance-test` name remains an alias. These admin commands use the same
-central deadline callbacks as the normal tick.
+`/dungeon instance advance <instance-id> 3540`; the run should emit its one-minute warning. Advancing
+the same instance another 60 seconds forces the deadline, and advancing 10 more seconds completes
+failed-run cleanup. `/dungeon instance time <instance-id>` shows the real time, instance scheduler time,
+global speed, and instance advance offset. Instance advances affect only the selected active instance
+and are discarded when it is cleaned up.
 For a real-time check, run `/dungeon tick speed-test 60` after opening the door: one real second advances
 about one dungeon minute, so the warning should arrive after roughly 59 seconds. Run
 `/dungeon tick speed-reset-test` after the check. The speed control applies to all central DungeonCrawlers
@@ -166,14 +167,18 @@ tests remain part of the full suite.
   `fa696721`, and `cc reload all` enabled DungeonCrawlers successfully. The live speed command
   returned `60x real time`, the reset command returned `1x real time`, and post-reload operations,
   configuration validation, and repository diagnostics were clean.
-- 2026-09-12: Commit `a1153d2` makes `/dungeon tick advance <seconds>` persist its jump in the
-  central scheduler timeline, retains `advance-test` as an alias, and adds `/dungeon tick time`.
-  The Java 21 clean build, full test suite, shadow-JAR shading verification, and live console smoke
-  test passed: `advance 60` was followed by `time` reporting `manualAdvance=60s` and the dungeon
-  timestamp 60 seconds ahead of real time. JAR SHA-256 was
-  `91400e39d7cd0a00257e539ac70a019f338e8925e28e8847a3a7cc440e2badf0`; it uploaded to server
-  `fa696721`, and `cc reload all` enabled DungeonCrawlers successfully. Post-reload operations,
-  configuration validation, and repository diagnostics were clean.
+- 2026-09-12: Commit `a1153d2` added manual time controls and a live console smoke test. That global
+  control was subsequently replaced by instance-scoped advancement after a fresh preparation could
+  inherit the previous test timeline.
+- 2026-09-12: Commit `bb79c1f` replaces the global advance with
+  `/dungeon instance advance <instance-id> <time>` and adds `/dungeon instance time <instance-id>`.
+  The advance accepts seconds or `s`, `m`, and `h` suffixes, dispatches only the selected instance,
+  and removes its offset during cleanup; the global test rate also resets when no instance remains.
+  The Java 21 clean build, full test suite, shadow-JAR shading verification, and live command
+  registration smoke test passed. JAR SHA-256 was
+  `8655c61fe6a441ea3217a9d3ff16498e589ebc5eef767bb88cbaf9c9a6e2bd5a`; it uploaded to server
+  `fa696721`, and `cc reload all` enabled DungeonCrawlers successfully. Operations, configuration
+  validation, and repository diagnostics were clean.
 - 2026-09-12: The user completed the player-facing active-run deadline check with
   `/dungeon tick speed-test 600`: the one-minute warning appeared, the run reached its time limit,
   and failed-run cleanup restored the player. The active-run warning check is now passed.
