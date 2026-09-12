@@ -88,3 +88,11 @@ here as checks are completed. Do not mark this gate passed until every required 
   `cc reload all` reported `DungeonCrawlers reloaded!`; `dungeon config validate` returned
   `Configuration is valid.`, and console `/dungeon instance list` rendered `Instances: 0`.
   The known `[Progress] Couldn't get the number...` lines were filtered from review.
+- 2026-09-12: Checkpoint `bc1af4e` fixed instance list and info rendering for configured
+  MiniMessage floor labels, so tags such as `<gold>` are parsed instead of shown literally.
+  The focused renderer regression test and Java 21 `./gradlew clean build --no-daemon` passed.
+  The deployed JAR `build/libs/DungeonCrawlers-1.0.jar` has SHA-256
+  `27df4f8f36794228da7617fae0acfe2c95331058f4dd53281bee498b75b68288`.
+  The JAR uploaded successfully to server `fa696721`; `cc reload all` reported
+  `DungeonCrawlers reloaded!`, `dungeon config validate` returned `Configuration is valid.`,
+  and `/dungeon instance list` returned `Instances: 0`.
