@@ -144,3 +144,11 @@ here as checks are completed. Do not mark this gate passed until every required 
   f76173e64208_state%`, `%dungeoncrawlers_player_deaths%`, and `%dungeoncrawlers_active_instances%`.
   `%dungeoncrawlers_instance_this_state%` returned `false` because direct instance lookups require
   a UUID. The remaining unknown-context, debug-reset, and PlaceholderAPI-absent checks are open.
+- 2026-09-13: Gate checkpoint `0f9dc35` passed the Java 21 `./gradlew clean build --no-daemon`
+  and full test suite. The rebuilt JAR has SHA-256
+  `d9a5be9ec29328b345d6f0aab9f6be9eeb5259441f49ea59c48c2b05e02e2759` and uploaded successfully
+  to server `fa696721`. `cc reload all` reported `DungeonCrawlers reloaded!`; delayed
+  `/dungeon config validate` returned `Configuration is valid.`; and debug diagnostics returned
+  zero active instances, reservations, occupied slots, blockers, queued work, and in-flight work.
+  The known `[Progress] Couldn't get the number...` lines and the unrelated PlugMan/Paper watchdog
+  dump during the all-plugin reload were filtered from the DungeonCrawlers result.
