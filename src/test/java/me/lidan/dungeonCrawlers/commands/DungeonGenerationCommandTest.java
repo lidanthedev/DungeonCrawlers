@@ -103,7 +103,7 @@ class DungeonGenerationCommandTest {
         var command = new DungeonGenerationCommand(null, null, generation, null, "dungeon_instances",
                 null, Clock.fixed(Instant.parse("2026-09-12T00:00:00Z"), ZoneOffset.UTC),
                 ignored -> { }, runs);
-        command.instances(sender);
+        command.instancesAll(sender);
 
         var messages = org.mockito.ArgumentCaptor.forClass(Component.class);
         verify(sender, org.mockito.Mockito.times(2)).sendMessage(messages.capture());
@@ -111,6 +111,8 @@ class DungeonGenerationCommandTest {
         Component entry = row.children().getLast();
         String visible = PlainTextComponentSerializer.plainText().serialize(row);
         String hover = PlainTextComponentSerializer.plainText().serialize((Component) entry.hoverEvent().value());
+        assertTrue(PlainTextComponentSerializer.plainText().serialize(messages.getAllValues().getFirst())
+                .contains("All instances: 1"));
         assertTrue(visible.contains(id + "  Floor V  DESTROYED  1 player  --"));
         assertFalse(visible.contains("status="));
         assertFalse(visible.contains("clear ACK"));
@@ -118,5 +120,37 @@ class DungeonGenerationCommandTest {
         assertTrue(hover.contains("Seed: 918273645"));
         assertTrue(hover.contains("Slot: 7"));
         assertEquals("/dungeon instance info " + id, entry.clickEvent().value());
+    }
+
+    @Test
+    void instanceListExcludesDestroyedInstancesByDefault() {
+        UUID activeId = UUID.fromString("00000000-0000-0000-0000-000000000015");
+        UUID destroyedId = UUID.fromString("00000000-0000-0000-0000-000000000016");
+        var generation = mock(GenerationService.class);
+        var runs = mock(RunPreparationService.class);
+        var sender = mock(CommandSender.class);
+        var active = new GenerationService.InstanceSnapshot(activeId, 3,
+                GenerationService.InstanceStatus.CLEARING, List.of(UUID.randomUUID()),
+                1L, "Floor I", "cleanup in progress");
+        var destroyed = new GenerationService.InstanceSnapshot(destroyedId, 4,
+                GenerationService.InstanceStatus.DESTROYED, List.of(UUID.randomUUID()),
+                2L, "Floor II", "cleanup complete");
+        when(generation.instances()).thenReturn(List.of(active, destroyed));
+        when(generation.slots()).thenReturn(List.of());
+        when(generation.layoutPlan(activeId)).thenReturn(Optional.empty());
+        when(runs.info(activeId)).thenReturn(Optional.empty());
+
+        var command = new DungeonGenerationCommand(null, null, generation, null, "dungeon_instances",
+                null, Clock.fixed(Instant.parse("2026-09-12T00:00:00Z"), ZoneOffset.UTC),
+                ignored -> { }, runs);
+        command.instances(sender);
+
+        var messages = org.mockito.ArgumentCaptor.forClass(Component.class);
+        verify(sender, org.mockito.Mockito.times(2)).sendMessage(messages.capture());
+        String header = PlainTextComponentSerializer.plainText().serialize(messages.getAllValues().getFirst());
+        String row = PlainTextComponentSerializer.plainText().serialize(messages.getAllValues().getLast());
+        assertTrue(header.contains("Active instances: 1"));
+        assertTrue(row.contains(activeId + "  Floor I  CLEARING  1 player  --"));
+        assertFalse(row.contains(destroyedId.toString()));
     }
 }

@@ -195,8 +195,21 @@ public final class DungeonGenerationCommand {
     @Subcommand("instance list")
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void instances(CommandSender sender) {
-        var instances = generation.instances();
-        DungeonMessages.send(sender, DungeonMessages.info("Instances: <white>" + instances.size() + "</white>"));
+        listInstances(sender, false);
+    }
+
+    @Subcommand("instance list all")
+    @CommandPermission("dungeoncrawlers.admin.generation")
+    public void instancesAll(CommandSender sender) {
+        listInstances(sender, true);
+    }
+
+    private void listInstances(CommandSender sender, boolean includeDestroyed) {
+        var instances = generation.instances().stream()
+                .filter(instance -> includeDestroyed || instance.status() != GenerationService.InstanceStatus.DESTROYED)
+                .toList();
+        DungeonMessages.send(sender, DungeonMessages.info((includeDestroyed ? "All" : "Active")
+                + " instances: <white>" + instances.size() + "</white>"));
         instances.forEach(instance -> sendInstance(sender, instance,
                 "/dungeon instance info " + instance.instanceId()));
     }
