@@ -48,6 +48,11 @@ Use a UUID in the placeholder name:
 
 `%dungeoncrawlers_instance_<instance-id>_<field>%`
 
+For a player supplied by PlaceholderAPI, use `this` to resolve that player's
+active instance:
+
+`%dungeoncrawlers_instance_this_<field>%`
+
 Supported fields are:
 
 `exists`, `id`, `state`, `floor`, `floor_id`, `floor_name`, `seed`, `players`,
@@ -57,8 +62,10 @@ Supported fields are:
 `reward_seconds_remaining`, and `timeout_seconds_remaining`.
 
 Example: `%dungeoncrawlers_instance_d05c2748-421a-40ec-9832-c8196658c646_state%`
-returns `running`. A missing instance returns `false` for `exists`, `0` for
-numeric fields, and an empty value for text fields.
+returns `running`. `%dungeoncrawlers_instance_this_state%` returns the state
+of the supplied player's active instance. A missing instance or player outside
+a dungeon returns `false` for `exists`, `0` for numeric fields, and an empty
+value for text fields.
 
 ## Global values
 

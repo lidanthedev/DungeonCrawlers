@@ -77,12 +77,12 @@ warnings and errors should still be logged after debug is disabled.
 - [x] Disconnect and reconnect during an active run. Confirm ghost/revive messaging and bounded
   invisibility remain correct, then confirm a wiped run cannot be resurrected.
 - [ ] If PlaceholderAPI is installed, check `%dungeoncrawlers_in_dungeon%`,
-  `%dungeoncrawlers_instance_<uuid>_state%` using the actual instance UUID,
+  `%dungeoncrawlers_instance_<uuid>_state%` using the actual instance UUID, and
+  `%dungeoncrawlers_instance_this_state%` using the supplied player's active instance,
   `%dungeoncrawlers_instance_<uuid>_score%`,
   `%dungeoncrawlers_player_deaths%`, and `%dungeoncrawlers_active_instances%` in and outside a run.
-  `instance_this_state` is not a valid direct lookup and correctly returns `false`; the UUID form
-  is the supported syntax. Confirm unknown or unavailable contexts resolve safely. Repeat the plugin
-  reload with PlaceholderAPI absent if practical and confirm DungeonCrawlers still enables.
+  Confirm unknown or unavailable contexts resolve safely. Repeat the plugin reload with PlaceholderAPI
+  absent if practical and confirm DungeonCrawlers still enables.
 - [ ] Run the generation, portal, boss, and cleanup diagnostics with debug enabled only. Confirm
   FAWE failures remain actionable, boss fallback behavior is readable, and real warnings/errors are
   still logged when debug is disabled.
@@ -142,8 +142,9 @@ here as checks are completed. Do not mark this gate passed until every required 
   passing Phase 15 gate.
 - 2026-09-12: PlaceholderAPI checks resolved `%dungeoncrawlers_instance_6e976170-15cc-4ee3-a253-
   f76173e64208_state%`, `%dungeoncrawlers_player_deaths%`, and `%dungeoncrawlers_active_instances%`.
-  `%dungeoncrawlers_instance_this_state%` returned `false` because direct instance lookups require
-  a UUID. The remaining unknown-context, debug-reset, and PlaceholderAPI-absent checks are open.
+  Before the follow-up implementation, `%dungeoncrawlers_instance_this_state%` returned `false`
+  because direct instance lookups required a UUID. The remaining active-run `this` smoke test,
+  unknown-context, debug-reset, and PlaceholderAPI-absent checks are open.
 - 2026-09-13: Gate checkpoint `0f9dc35` passed the Java 21 `./gradlew clean build --no-daemon`
   and full test suite. The rebuilt JAR has SHA-256
   `d9a5be9ec29328b345d6f0aab9f6be9eeb5259441f49ea59c48c2b05e02e2759` and uploaded successfully
@@ -152,3 +153,11 @@ here as checks are completed. Do not mark this gate passed until every required 
   zero active instances, reservations, occupied slots, blockers, queued work, and in-flight work.
   The known `[Progress] Couldn't get the number...` lines and the unrelated PlugMan/Paper watchdog
   dump during the all-plugin reload were filtered from the DungeonCrawlers result.
+- 2026-09-13: Checkpoint `75191c4` added `this` instance-placeholder resolution for the supplied
+  PlaceholderAPI player, preserving UUID lookup and missing-instance fallbacks. The focused
+  `DungeonPlaceholderExpansionTest` and full Java 21 clean build passed. The JAR has SHA-256
+  `394008c31be3c58b626b86a3e13f2e1663a4592e9640b0f784a773669a282a68`; it was uploaded to
+  server `fa696721`, `cc reload all` reported `DungeonCrawlers reloaded!`, and post-reload
+  configuration, operations, and repository checks passed. A live active-run `this` lookup still
+  needs a player smoke test; the implementation returns the documented `false`/`0`/empty fallback
+  outside a dungeon.
