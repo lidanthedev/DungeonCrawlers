@@ -16,13 +16,14 @@ import org.bukkit.event.entity.EntityTargetEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.event.player.PlayerCommandPreprocessEvent;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.plugin.Plugin;
 
 import java.time.Clock;
-import java.util.Locale;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -33,28 +34,37 @@ public final class BukkitDungeonLifecycleListener implements Listener {
     private final RunPreparationService runs;
     private final Plugin plugin;
     private final Clock clock;
+    private final String generationWorldName;
     private final java.util.function.Consumer<Player> recoveryOnJoin;
     private final Consumer<Player> leaveHandler;
 
     public BukkitDungeonLifecycleListener(PlayerLifecycleService lifecycle, RunPreparationService runs,
                                           Plugin plugin, Clock clock) {
-        this(lifecycle, runs, plugin, clock, ignored -> { });
+        this(lifecycle, runs, plugin, clock, "dungeon_instances", ignored -> { }, ignored -> { });
     }
 
     public BukkitDungeonLifecycleListener(PlayerLifecycleService lifecycle, RunPreparationService runs,
                                           Plugin plugin, Clock clock,
                                           java.util.function.Consumer<Player> recoveryOnJoin) {
-        this(lifecycle, runs, plugin, clock, recoveryOnJoin, ignored -> { });
+        this(lifecycle, runs, plugin, clock, "dungeon_instances", recoveryOnJoin, ignored -> { });
     }
 
     public BukkitDungeonLifecycleListener(PlayerLifecycleService lifecycle, RunPreparationService runs,
                                           Plugin plugin, Clock clock,
                                           java.util.function.Consumer<Player> recoveryOnJoin,
                                           Consumer<Player> leaveHandler) {
+        this(lifecycle, runs, plugin, clock, "dungeon_instances", recoveryOnJoin, leaveHandler);
+    }
+
+    public BukkitDungeonLifecycleListener(PlayerLifecycleService lifecycle, RunPreparationService runs,
+                                          Plugin plugin, Clock clock, String generationWorldName,
+                                          java.util.function.Consumer<Player> recoveryOnJoin,
+                                          Consumer<Player> leaveHandler) {
         this.lifecycle = Objects.requireNonNull(lifecycle, "lifecycle");
         this.runs = Objects.requireNonNull(runs, "runs");
         this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.generationWorldName = Objects.requireNonNull(generationWorldName, "generationWorldName");
         this.recoveryOnJoin = Objects.requireNonNull(recoveryOnJoin, "recoveryOnJoin");
         this.leaveHandler = Objects.requireNonNull(leaveHandler, "leaveHandler");
     }
@@ -100,15 +110,12 @@ public final class BukkitDungeonLifecycleListener implements Listener {
         lifecycle.lethal(instanceId, player.getUniqueId(), clock.instant());
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onSpawnCommand(PlayerCommandPreprocessEvent event) {
-        String command = event.getMessage().trim();
-        if (command.length() < 2 || command.charAt(0) != '/') return;
-        String label = command.substring(1).split("\\s+", 2)[0].toLowerCase(Locale.ROOT);
-        if (!label.equals("spawn") && !label.equals("essentials:spawn")) return;
-        if (runs.instanceFor(event.getPlayer().getUniqueId()).isEmpty()) return;
-        event.setCancelled(true);
-        leaveHandler.accept(event.getPlayer());
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onChangedWorld(PlayerChangedWorldEvent event) {
+        if (!event.getFrom().getName().equals(generationWorldName)) return;
+        if (runs.instanceFor(event.getPlayer().getUniqueId()).isPresent()) {
+            leaveHandler.accept(event.getPlayer());
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -139,7 +146,8 @@ public final class BukkitDungeonLifecycleListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(PlayerQuitEvent event) {
         runs.instanceFor(event.getPlayer().getUniqueId())
-                .ifPresent(id -> lifecycle.disconnect(id, event.getPlayer().getUniqueId()));
+                .ifPresent(id -> lifecycle.disconnect(id, event.getPlayer().getUniqueId(),
+                        ghostOnDisconnect(id)));
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -147,8 +155,8 @@ public final class BukkitDungeonLifecycleListener implements Listener {
         recoveryOnJoin.accept(event.getPlayer());
         runs.instanceFor(event.getPlayer().getUniqueId())
                 .ifPresent(id -> {
-                    lifecycle.reconnect(id, event.getPlayer().getUniqueId());
-                    if (lifecycle.player(id, event.getPlayer().getUniqueId())
+                    var reconnect = lifecycle.reconnect(id, event.getPlayer().getUniqueId());
+                    if (reconnect.successful() && lifecycle.player(id, event.getPlayer().getUniqueId())
                             .map(value -> value.state() == PlayerLifecycleService.PlayerState.GHOST).orElse(false)) {
                         scheduleGhostEnter(id, event.getPlayer());
                     }
@@ -157,11 +165,26 @@ public final class BukkitDungeonLifecycleListener implements Listener {
 
     private void scheduleGhostEnter(UUID instanceId, Player player) {
         plugin.getServer().getScheduler().runTask(plugin, () -> {
-            if (player.isOnline() && lifecycle.player(instanceId, player.getUniqueId())
-                    .map(value -> value.state() == PlayerLifecycleService.PlayerState.GHOST).orElse(false)) {
-                BukkitGhostState.enter(player);
+            if (!player.isOnline()) return;
+            var state = lifecycle.player(instanceId, player.getUniqueId()).orElse(null);
+            if (state != null && state.state() == PlayerLifecycleService.PlayerState.GHOST
+                    && state.reviveAt() != null) {
+                BukkitGhostState.enter(player, remainingGhostDuration(state.reviveAt()));
             }
         });
+    }
+
+    private Duration remainingGhostDuration(Instant reviveAt) {
+        Duration remaining = Duration.between(clock.instant(), reviveAt);
+        return remaining.isNegative() || remaining.isZero() ? Duration.ofMillis(50) : remaining;
+    }
+
+    private boolean ghostOnDisconnect(UUID instanceId) {
+        return runs.info(instanceId)
+                .map(RunPreparationService.RunSnapshot::state)
+                .map(state -> state == RunPreparationService.RunState.RUNNING
+                        || state == RunPreparationService.RunState.BOSS)
+                .orElse(false);
     }
 
     private boolean isGhost(Player player) {

@@ -16,6 +16,7 @@ import me.lidan.dungeonCrawlers.core.lifecycle.PlayerLifecycleService;
 import me.lidan.dungeonCrawlers.core.portal.PortalEncounterService;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
 import me.lidan.dungeonCrawlers.integration.BukkitDoorBlockService;
+import me.lidan.dungeonCrawlers.integration.BukkitGhostState;
 import me.lidan.dungeonCrawlers.integration.BukkitPlayerRecovery;
 import me.lidan.dungeonCrawlers.integration.DungeonActionBar;
 import me.lidan.dungeonCrawlers.integration.PartyProvider;
@@ -289,8 +290,17 @@ public final class DungeonPhaseFiveCommand {
 
     /** Completes cleanup after the running-player lifecycle wipes an active instance. */
     public void wipeFromLifecycle(UUID instanceId, String reason) {
+        wipeFromLifecycle(instanceId, reason, false);
+    }
+
+    /** Immediately closes an all-disconnected wipe while retaining every snapshot for reconnect recovery. */
+    public void wipeFromLifecycleAfterAllDisconnects(UUID instanceId, String reason) {
+        wipeFromLifecycle(instanceId, reason, true);
+    }
+
+    private void wipeFromLifecycle(UUID instanceId, String reason, boolean retainSnapshotsForReconnect) {
         if (runs.info(instanceId).isPresent()) {
-            abort(instanceId, reason, "run wiped");
+            abort(instanceId, reason, "run wiped", retainSnapshotsForReconnect);
         } else {
             if (phaseNine != null) phaseNine.cleanup(instanceId);
             if (lifecycle != null) lifecycle.cleanup(instanceId);
@@ -344,6 +354,7 @@ public final class DungeonPhaseFiveCommand {
         authorizeRestore(playerId, snapshot, fallback);
         var restored = BukkitPlayerRecovery.restore(player, snapshot, server, fallback);
         if (restored.successful()) {
+            BukkitGhostState.exit(player);
             deleteSnapshotAfterRestore(snapshot);
         } else {
             pendingRecovery.put(playerId, snapshot);
@@ -354,8 +365,21 @@ public final class DungeonPhaseFiveCommand {
         cancelEmptyPreparation(instanceId);
     }
 
-    /** Handles the server's /spawn command as a dungeon leave request. */
-    public void leaveFromSpawn(Player player) {
+    /** Removes a player who already changed worlds, consuming their snapshot without moving them. */
+    public void removeAfterWorldChange(UUID instanceId, UUID playerId) {
+        runs.removeParticipant(instanceId, playerId);
+        Map<UUID, me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot> saved = captured.get(instanceId);
+        me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot snapshot = saved == null
+                ? null : saved.remove(playerId);
+        if (saved != null && saved.isEmpty()) captured.remove(instanceId);
+        Player player = server.getPlayer(playerId);
+        if (player != null) BukkitGhostState.exit(player);
+        if (snapshot != null) deleteSnapshotAfterRestore(snapshot);
+        cancelEmptyPreparation(instanceId);
+    }
+
+    /** Handles a player leaving a dungeon as a dungeon leave request. */
+    public void leaveFromDungeon(Player player) {
         UUID playerId = player.getUniqueId();
         UUID instanceId = runs.instanceFor(playerId).orElse(null);
         if (instanceId == null) return;
@@ -366,7 +390,8 @@ public final class DungeonPhaseFiveCommand {
                     + "</" + (result.successful() ? "green" : "red") + ">"));
             return;
         }
-        restoreRemovedPlayer(instanceId, playerId);
+        if (player.getWorld().getName().equals(generationWorldName)) restoreRemovedPlayer(instanceId, playerId);
+        else removeAfterWorldChange(instanceId, playerId);
     }
 
     private void cancelEmptyPreparation(UUID instanceId) {
@@ -427,6 +452,7 @@ public final class DungeonPhaseFiveCommand {
                 authorizeRestore(playerId, snapshot, fallback);
                 var result = BukkitPlayerRecovery.restore(player, snapshot, server, fallback);
                 if (result.successful()) {
+                    BukkitGhostState.exit(player);
                     deleteSnapshotAfterRestore(snapshot);
                     restored++;
                 } else {
@@ -450,6 +476,7 @@ public final class DungeonPhaseFiveCommand {
         authorizeRestore(player.getUniqueId(), snapshot, fallback);
         var restored = BukkitPlayerRecovery.restore(player, snapshot, server, fallback);
         if (restored.successful()) {
+            BukkitGhostState.exit(player);
             if (pending) pendingRecovery.remove(player.getUniqueId(), snapshot);
             deleteSnapshotAfterRestore(snapshot);
         } else {
@@ -589,6 +616,10 @@ public final class DungeonPhaseFiveCommand {
     }
 
     private void abort(UUID instanceId, String reason, String outcome) {
+        abort(instanceId, reason, outcome, false);
+    }
+
+    private void abort(UUID instanceId, String reason, String outcome, boolean retainSnapshotsForReconnect) {
         if (phaseNine != null) phaseNine.cleanup(instanceId);
         if (lifecycle != null) lifecycle.cleanup(instanceId);
         if (phaseSeven != null) phaseSeven.cleanup(instanceId);
@@ -600,10 +631,11 @@ public final class DungeonPhaseFiveCommand {
         SpawnProvider fallback = new BukkitSpawnProvider(server, "");
         saved.forEach((playerId, snapshot) -> {
             Player player = server.getPlayer(playerId);
-            if (player != null) {
+            if (player != null && !retainSnapshotsForReconnect) {
                 authorizeRestore(playerId, snapshot, fallback);
                 var restored = BukkitPlayerRecovery.restore(player, snapshot, server, fallback);
                 if (restored.successful()) {
+                    BukkitGhostState.exit(player);
                     deleteSnapshotAfterRestore(snapshot);
                     player.sendMessage(MiniMessageUtils.miniMessage("<red>[FAIL] " + reason + "; "
                             + outcome + " and player restored</red>"));

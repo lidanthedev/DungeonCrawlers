@@ -23,6 +23,7 @@ import revxrsal.commands.annotation.SuggestWith;
 import revxrsal.commands.bukkit.annotation.CommandPermission;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.UUID;
@@ -32,6 +33,8 @@ import java.util.function.Supplier;
 
 @Command("dungeon")
 public final class DungeonPhaseFourCommand {
+    private static final long MAX_INSTANCE_ADVANCE_SECONDS = Duration.ofDays(1).toSeconds();
+
     private final CentralUpdateService updates;
     private final DoorService doors;
     private final WorldProtectionService protection;
@@ -44,7 +47,6 @@ public final class DungeonPhaseFourCommand {
     private final BukkitDoorBlockService doorBlocks = new BukkitDoorBlockService();
     private final Supplier<List<WorldProtectionService.InstanceRegion>> regions;
     private final RunPreparationService runs;
-    private Instant testTick;
 
     public DungeonPhaseFourCommand(CentralUpdateService updates, DoorService doors,
                                    WorldProtectionService protection, TeleportPermitService permits,
@@ -66,25 +68,93 @@ public final class DungeonPhaseFourCommand {
         this.runs = java.util.Objects.requireNonNull(runs);
     }
 
-    @Subcommand("tick advance-test")
+    @Subcommand("instance advance")
     @CommandPermission("dungeoncrawlers.admin.generation")
-    public void tickAdvance(CommandSender sender, long seconds) {
-        if (seconds < 0 || seconds > 3_600) {
-            sender.sendMessage("[FAIL] test tick seconds must be in 0..3600");
-            return;
+    public void instanceAdvance(CommandSender sender,
+                                @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
+                                String amount) {
+        try {
+            UUID id = resolve(sender, instanceId);
+            Duration duration = parseAdvanceTime(amount);
+            if (updates.time(id).isEmpty()) {
+                sender.sendMessage("[FAIL] unknown active instance " + id);
+                return;
+            }
+            CentralUpdateService.TickReport report = updates.advanceInstanceTime(id, duration);
+            sender.sendMessage("[" + (report.successful() ? "PASS" : "FAIL") + "] instance=" + id
+                    + " advanced=" + duration.getSeconds() + "s tick=" + report.now()
+                    + " attempted=" + report.attempted() + " failures=" + report.failures());
+        } catch (RuntimeException exception) {
+            sender.sendMessage("[FAIL] " + message(exception));
         }
-        Instant base = testTick == null ? clock.instant() : testTick;
-        testTick = base.plusSeconds(seconds);
-        CentralUpdateService.TickReport report = updates.tick(testTick);
-        sender.sendMessage("[" + (report.successful() ? "PASS" : "FAIL") + "] tick=" + report.now()
-                + " attempted=" + report.attempted() + " failures=" + report.failures());
     }
 
-    @Subcommand("tick reset-test")
+    @Subcommand("instance time")
     @CommandPermission("dungeoncrawlers.admin.generation")
-    public void resetTestTick(CommandSender sender) {
-        testTick = null;
-        sender.sendMessage("[PASS] test tick clock reset");
+    public void instanceTime(CommandSender sender,
+                             @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
+        try {
+            UUID id = resolve(sender, instanceId);
+            updates.time(id).ifPresentOrElse(
+                    time -> sender.sendMessage("[PASS] instance=" + id + " real=" + time.realNow()
+                            + " dungeon=" + time.schedulerNow() + " speed=" + time.timeScale() + "x advance="
+                            + time.instanceTimeOffset().getSeconds() + "s"),
+                    () -> sender.sendMessage("[FAIL] unknown active instance " + id));
+        } catch (RuntimeException exception) {
+            sender.sendMessage("[FAIL] " + message(exception));
+        }
+    }
+
+    @Subcommand("tick speed-test")
+    @CommandPermission("dungeoncrawlers.admin.generation")
+    public void tickSpeed(CommandSender sender, long multiplier) {
+        if (multiplier < CentralUpdateService.MIN_TIME_SCALE
+                || multiplier > CentralUpdateService.MAX_TIME_SCALE) {
+            sender.sendMessage("[FAIL] test tick speed must be in " + CentralUpdateService.MIN_TIME_SCALE
+                    + ".." + CentralUpdateService.MAX_TIME_SCALE);
+            return;
+        }
+        updates.setTimeScale(multiplier);
+        sender.sendMessage("[PASS] dungeon test time speed=" + multiplier + "x real time");
+    }
+
+    @Subcommand("tick speed-reset-test")
+    @CommandPermission("dungeoncrawlers.admin.generation")
+    public void resetTickSpeed(CommandSender sender) {
+        updates.resetTimeScale();
+        sender.sendMessage("[PASS] dungeon test time speed reset to 1x real time");
+    }
+
+    private static Duration parseAdvanceTime(String input) {
+        if (input == null || input.isBlank()) {
+            throw new IllegalArgumentException("time must be seconds, or use a s, m, or h suffix");
+        }
+        String value = input.trim().toLowerCase(Locale.ROOT);
+        long unitSeconds = 1;
+        String number = value;
+        switch (value.charAt(value.length() - 1)) {
+            case 's' -> { unitSeconds = 1; number = value.substring(0, value.length() - 1); }
+            case 'm' -> { unitSeconds = 60; number = value.substring(0, value.length() - 1); }
+            case 'h' -> { unitSeconds = 3_600; number = value.substring(0, value.length() - 1); }
+            default -> { }
+        }
+        long amount;
+        try {
+            amount = Long.parseLong(number);
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException("time must be a whole number of seconds, minutes, or hours");
+        }
+        if (amount < 0) throw new IllegalArgumentException("time must not be negative");
+        long seconds;
+        try {
+            seconds = Math.multiplyExact(amount, unitSeconds);
+        } catch (ArithmeticException exception) {
+            throw new IllegalArgumentException("time is too large");
+        }
+        if (seconds > MAX_INSTANCE_ADVANCE_SECONDS) {
+            throw new IllegalArgumentException("time must be in 0..86400 seconds");
+        }
+        return Duration.ofSeconds(seconds);
     }
 
     @Subcommand("door register-test")

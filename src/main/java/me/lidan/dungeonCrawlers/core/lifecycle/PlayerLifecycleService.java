@@ -75,26 +75,30 @@ public final class PlayerLifecycleService {
         if (player.state != PlayerState.ALIVE) {
             return TransitionResult.failure("player is already " + player.state.name().toLowerCase());
         }
-        player.deaths++;
-        player.state = PlayerState.GHOST;
-        player.reviveAt = now.plus(REVIVE_DURATION);
-        player.lastTarget = null;
-        player.lastCountdownSeconds = REVIVE_DURATION.toSeconds();
-        Notice ghost = new Notice(state.instanceId, player.id, Event.GHOSTED,
-                "Reviving in " + REVIVE_DURATION.toSeconds() + " seconds", player.reviveAt, null);
-        if (noOnlineAlive(state)) return wipe(state, "no online active alive player remains", ghost);
-        emit(ghost);
-        return TransitionResult.success(Event.GHOSTED, ghost.detail(), snapshot(state), player.id);
+        return transitionToGhost(state, player, now, true);
     }
 
     public synchronized TransitionResult disconnect(UUID instanceId, UUID playerId) {
+        return disconnect(instanceId, playerId, true);
+    }
+
+    /** Marks a player offline, optionally applying the active-run disconnect-to-ghost transition. */
+    public synchronized TransitionResult disconnect(UUID instanceId, UUID playerId, boolean ghostOnDisconnect) {
         MutableInstance state = instance(instanceId);
         MutablePlayer player = state == null ? null : state.players.get(Objects.requireNonNull(playerId, "playerId"));
         if (state == null) return TransitionResult.failure("unknown lifecycle instance");
         if (player == null) return TransitionResult.failure("player is not a participant");
         if (!player.online) return TransitionResult.success(Event.DISCONNECTED, "player already offline", snapshot(state));
         player.online = false;
-        if (state.running && noOnlineAlive(state)) return wipe(state, "no online active alive player remains", null);
+        if (ghostOnDisconnect && state.running && player.state == PlayerState.ALIVE) {
+            TransitionResult ghost = transitionToGhost(state, player, clock.instant(), false);
+            if (ghost.event() == Event.WIPED) return ghost;
+            return TransitionResult.success(Event.DISCONNECTED,
+                    "player disconnected and became a ghost", ghost.snapshot(), player.id);
+        }
+        if (ghostOnDisconnect && state.running && noOnlineAlive(state)) {
+            return wipe(state, "no online active alive player remains", null);
+        }
         return TransitionResult.success(Event.DISCONNECTED, "player disconnected", snapshot(state), player.id);
     }
 
@@ -236,6 +240,20 @@ public final class PlayerLifecycleService {
         Notice notice = new Notice(state.instanceId, player.id, Event.REVIVED, detail, now, target);
         emit(notice);
         return TransitionResult.success(Event.REVIVED, detail, snapshot(state), player.id, target);
+    }
+
+    private TransitionResult transitionToGhost(MutableInstance state, MutablePlayer player, Instant now,
+                                               boolean notifyPlayer) {
+        player.deaths++;
+        player.state = PlayerState.GHOST;
+        player.reviveAt = now.plus(REVIVE_DURATION);
+        player.lastTarget = null;
+        player.lastCountdownSeconds = REVIVE_DURATION.toSeconds();
+        Notice ghost = new Notice(state.instanceId, player.id, Event.GHOSTED,
+                "Reviving in " + REVIVE_DURATION.toSeconds() + " seconds", player.reviveAt, null);
+        if (noOnlineAlive(state)) return wipe(state, "no online active alive player remains", ghost);
+        if (notifyPlayer) emit(ghost);
+        return TransitionResult.success(Event.GHOSTED, ghost.detail(), snapshot(state), player.id);
     }
 
     private void emitCountdown(MutableInstance state, MutablePlayer player, Instant now, Event event) {

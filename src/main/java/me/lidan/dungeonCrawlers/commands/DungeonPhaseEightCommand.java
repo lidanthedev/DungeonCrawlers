@@ -35,7 +35,7 @@ public final class DungeonPhaseEightCommand {
             send(player, "<red>[FAIL] you are not in a running dungeon</red>");
             return;
         }
-        phaseFive.leaveFromSpawn(player);
+        phaseFive.leaveFromDungeon(player);
     }
 
     @Subcommand("leave")
@@ -51,7 +51,9 @@ public final class DungeonPhaseEightCommand {
         UUID id = parse(sender, instanceId);
         if (id == null) return;
         lifecycle.player(id, player.getUniqueId()).ifPresentOrElse(value -> send(sender, "<green>[PASS] instance=" + id
-                        + " player=" + playerLabel(player) + " state=" + value.state() + "</green>"),
+                        + " player=" + playerLabel(player) + " state=" + value.state()
+                        + " deaths=" + value.deaths() + " reviveAt="
+                        + (value.reviveAt() == null ? "none" : value.reviveAt()) + "</green>"),
                 () -> send(sender, "<red>[FAIL] unknown lifecycle player</red>"));
     }
 

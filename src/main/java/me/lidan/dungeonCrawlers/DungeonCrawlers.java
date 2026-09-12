@@ -440,7 +440,7 @@ public final class DungeonCrawlers extends JavaPlugin {
                 teleportPermits, phaseClock()));
         registerEvent(new BukkitDungeonRunListener(phaseFiveCommand, runPreparation, generationWorldName, phaseSeven));
         registerEvent(new BukkitDungeonLifecycleListener(lifecycle, runPreparation, this, phaseClock(),
-                phaseFiveCommand::recoverOnJoin, phaseFiveCommand::leaveFromSpawn));
+                generationWorldName, phaseFiveCommand::recoverOnJoin, phaseFiveCommand::leaveFromDungeon));
         registerEvent(new BukkitCombatListener(combat, entityIdentity, generationWorldName, () -> disabling,
                 bossIdentity, phaseNine));
         registerEvent(new BukkitPortalBossListener(this, phaseNine, runPreparation, generationWorldName));
@@ -591,14 +591,14 @@ public final class DungeonCrawlers extends JavaPlugin {
         switch (notice.event()) {
             case GHOSTED -> {
                 if (player == null) return;
-                BukkitGhostState.enter(player);
+                BukkitGhostState.enter(player, remainingGhostDuration(notice.reviveAt()));
                 showLifecycleTitle(player, "", "<yellow>" + notice.detail() + "</yellow>", 0, 30, 5);
                 player.sendMessage(MiniMessageUtils.miniMessage(
                         "<gray>You are a ghost. You will revive in 60 seconds if the run remains active.</gray>"));
             }
             case GHOST_COUNTDOWN, RECONNECTED -> {
                 if (player == null || notice.reviveAt() == null) return;
-                BukkitGhostState.refresh(player);
+                BukkitGhostState.refresh(player, remainingGhostDuration(notice.reviveAt()));
                 showLifecycleTitle(player, "", "<yellow>" + notice.detail() + "</yellow>", 0, 25, 5);
             }
             case REVIVED -> {
@@ -622,7 +622,11 @@ public final class DungeonCrawlers extends JavaPlugin {
             case REMOVED -> {
                 if (player != null) BukkitGhostState.exit(player);
                 if (phaseFiveCommand != null && notice.playerId() != null) {
-                    phaseFiveCommand.restoreRemovedPlayer(notice.instanceId(), notice.playerId());
+                    if (shouldRestoreRemovedPlayer(player, generationWorldName)) {
+                        phaseFiveCommand.restoreRemovedPlayer(notice.instanceId(), notice.playerId());
+                    } else {
+                        phaseFiveCommand.removeAfterWorldChange(notice.instanceId(), notice.playerId());
+                    }
                 }
             }
             case WIPED -> {
@@ -632,17 +636,49 @@ public final class DungeonCrawlers extends JavaPlugin {
                         .filter(java.util.Objects::nonNull)
                         .forEach(BukkitGhostState::exit));
                 RunPreparationService.RunSnapshot run = runPreparation.info(notice.instanceId()).orElse(null);
+                boolean allParticipantsOffline = allParticipantsOffline(notice.instanceId());
                 if (run != null && (run.state() == RunPreparationService.RunState.RUNNING
                         || run.state() == RunPreparationService.RunState.BOSS)) {
-                    if (runPreparation.fail(notice.instanceId(), notice.detail()).successful()) return;
+                    if (runPreparation.fail(notice.instanceId(), notice.detail()).successful()) {
+                        if (allParticipantsOffline && phaseFiveCommand != null) {
+                            phaseFiveCommand.wipeFromLifecycleAfterAllDisconnects(
+                                    notice.instanceId(), notice.detail());
+                        }
+                        return;
+                    }
                 }
-                if (run != null && run.state() == RunPreparationService.RunState.FAILED) return;
+                if (run != null && run.state() == RunPreparationService.RunState.FAILED) {
+                    if (allParticipantsOffline && phaseFiveCommand != null) {
+                        phaseFiveCommand.wipeFromLifecycleAfterAllDisconnects(
+                                notice.instanceId(), notice.detail());
+                    }
+                    return;
+                }
                 if (phaseFiveCommand != null) {
                     phaseFiveCommand.wipeFromLifecycle(notice.instanceId(), notice.detail());
                 }
             }
             default -> { }
         }
+    }
+
+    static boolean shouldRestoreRemovedPlayer(Player player, String generationWorldName) {
+        return player == null || generationWorldName.equals(player.getWorld().getName());
+    }
+
+    static boolean allParticipantsOffline(PlayerLifecycleService.InstanceSnapshot snapshot) {
+        return !snapshot.players().isEmpty()
+                && snapshot.players().stream().allMatch(player -> !player.online());
+    }
+
+    private boolean allParticipantsOffline(UUID instanceId) {
+        return lifecycle.info(instanceId).map(DungeonCrawlers::allParticipantsOffline).orElse(false);
+    }
+
+    private Duration remainingGhostDuration(Instant reviveAt) {
+        if (reviveAt == null) return Duration.ofMillis(50);
+        Duration remaining = Duration.between(phaseClock().instant(), reviveAt);
+        return remaining.isNegative() || remaining.isZero() ? Duration.ofMillis(50) : remaining;
     }
 
     private static void showLifecycleTitle(Player player, String title, String subtitle,
