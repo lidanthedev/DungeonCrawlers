@@ -10,6 +10,9 @@ import revxrsal.commands.annotation.Subcommand;
 import revxrsal.commands.annotation.SuggestWith;
 import revxrsal.commands.bukkit.annotation.CommandPermission;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 
@@ -58,7 +61,8 @@ public final class DungeonPhaseSixCommand {
         if (id == null) return;
         var rooms = combat.rooms(id);
         if (rooms.isEmpty()) {
-            DungeonMessages.send(sender, DungeonMessages.error("Unknown combat instance: <white>" + id + "</white>"));
+            DungeonMessages.send(sender, DungeonMessages.error("No combat data is available for dungeon <white>"
+                    + id + "</white>."));
             return;
         }
         rooms.stream().filter(room -> roomIndex == null || room.index() == roomIndex).forEach(room -> {
@@ -67,27 +71,33 @@ public final class DungeonPhaseSixCommand {
                 long dead = room.requiredMobs().stream().filter(mob -> mob.state() == CombatRoomService.MobState.DEAD).count();
                 long missing = room.requiredMobs().stream().filter(mob -> mob.state() == CombatRoomService.MobState.MISSING).count();
                 long failed = room.requiredMobs().stream().filter(mob -> mob.state() == CombatRoomService.MobState.FAILED).count();
-                DungeonMessages.send(sender, "<gray>room=<white>" + room.index() + "</white> state=<white>"
-                        + room.state().name().toLowerCase() + "</white>"
-                        + " encounter=<white>" + (room.encounter() == null ? "none" : room.encounter())
-                        + " required=<white>" + room.requiredMobs().size() + "</white> alive=<white>" + alive
-                        + "</white> dead=<white>" + dead + "</white> missing=<white>" + missing
-                        + "</white> failed=<white>" + failed + "</white> detail=<white>" + room.detail()
-                        + "</white></gray>");
+                sendBlock(sender,
+                        "<aqua><bold>Room " + room.index() + "</bold></aqua>",
+                        "<gray>Status: <white>" + displayName(room.state().name()) + "</white></gray>",
+                        "<gray>Encounter: <white>" + (room.encounter() == null ? "None"
+                                : displayName(room.encounter().name())) + "</white></gray>",
+                        "<gray>Required mobs: <white>" + room.requiredMobs().size() + "</white></gray>",
+                        "<gray>Alive: <white>" + alive + "</white> · Defeated: <white>" + dead
+                                + "</white> · Missing: <white>" + missing + "</white> · Failed: <white>" + failed + "</white></gray>",
+                        "<gray>Details: <white>" + readableDetail(room.detail()) + "</white></gray>");
             } else {
-                DungeonMessages.send(sender, "<gray>room=<white>" + room.index() + "</white> state=<white>"
-                        + room.state().name().toLowerCase() + "</white>"
-                        + " encounter=<white>" + (room.encounter() == null ? "none" : room.encounter())
-                        + " detail=<white>" + room.detail() + "</white></gray>");
-                room.requiredMobs().forEach(mob -> DungeonMessages.send(sender, "<gray>  mob=<white>"
-                        + mob.mobId() + "</white> state=<white>" + mob.state().name().toLowerCase()
-                        + "</white> entity=<white>" + (mob.entityId() == null ? "none" : mob.entityId())
-                        + "</white>" + (mob.adminSuppressed() ? " <yellow>suppressed</yellow>" : "")
+                List<String> lines = new ArrayList<>();
+                lines.add("<aqua><bold>Room " + room.index() + "</bold></aqua>");
+                lines.add("<gray>Status: <white>" + displayName(room.state().name()) + "</white></gray>");
+                lines.add("<gray>Encounter: <white>" + (room.encounter() == null ? "None"
+                        : displayName(room.encounter().name())) + "</white></gray>");
+                lines.add("<gray>Details: <white>" + readableDetail(room.detail()) + "</white></gray>");
+                room.requiredMobs().forEach(mob -> lines.add("<gray>Mob <white>" + mob.mobId()
+                        + "</white>: <white>" + displayName(mob.state().name()) + "</white> · Entity: <white>"
+                        + (mob.entityId() == null ? "None" : mob.entityId()) + "</white>"
+                        + (mob.adminSuppressed() ? " · <yellow>Progression suppressed</yellow>" : "")
                         + "</gray>"));
+                DungeonMessages.send(sender, String.join("\n", lines));
             }
         });
         if (roomIndex != null && rooms.stream().noneMatch(room -> room.index() == roomIndex)) {
-            DungeonMessages.send(sender, DungeonMessages.error("Unknown combat room: <white>" + roomIndex + "</white>"));
+            DungeonMessages.send(sender, DungeonMessages.error("Combat room <white>" + roomIndex
+                    + "</white> was not found."));
         }
     }
 
@@ -143,15 +153,30 @@ public final class DungeonPhaseSixCommand {
             case CombatRoomService.ClearResult value -> value.detail();
             case CombatRoomService.AdminResult value -> value.detail();
             case CombatRoomService.ReconcileResult value -> value.detail();
-            default -> "unsupported combat result";
+            default -> "The combat command returned an unsupported result.";
         };
-        DungeonMessages.send(sender, successful ? DungeonMessages.success(detail) : DungeonMessages.error(detail));
+        DungeonMessages.send(sender, successful ? DungeonMessages.success(readableDetail(detail))
+                : DungeonMessages.error(readableDetail(detail)));
+    }
+
+    private static void sendBlock(CommandSender sender, String... lines) {
+        DungeonMessages.send(sender, String.join("\n", lines));
+    }
+
+    private static String displayName(String value) {
+        String readable = value.toLowerCase(Locale.ROOT).replace('_', ' ');
+        return Character.toUpperCase(readable.charAt(0)) + readable.substring(1);
+    }
+
+    private static String readableDetail(String detail) {
+        String readable = detail.replace("=", ": ").replace("; ", " · ");
+        return readable.isEmpty() ? readable : Character.toUpperCase(readable.charAt(0)) + readable.substring(1);
     }
 
     private boolean requireDebug(CommandSender sender) {
         if (debugEnabled.getAsBoolean()) return true;
         DungeonMessages.send(sender, DungeonMessages.warning(
-                "This is a debug-only command and is disabled while config.yml debug is false."));
+                "This administrative test command is unavailable while debug mode is disabled."));
         return false;
     }
 }

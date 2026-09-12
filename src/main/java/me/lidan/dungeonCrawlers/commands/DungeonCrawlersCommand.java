@@ -30,6 +30,9 @@ import me.lidan.dungeonCrawlers.integration.spawn.BukkitSpawnProvider;
 import me.lidan.dungeonCrawlers.integration.vault.VaultEconomyAdapter;
 import me.lidan.dungeonCrawlers.integration.worldedit.WorldEditAdapter;
 import me.lidan.dungeonCrawlers.persistence.DurableRepository;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.event.HoverEvent;
+import net.kyori.adventure.text.format.NamedTextColor;
 import net.milkbowl.vault.economy.Economy;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
@@ -127,8 +130,7 @@ public final class DungeonCrawlersCommand {
     @Subcommand("help")
     @CommandPermission("dungeoncrawlers.use")
     public void help(CommandSender sender) {
-        DungeonMessages.send(sender, DungeonMessages.info(
-                "<aqua><bold>DungeonCrawlers</bold></aqua> commands. Click a line to fill in a command."));
+        DungeonMessages.send(sender, DungeonMessages.info("Commands. Click a line to fill in a command."));
         DungeonGenerationCommand.suggest(sender, "<green>Start a solo or party dungeon</green>",
                 "/dungeon start floor_1");
         DungeonGenerationCommand.suggest(sender, "<green>Choose your class</green>", "/dungeon class list");
@@ -163,8 +165,10 @@ public final class DungeonCrawlersCommand {
                         DungeonMessages.warning(warning)));
                 result.errors().forEach(error -> DungeonMessages.send(sender,
                         DungeonMessages.error(error)));
-                if (result.successful()) DungeonMessages.send(sender, DungeonMessages.success(
-                        "Configuration valid. Active hash: <white>" + result.snapshot().hash() + "</white>"));
+                if (result.successful()) DungeonMessages.send(sender,
+                        Component.text("Configuration is valid.", NamedTextColor.GREEN)
+                                .hoverEvent(HoverEvent.showText(Component.text(
+                                        "Active configuration hash: " + result.snapshot().hash()))));
             });
         });
     }
@@ -180,21 +184,26 @@ public final class DungeonCrawlersCommand {
         }
         GenerationService.OperationsSnapshot operations = generation.operations();
         var repository = durableRepository.diagnostics();
-        DungeonMessages.send(sender, DungeonMessages.info("Operations: active instances=<white>"
-                + operations.activeInstances()
-                + " reservations=" + operations.activeReservations() + " occupiedSlots="
-                + operations.occupiedSlots() + "</white>"));
-        DungeonMessages.send(sender, DungeonMessages.info("Recovery: running=<white>" + operations.recoveryRunning()
-                + " startsEnabled=" + operations.startsEnabled()
-                + " blockers=" + operations.recoveryBlockers() + "</white>"));
-        DungeonMessages.send(sender, DungeonMessages.info("Cleanup: started=<white>" + operations.cleanupStarted()
-                + " completed=" + operations.cleanupCompleted() + " failed=" + operations.cleanupFailed()
-                + " deadlineAlerts=" + operations.cleanupDeadlineAlerts()
-                + " lateCallbacks=" + operations.lateCallbacks() + "</white>"));
-        DungeonMessages.send(sender, DungeonMessages.info("Repository: in flight=<white>" + repository.normalInFlight()
-                + " queued=" + repository.queuedOperations() + " terminalReservations="
-                + repository.terminalReservations() + " terminalInFlight=" + repository.terminalInFlight()
-                + " closed=" + repository.closed() + "</white>"));
+        DungeonMessages.send(sender, String.join("\n",
+                "<aqua><bold>Operations</bold></aqua>",
+                "<gray>Active instances: <white>" + operations.activeInstances() + "</white></gray>",
+                "<gray>Reservations: <white>" + operations.activeReservations() + "</white></gray>",
+                "<gray>Occupied slots: <white>" + operations.occupiedSlots() + "</white></gray>",
+                "<gray>Recovery: <white>" + (operations.recoveryRunning() ? "Running" : "Idle")
+                        + "</white> · Starts: <white>" + (operations.startsEnabled() ? "Enabled" : "Paused")
+                        + "</white></gray>",
+                "<gray>Recovery blockers: <white>" + (operations.recoveryBlockers() == 0
+                        ? "None" : operations.recoveryBlockers()) + "</white></gray>",
+                "<gray>Cleanup started: <white>" + operations.cleanupStarted() + "</white> · Completed: <white>"
+                        + operations.cleanupCompleted() + "</white> · Failed: <white>" + operations.cleanupFailed()
+                        + "</white></gray>",
+                "<gray>Cleanup deadline alerts: <white>" + operations.cleanupDeadlineAlerts()
+                        + "</white> · Late callbacks: <white>" + operations.lateCallbacks() + "</white></gray>",
+                "<gray>Repository in flight: <white>" + repository.normalInFlight() + "</white> · Queued: <white>"
+                        + repository.queuedOperations() + "</white> · Terminal reservations: <white>"
+                        + repository.terminalReservations() + "</white> · Terminal in flight: <white>"
+                        + repository.terminalInFlight() + "</white> · Closed: <white>" + repository.closed()
+                        + "</white></gray>"));
     }
 
     @Subcommand("reload")
@@ -295,13 +304,14 @@ public final class DungeonCrawlersCommand {
         result.errors().forEach(error -> sendReloadMessage(sender, "<red>Reload failed: " + error + "</red>"));
         if (result.swapped()) {
             sendReloadMessage(sender, "<green>Configuration reload complete.</green>");
-            sendReloadMessage(sender, "<gray>Floors: <white>" + result.snapshot().floors().size()
+            DungeonMessages.send(sender, MiniMessageUtils.miniMessage("<gray>Floors: <white>" + result.snapshot().floors().size()
                     + "</white>, rooms: <white>" + result.snapshot().rooms().size()
                     + "</white>, boss encounters: <white>" + result.snapshot().encounters().size()
                     + "</white>, rewards: <white>" + result.snapshot().floors().values().stream()
                     .mapToInt(floor -> floor.rewards().size()).sum()
                     + "</white>, warnings: <white>" + result.warnings().size()
-                    + "</white>, hash: <white>" + result.snapshot().hash() + "</white></gray>");
+                    + "</white></gray>").hoverEvent(HoverEvent.showText(Component.text(
+                    "Active configuration hash: " + result.snapshot().hash()))));
         } else if (result.errors().stream().anyMatch(error -> error.contains("reservation(s) are active"))) {
             sendReloadMessage(sender, "<red>Reload refused because a dungeon is active. Use "
                     + "<click:suggest_command:'/dungeon reload force'><aqua>/dungeon reload force</aqua></click>"
@@ -400,7 +410,7 @@ public final class DungeonCrawlersCommand {
             var result = transitions.transition(InstanceState.valueOf(from.toUpperCase(Locale.ROOT)),
                     InstanceState.valueOf(to.toUpperCase(Locale.ROOT)));
             DungeonMessages.send(sender, result.accepted()
-                    ? DungeonMessages.success(result.detail()) : DungeonMessages.error(result.detail()));
+                    ? DungeonMessages.success(readableDetail(result.detail())) : DungeonMessages.error(readableDetail(result.detail())));
         } catch (IllegalArgumentException exception) {
             DungeonMessages.send(sender, DungeonMessages.error("Unknown state. Valid values: "
                     + enumNames(InstanceState.values())));
@@ -427,12 +437,13 @@ public final class DungeonCrawlersCommand {
         if (!debug(sender)) return;
         var diagnostics = durableRepository.diagnostics();
         DungeonMessages.send(sender, DungeonMessages.info("Repository diagnostics"));
-        DungeonMessages.send(sender, "<gray>capacity=<white>" + diagnostics.normalCapacity()
-                + "</white> in-flight=<white>" + diagnostics.normalInFlight()
-                + "</white> queued=<white>" + diagnostics.queuedOperations()
-                + "</white> terminal reservations=<white>" + diagnostics.terminalReservations()
-                + "</white> terminal in-flight=<white>" + diagnostics.terminalInFlight()
-                + "</white> closed=<white>" + diagnostics.closed() + "</white></gray>");
+        DungeonMessages.send(sender, String.join("\n",
+                "<gray>Capacity: <white>" + diagnostics.normalCapacity() + "</white></gray>",
+                "<gray>In flight: <white>" + diagnostics.normalInFlight() + "</white></gray>",
+                "<gray>Queued: <white>" + diagnostics.queuedOperations() + "</white></gray>",
+                "<gray>Terminal reservations: <white>" + diagnostics.terminalReservations() + "</white></gray>",
+                "<gray>Terminal in flight: <white>" + diagnostics.terminalInFlight() + "</white></gray>",
+                "<gray>Closed: <white>" + diagnostics.closed() + "</white></gray>"));
     }
 
     @Subcommand("reservation race")
@@ -456,7 +467,7 @@ public final class DungeonCrawlersCommand {
                 DungeonMessages.send(sender, error == null && wins == 1
                         ? DungeonMessages.success("Exactly one reservation won.")
                         : DungeonMessages.error("Reservation race failed: "
-                        + (error == null ? "wins=" + wins : error.getMessage())))));
+                        + (error == null ? "expected one winner, observed " + wins : error.getMessage())))));
     }
 
     @Subcommand("compatibility")
@@ -464,7 +475,7 @@ public final class DungeonCrawlersCommand {
     public void compatibility(CommandSender sender) {
         CompatibilityReport report = compatibility.inspect();
         DungeonMessages.send(sender, DungeonMessages.info("Compatibility report"));
-        DungeonMessages.send(sender, "<gray>created: <white>" + report.createdAt() + "</white></gray>");
+        DungeonMessages.send(sender, "<gray>Created: <white>" + report.createdAt() + "</white></gray>");
         for (ProbeResult result : report.results()) {
             String color = switch (result.status()) {
                 case PASS, FALLBACK_PASS -> "green";
@@ -472,7 +483,7 @@ public final class DungeonCrawlersCommand {
                 case FAIL -> "red";
             };
             DungeonMessages.send(sender, "<" + color + ">" + result.id() + "</" + color + ">: <gray>"
-                    + result.detail() + "</gray>");
+                    + readableDetail(result.detail()) + "</gray>");
         }
         DungeonMessages.send(sender, "<gray>Automated checks: <white>" + (report.passesAutomatedChecks()
                 ? "passed" : "failed") + "</white>; Human Gate 0: <white>"
@@ -492,9 +503,9 @@ public final class DungeonCrawlersCommand {
         byte[] payload = built.serializeAsBytes();
         ItemStack restored = ItemStack.deserializeBytes(payload);
         DungeonMessages.send(sender, built.equals(restored)
-                ? DungeonMessages.success("Item serialization passed. id=<white>" + itemId
-                        + "</white>, bytes=<white>" + payload.length + "</white>, sha256=<white>"
-                        + sha256(payload) + "</white>")
+                ? DungeonMessages.success("Item serialization passed. Item: <white>" + itemId
+                        + "</white> · Bytes: <white>" + payload.length + "</white> · SHA-256: <white>"
+                        + sha256(payload) + "</white>.")
                 : DungeonMessages.error("Item serialization failed for <white>" + itemId + "</white>."));
     }
 
@@ -511,10 +522,10 @@ public final class DungeonCrawlersCommand {
         boolean identified = mythic.isMythicMob(entity);
         boolean removed = mythic.remove(entity);
         DungeonMessages.send(player, identified && removed
-                ? DungeonMessages.success("Mythic mob probe passed. identified=<white>" + identified
-                        + "</white>, removed=<white>" + removed + "</white>")
-                : DungeonMessages.error("Mythic mob probe failed. identified=<white>" + identified
-                        + "</white>, removed=<white>" + removed + "</white>"));
+                ? DungeonMessages.success("Mythic mob probe passed. Identified: <white>" + identified
+                        + "</white> · Removed: <white>" + removed + "</white>.")
+                : DungeonMessages.error("Mythic mob probe failed. Identified: <white>" + identified
+                        + "</white> · Removed: <white>" + removed + "</white>."));
     }
 
     @Subcommand("compatibility selection")
@@ -523,7 +534,8 @@ public final class DungeonCrawlersCommand {
         if (!debug(player)) return;
         WorldEditGateway.SelectionResult result = worldEdit.selection(player);
         DungeonMessages.send(player, result.successful()
-                ? DungeonMessages.success(result.detail()) : DungeonMessages.error(result.detail()));
+                ? DungeonMessages.success(readableDetail(result.detail()))
+                : DungeonMessages.error(readableDetail(result.detail())));
     }
 
     @Subcommand("compatibility party")
@@ -534,10 +546,11 @@ public final class DungeonCrawlersCommand {
         String status = result.status() == PartyProvider.Status.ERROR
                 ? "<red>Party lookup failed.</red>"
                 : "<green>Party lookup passed.</green>";
-        DungeonMessages.send(player, status + " <gray>status=<white>"
-                + result.status().name().toLowerCase(Locale.ROOT)
-                + "</white>, leader=<white>" + result.leader() + "</white>, online members=<white>"
-                + result.onlineMembers() + "</white>, detail=<white>" + result.detail() + "</white></gray>");
+        DungeonMessages.send(player, String.join("\n", status,
+                "<gray>Status: <white>" + result.status().name().toLowerCase(Locale.ROOT) + "</white></gray>",
+                "<gray>Leader: <white>" + result.leader() + "</white></gray>",
+                "<gray>Online members: <white>" + result.onlineMembers() + "</white></gray>",
+                "<gray>Details: <white>" + readableDetail(result.detail()) + "</white></gray>"));
     }
 
     @Subcommand("compatibility economy")
@@ -577,15 +590,15 @@ public final class DungeonCrawlersCommand {
         EconomyGateway.TransactionResult debit = gateway.withdraw(testAccount, amount);
         if (!debit.successful()) {
             DungeonMessages.send(player, DungeonMessages.error("Withdraw failed via <white>"
-                    + gateway.providerIdentity() + "</white>: " + debit.detail()));
+                    + gateway.providerIdentity() + "</white>: " + readableDetail(debit.detail())));
             return;
         }
         EconomyGateway.TransactionResult credit = gateway.deposit(testAccount, debit.amount());
         if (!credit.successful()) {
             EconomyGateway.TransactionResult recovery = recoverEconomyProbe(gateway, testAccount, debit.amount());
             DungeonMessages.send(player, DungeonMessages.error("Deposit failed via <white>"
-                    + gateway.providerIdentity() + "</white>; recovery="
-                    + (recovery.successful() ? "restored" : "failed: " + recovery.detail())));
+                    + gateway.providerIdentity() + "</white>. Recovery: <white>"
+                    + (recovery.successful() ? "Restored" : "Failed") + "</white>."));
             if (!recovery.successful()) {
                 plugin.getLogger().severe("Economy probe recovery failed for disposable account " + accountId
                         + "; manually restore " + debit.amount() + " using provider " + gateway.providerIdentity());
@@ -593,8 +606,8 @@ public final class DungeonCrawlersCommand {
             return;
         }
         DungeonMessages.send(player, DungeonMessages.success("Economy round-trip passed via <white>"
-                + gateway.providerIdentity() + "</white>; account=<white>" + accountId
-                + "</white>, balance=<white>" + credit.balance() + "</white>."));
+                + gateway.providerIdentity() + "</white>. Account: <white>" + accountId
+                + "</white> · Balance: <white>" + credit.balance() + "</white>."));
     }
 
     private static EconomyGateway.TransactionResult recoverEconomyProbe(
@@ -612,7 +625,7 @@ public final class DungeonCrawlersCommand {
         SpawnProvider provider = new BukkitSpawnProvider(plugin.getServer(), mainConfig.getString("fallback-spawn-world", ""));
         DungeonMessages.send(sender, provider.spawn()
                 .map(location -> DungeonMessages.success("Spawn provider: <white>" + provider.source()
-                        + "</white>; world=<white>" + location.getWorld().getName() + "</white>."))
+                        + "</white> · World: <white>" + location.getWorld().getName() + "</white>."))
                 .orElseGet(() -> DungeonMessages.error("Configured Bukkit fallback world is not loaded.")));
     }
 
@@ -636,8 +649,8 @@ public final class DungeonCrawlersCommand {
             return;
         }
         DungeonMessages.send(player, DungeonMessages.success("Paper MAX_HEALTH available: <white>"
-                + maxHealth.getBaseValue() + "</white>; DungeonCrawlers health cap: <white>unbounded"
-                + "</white>; CaveCrawlers version: <white>"
+                + maxHealth.getBaseValue() + "</white> · DungeonCrawlers health cap: <white>unbounded"
+                + "</white> · CaveCrawlers version: <white>"
                 + CaveCrawlers.getInstance().getPluginMeta().getVersion() + "</white>"));
     }
 
@@ -652,7 +665,7 @@ public final class DungeonCrawlersCommand {
     private boolean debug(CommandSender sender) {
         if (debugEnabled.getAsBoolean()) return true;
         DungeonMessages.send(sender, DungeonMessages.warning(
-                "This is a debug-only command and is disabled while config.yml debug is false."));
+                "This administrative test command is unavailable while debug mode is disabled."));
         return false;
     }
 
@@ -673,8 +686,13 @@ public final class DungeonCrawlersCommand {
         if (values.isEmpty()) return "none";
         return values.entrySet().stream()
                 .sorted(java.util.Comparator.comparing(entry -> String.valueOf(entry.getKey())))
-                .map(entry -> entry.getKey() + "=" + entry.getValue())
+                .map(entry -> entry.getKey() + ": " + entry.getValue())
                 .collect(java.util.stream.Collectors.joining(", "));
+    }
+
+    private static String readableDetail(String detail) {
+        if (detail == null || detail.isBlank()) return "No additional details.";
+        return detail.replace("=", ": ").replace("; ", " · ");
     }
 
     private static String enumNames(InstanceState[] values) {

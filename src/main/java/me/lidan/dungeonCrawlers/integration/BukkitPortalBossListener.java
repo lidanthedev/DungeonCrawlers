@@ -46,7 +46,7 @@ public final class BukkitPortalBossListener implements Listener {
         event.setCancelled(true);
         var result = encounters.enterPortal(instanceId, event.getPlayer().getUniqueId());
         if (!result.successful()) {
-            DungeonMessages.send(event.getPlayer(), "<red>" + result.detail() + "</red>");
+            DungeonMessages.send(event.getPlayer(), DungeonMessages.error(playerError(result.detail())));
         }
     }
 
@@ -82,5 +82,25 @@ public final class BukkitPortalBossListener implements Listener {
 
     private UUID portalAt(int x, int y, int z) {
         return encounters.portalAt(new Point(x, y, z)).orElse(null);
+    }
+
+    private static String playerError(String detail) {
+        String normalized = detail == null ? "" : detail.toLowerCase(java.util.Locale.ROOT);
+        if (normalized.contains("countdown owned")) {
+            return "Another player is already starting the boss encounter.";
+        }
+        if (normalized.contains("not an active participant")) {
+            return "You are not an active participant in this dungeon.";
+        }
+        if (normalized.contains("run is not running")) {
+            return "The dungeon is not currently running.";
+        }
+        if (normalized.contains("central update") || normalized.contains("temporarily unavailable")) {
+            return "The boss portal is temporarily unavailable. Please try again later.";
+        }
+        if (normalized.contains("unknown portal instance")) {
+            return "This boss portal is no longer active.";
+        }
+        return "The boss portal could not be activated. Please try again later.";
     }
 }

@@ -97,23 +97,24 @@ public final class DungeonAuthoringCommand {
             type = RoomType.valueOf(roomType.toUpperCase(Locale.ROOT));
             capabilities = parseCapabilities(encounters);
         } catch (IllegalArgumentException exception) {
-            DungeonMessages.send(player, DungeonMessages.error("Type must be one of normal, start, portal, or boss; "
+            DungeonMessages.send(player, DungeonMessages.error("Room type must be normal, start, portal, or boss; "
                     + "encounters must be none, normal, miniboss, or normal,miniboss."));
             return;
         }
         WorldEditGateway.ScanResult scan = scanSelection(player);
         if (!scan.successful()) {
-            DungeonMessages.send(player, DungeonMessages.error(scan.detail()));
+            DungeonMessages.send(player, DungeonMessages.error(cleanDetail(scan.detail())));
             return;
         }
         var result = templateValidator.validate("selection", type, capabilities,
                 scan.selection().orElseThrow(), emeraldPolicy);
-        result.errors().forEach(error -> DungeonMessages.send(player, DungeonMessages.error(error)));
+        result.errors().forEach(error -> DungeonMessages.send(player, DungeonMessages.error(cleanDetail(error))));
         if (result.successful()) {
             var template = result.template().orElseThrow();
-            DungeonMessages.send(player, DungeonMessages.success(scan.detail() + ", content hash=<white>"
-                    + template.contentHash() + "</white>, secrets=<white>" + template.secrets().size()
-                    + "</white>, portal blocks=<white>" + template.portalBlocks().size() + "</white>."));
+            DungeonMessages.send(player, DungeonMessages.success(selectionSummary(scan.detail())
+                    + ". Content hash: <white>" + template.contentHash() + "</white>; secrets: <white>"
+                    + template.secrets().size() + "</white>; portal blocks: <white>"
+                    + template.portalBlocks().size() + "</white>."));
         }
     }
 
@@ -123,7 +124,7 @@ public final class DungeonAuthoringCommand {
         sendMarkerLegend(player);
         WorldEditGateway.ScanResult scan = scanSelection(player);
         if (!scan.successful()) {
-            DungeonMessages.send(player, DungeonMessages.error(scan.detail()));
+            DungeonMessages.send(player, DungeonMessages.error(cleanDetail(scan.detail())));
             return;
         }
         var markers = scan.selection().orElseThrow().blocks().entrySet().stream()
@@ -133,11 +134,12 @@ public final class DungeonAuthoringCommand {
             DungeonMessages.send(player, DungeonMessages.error("The selection contains no DungeonCrawlers markers."));
             return;
         }
-        DungeonMessages.send(player, DungeonMessages.success("Markers found: <white>" + markers.size()
-                + "</white>. " + scan.detail()));
-        markers.forEach(entry -> DungeonMessages.send(player, "<gray>" + point(entry.getKey()) + " <white>"
-                + entry.getValue().type().toLowerCase(Locale.ROOT) + "</white>" + (entry.getValue().is("jigsaw")
-                ? " states=<white>" + formatMap(entry.getValue().states()) + "</white>" : "") + "</gray>"));
+        DungeonMessages.send(player, DungeonMessages.success("Found <white>" + markers.size()
+                + "</white> markers in " + selectionSummary(scan.detail()) + "."));
+        markers.forEach(entry -> DungeonMessages.send(player, "<gray>Marker at <white>" + point(entry.getKey())
+                + "</white>: <white>" + blockLabel(entry.getValue().type()) + "</white>"
+                + (entry.getValue().is("jigsaw")
+                ? "; states: <white>" + formatMap(entry.getValue().states()) + "</white>" : "") + "</gray>"));
     }
 
     static List<String> markerLegend() {
@@ -152,8 +154,8 @@ public final class DungeonAuthoringCommand {
                 "- Reward chest: LIME_CONCRETE_POWDER",
                 "- Secret/blessing: CHEST; standard secret: TRAPPED_CHEST",
                 "- Portal trigger: connected NETHER_PORTAL blocks",
-                "- Jigsaw target=dungeoncrawlers:connector, pool=minecraft:empty, final_state=minecraft:air,"
-                        + " orientation=north_up/east_up/south_up/west_up"
+                "- Jigsaw settings: target dungeoncrawlers:connector; pool minecraft:empty; "
+                        + "final state minecraft:air; orientation north_up/east_up/south_up/west_up"
         );
     }
 
@@ -193,8 +195,9 @@ public final class DungeonAuthoringCommand {
     @CommandPermission("dungeoncrawlers.admin.authoring")
     public void roomDelete(CommandSender sender, @SuggestWith(RoomIdSuggestionProvider.class) String id) {
         TemplateAuthoringService.OperationResult result = authoring.delete(id, activeTemplates.get());
-        DungeonMessages.send(sender, result.successful() ? DungeonMessages.success(result.detail())
-                : DungeonMessages.error(result.detail()));
+        DungeonMessages.send(sender, result.successful()
+                ? DungeonMessages.success(operationSuccess("delete", id, result.detail()))
+                : DungeonMessages.error(operationFailure("delete", id, result.detail())));
         if (result.successful()) reportAuthoringReload(sender);
     }
 
@@ -206,11 +209,14 @@ public final class DungeonAuthoringCommand {
             byte[] schematic = authoring.schematic(id);
             Point origin = playerPoint(player);
             WorldEditGateway.OperationResult result = worldEdit.paste(player, schematic, origin, rotation);
-            DungeonMessages.send(player, result.successful() ? DungeonMessages.success(result.detail())
-                    : DungeonMessages.error(result.detail()));
+            DungeonMessages.send(player, result.successful()
+                    ? DungeonMessages.success("Room schematic pasted at <white>" + point(origin)
+                            + "</white> with rotation <white>" + rotationLabel(rotation) + "</white>.")
+                    : DungeonMessages.error("Could not paste the room schematic: "
+                            + cleanDetail(result.detail())));
         } catch (Exception exception) {
-            DungeonMessages.send(player, DungeonMessages.error(exception.getMessage() == null
-                    ? exception.getClass().getSimpleName() : exception.getMessage()));
+            DungeonMessages.send(player, DungeonMessages.error(
+                    "Could not paste the room schematic. Check the server log for details."));
         }
     }
 
@@ -222,31 +228,31 @@ public final class DungeonAuthoringCommand {
                             String fromRotation) {
         TemplateCatalogLoader.LoadResult loaded = templateCatalog.load(configRegistry.snapshot());
         if (!loaded.successful()) {
-            loaded.errors().forEach(error -> DungeonMessages.send(player, DungeonMessages.error(error)));
+            loaded.errors().forEach(error -> DungeonMessages.send(player, DungeonMessages.error(cleanDetail(error))));
             return;
         }
         var catalog = loaded.catalog().orElseThrow();
         var from = catalog.get(fromId);
         var to = catalog.get(toId);
         if (from == null || to == null) {
-            DungeonMessages.send(player, DungeonMessages.error("Unknown authored room; from=<white>" + fromId
-                    + "</white>, to=<white>" + toId + "</white>."));
+            DungeonMessages.send(player, DungeonMessages.error("Unknown authored room. Source: <white>" + fromId
+                    + "</white> · Target: <white>" + toId + "</white>."));
             return;
         }
         try {
             var result = layoutPlanner.connectTest(from.template(), parseRotation(fromRotation), playerPoint(player),
                     to.template());
             if (!result.successful()) {
-                DungeonMessages.send(player, DungeonMessages.error(result.detail()));
+                DungeonMessages.send(player, DungeonMessages.error(cleanDetail(result.detail())));
                 return;
             }
             var placement = result.placement().orElseThrow();
             var connection = result.connection().orElseThrow();
-            DungeonMessages.send(player, DungeonMessages.success("Connection test passed. origin=<white>"
-                    + point(placement.origin()) + "</white>, rotation=<white>" + placement.rotation()
-                    + "</white>, door blocks=<white>" + connection.doorBounds().size()
-                    + "</white>, entrance blocks=<white>" + connection.entranceBounds().size()
-                    + "</white>, connection blocks=<white>" + connection.bounds().size() + "</white>."));
+            DungeonMessages.send(player, DungeonMessages.success("Connection test passed. Origin: <white>"
+                    + point(placement.origin()) + "</white>; rotation: <white>" + rotationLabel(placement.rotation())
+                    + "</white>; door blocks: <white>" + connection.doorBounds().size()
+                    + "</white>; entrance blocks: <white>" + connection.entranceBounds().size()
+                    + "</white>; connection blocks: <white>" + connection.bounds().size() + "</white>."));
         } catch (IllegalArgumentException exception) {
             DungeonMessages.send(player, DungeonMessages.error(exception.getMessage()));
         }
@@ -263,7 +269,7 @@ public final class DungeonAuthoringCommand {
         }
         TemplateCatalogLoader.LoadResult loaded = templateCatalog.load(snapshot);
         if (!loaded.successful()) {
-            loaded.errors().forEach(error -> DungeonMessages.send(player, DungeonMessages.error(error)));
+            loaded.errors().forEach(error -> DungeonMessages.send(player, DungeonMessages.error(cleanDetail(error))));
             return;
         }
         Point origin = playerPoint(player);
@@ -275,18 +281,18 @@ public final class DungeonAuthoringCommand {
                 loaded.catalog().orElseThrow(), origin, slot, snapshot.hash()));
         generationTraces.put(player.getUniqueId(), result.trace());
         if (!result.successful()) {
-            result.errors().forEach(error -> DungeonMessages.send(player, DungeonMessages.error(error)));
+            result.errors().forEach(error -> DungeonMessages.send(player, DungeonMessages.error(cleanDetail(error))));
             return;
         }
         var plan = result.plan().orElseThrow();
-        DungeonMessages.send(player, DungeonMessages.success("Generation plan: version=<white>"
-                + plan.algorithmVersion() + "</white>, seed=<white>" + seed + "</white>, placements=<white>"
-                + plan.placements().size() + "</white>, connections=<white>" + plan.connections().size() + "</white>."));
-        plan.placements().forEach(placement -> DungeonMessages.send(player, "<gray>placement=<white>"
-                + placement.index() + "</white> type=<white>" + placement.type().name().toLowerCase()
-                + "</white> template=<white>" + placement.templateId() + "</white> origin=<white>"
-                + point(placement.origin()) + "</white> rotation=<white>" + placement.rotation()
-                + "</white> encounter=<white>" + placement.encounter() + "</white></gray>"));
+        DungeonMessages.send(player, DungeonMessages.success("Generation plan ready. Algorithm version: <white>"
+                + plan.algorithmVersion() + "</white>; seed: <white>" + seed + "</white>; placements: <white>"
+                + plan.placements().size() + "</white>; connections: <white>" + plan.connections().size() + "</white>."));
+        plan.placements().forEach(placement -> DungeonMessages.send(player, "<gray>Placement <white>#"
+                + placement.index() + "</white>: <white>" + placement.type().name().toLowerCase(Locale.ROOT)
+                + "</white> room <white>" + placement.templateId() + "</white> at <white>"
+                + point(placement.origin()) + "</white>, rotation <white>" + rotationLabel(placement.rotation())
+                + "</white>, encounter <white>" + placement.encounter() + "</white>.</gray>"));
     }
 
     @Subcommand("generation trace")
@@ -297,7 +303,8 @@ public final class DungeonAuthoringCommand {
             DungeonMessages.send(player, DungeonMessages.error("No generation plan trace exists in this plugin session."));
             return;
         }
-        DungeonMessages.send(player, DungeonMessages.info("Generation trace lines: <white>" + trace.size() + "</white>"));
+        DungeonMessages.send(player, DungeonMessages.info("Generation trace: <white>" + trace.size()
+                + "</white> entries."));
         trace.forEach(line -> DungeonMessages.send(player, "<gray>" + line + "</gray>"));
     }
 
@@ -313,13 +320,14 @@ public final class DungeonAuthoringCommand {
             if (!capture.successful()) {
                 logAuthoring("room " + action + " capture failed id=" + id + " elapsedMs="
                         + elapsedMillis(startedAt) + " detail=" + capture.detail());
-                failRoomProgress(progressId, capture.detail());
+                failRoomProgress(progressId, "Could not capture the room selection");
                 runOnMain(player, () -> {
-                    if (player.isOnline()) DungeonMessages.send(player, DungeonMessages.error(capture.detail()));
+                    if (player.isOnline()) DungeonMessages.send(player, DungeonMessages.error(
+                            "Could not capture the room selection: " + cleanDetail(capture.detail())));
                 });
                 return;
             }
-            updateRoomProgress(progressId, 0.78, "validating room markers");
+            updateRoomProgress(progressId, 0.78, "Checking room markers");
             long validationStarted = System.nanoTime();
             var validation = templateValidator.validate(id, type, capabilities,
                     capture.selection().orElseThrow(), emeraldPolicy);
@@ -332,10 +340,10 @@ public final class DungeonAuthoringCommand {
                     logAuthoring("room " + action + " rejected id=" + id + " totalMs=" + elapsedMillis(startedAt));
                     failRoomProgress(progressId, "room validation failed");
                     if (player.isOnline()) validation.errors().forEach(error -> DungeonMessages.send(player,
-                            DungeonMessages.error(error)));
+                            DungeonMessages.error(cleanDetail(error))));
                     return;
                 }
-                updateRoomProgress(progressId, 0.92, "saving room");
+                updateRoomProgress(progressId, 0.92, "Saving room");
                 long saveStarted = System.nanoTime();
                 TemplateAuthoringService.OperationResult result = persistence.apply(capture.schematic(),
                         validation.template().orElseThrow());
@@ -343,12 +351,14 @@ public final class DungeonAuthoringCommand {
                         + elapsedMillis(saveStarted) + " totalMs=" + elapsedMillis(startedAt)
                         + " successful=" + result.successful());
                 if (player.isOnline()) {
-                    DungeonMessages.send(player, result.successful() ? DungeonMessages.success(result.detail())
-                            : DungeonMessages.error(result.detail()));
+                    DungeonMessages.send(player, result.successful()
+                            ? DungeonMessages.success(operationSuccess(action, id, result.detail()))
+                            : DungeonMessages.error(operationFailure(action, id, result.detail())));
                     if (result.successful() && reloadAfterSave) reportAuthoringReload(player);
                 }
-                if (result.successful()) completeRoomProgress(progressId, "room " + action + "d");
-                else failRoomProgress(progressId, result.detail());
+                if (result.successful()) completeRoomProgress(progressId,
+                        "Room " + (action.equals("create") ? "created" : "updated"));
+                else failRoomProgress(progressId, "Could not " + action + " the room");
             });
         }).exceptionally(error -> {
             logAuthoring("room " + action + " failed id=" + id + " totalMs=" + elapsedMillis(startedAt)
@@ -356,7 +366,7 @@ public final class DungeonAuthoringCommand {
             failRoomProgress(progressId, message(error));
             runOnMain(player, () -> {
                 if (player.isOnline()) DungeonMessages.send(player, DungeonMessages.error(
-                        "Room capture failed: " + message(error)));
+                        "Room capture failed. Check the server log for details."));
             });
             return null;
         });
@@ -375,10 +385,10 @@ public final class DungeonAuthoringCommand {
                 .mapToInt(floor -> floor.limits().maxTemplateDimension()).max().orElse(512);
         long maximumVolume = configRegistry.snapshot().floors().values().stream()
                 .mapToLong(floor -> floor.limits().maxTemplateVolume()).max().orElse(16_777_216L);
-        updateRoomProgress(progressId, 0.10, "capturing WorldEdit selection");
+        updateRoomProgress(progressId, 0.10, "Capturing your selection");
         if (plugin != null && progressBars == null) {
             DungeonMessages.send(player, DungeonMessages.info(
-                    "Capturing the selection asynchronously; the server thread remains responsive."));
+                    "Capturing your selection in the background; you can keep playing."));
         }
         long startedAt = System.nanoTime();
         logAuthoring("capture started player=" + player.getName() + " maxDimension=" + maximumDimension
@@ -406,7 +416,7 @@ public final class DungeonAuthoringCommand {
     private UUID beginRoomProgress(Player player, String title) {
         if (progressBars == null) return null;
         UUID taskId = UUID.randomUUID();
-        progressBars.begin(taskId, List.of(player), title, "starting", 0.02);
+        progressBars.begin(taskId, List.of(player), title, "Starting", 0.02);
         return taskId;
     }
 
@@ -488,10 +498,55 @@ public final class DungeonAuthoringCommand {
         return point.x() + ", " + point.y() + ", " + point.z();
     }
 
+    private static String selectionSummary(String detail) {
+        return detail.replace("origin=", "Origin: ")
+                .replace(", size=", " · Size: ")
+                .replace(", volume=", " · Volume: ");
+    }
+
+    private static String operationSuccess(String action, String id, String detail) {
+        String message = "Room <white>" + id + "</white> "
+                + (action.equals("create") ? "created" : action.equals("update") ? "updated" : "deleted")
+                + " successfully.";
+        if (detail.contains("generation metadata preserved")) {
+            message += " Generation metadata preserved.";
+        }
+        int backup = detail.indexOf("backup=");
+        if (backup >= 0) message += " Recoverable backup: <white>" + detail.substring(backup + 7) + "</white>.";
+        return message;
+    }
+
+    private static String operationFailure(String action, String id, String detail) {
+        return "Could not " + action + " room <white>" + id + "</white>: " + cleanDetail(detail);
+    }
+
+    private static String cleanDetail(String detail) {
+        return detail.replace("create failed: ", "")
+                .replace("update failed: ", "")
+                .replace("delete failed: ", "")
+                .replace("backup=", "Backup: ")
+                .replace("=", ": ")
+                .replace("; ", " · ");
+    }
+
+    private static String blockLabel(String type) {
+        String value = type.startsWith("minecraft:") ? type.substring("minecraft:".length()) : type;
+        return value.replace('_', ' ').toLowerCase(Locale.ROOT);
+    }
+
+    private static String rotationLabel(Rotation rotation) {
+        return switch (rotation) {
+            case NONE -> "none";
+            case CLOCKWISE_90 -> "90° clockwise";
+            case CLOCKWISE_180 -> "180°";
+            case COUNTERCLOCKWISE_90 -> "90° counterclockwise";
+        };
+    }
+
     private static String formatMap(Map<String, String> values) {
         if (values.isEmpty()) return "none";
         return values.entrySet().stream().sorted(Map.Entry.comparingByKey())
-                .map(entry -> entry.getKey() + "=" + entry.getValue())
+                .map(entry -> entry.getKey() + ": " + entry.getValue())
                 .collect(java.util.stream.Collectors.joining(", "));
     }
 }

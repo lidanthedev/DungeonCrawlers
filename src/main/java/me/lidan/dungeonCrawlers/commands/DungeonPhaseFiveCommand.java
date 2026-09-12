@@ -189,7 +189,7 @@ public final class DungeonPhaseFiveCommand {
         GenerationService.StartResult result = generation.start(new GenerationService.StartRequest(
                 config, floor, party.snapshot(), ThreadLocalRandom.current().nextLong(), 0));
         if (!result.accepted()) {
-            DungeonMessages.send(player, DungeonMessages.error(result.detail()));
+            DungeonMessages.send(player, DungeonMessages.error(playerError(result.detail())));
             return;
         }
         if (progressBars != null) {
@@ -200,9 +200,9 @@ public final class DungeonPhaseFiveCommand {
         }
         boolean waiting = generation.whenGenerated(result.instanceId(), snapshot -> {
             if (snapshot.status() != GenerationService.InstanceStatus.GENERATED) {
-                if (progressBars != null) progressBars.fail(result.instanceId(), snapshot.detail());
-                DungeonMessages.send(player, DungeonMessages.error("Dungeon generation did not complete: "
-                        + snapshot.detail()));
+                if (progressBars != null) progressBars.fail(result.instanceId(), "generation failed");
+                DungeonMessages.send(player, DungeonMessages.error(
+                        "Dungeon generation did not complete. Please try again later."));
                 return;
             }
             if (progressBars != null) progressBars.complete(result.instanceId(), "generation complete");
@@ -212,8 +212,9 @@ public final class DungeonPhaseFiveCommand {
             DungeonMessages.send(player, DungeonMessages.error("Dungeon generation is no longer available."));
             return;
         }
-        DungeonGenerationCommand.suggest(player, "<green>Dungeon start admitted</green> <gray>instance=<white>"
-                        + result.instanceId() + "</white> (click for instance info)</gray>",
+        DungeonGenerationCommand.suggest(player, "<green>Preparing " + floor.displayName() + " for "
+                        + party.snapshot().onlineMembers().size() + (party.snapshot().onlineMembers().size() == 1
+                        ? " player" : " players") + ".</green> <gray>Click for instance details.</gray>",
                 "/dungeon instance info " + result.instanceId());
     }
 
@@ -226,14 +227,15 @@ public final class DungeonPhaseFiveCommand {
             return;
         }
         RunPreparationService.RunSnapshot snapshot = runs.info(instanceId).orElseThrow();
-        DungeonMessages.send(player, "<gray>Class selection for instance=<white>" + instanceId
-                + "</white>, state=<white>" + snapshot.state().name().toLowerCase() + "</white></gray>");
+        DungeonMessages.send(player, DungeonMessages.info("Choose your class:"));
         snapshot.allowedClasses().forEach(classId -> {
-            String selected = snapshot.selectedClasses().entrySet().stream()
-                    .filter(entry -> entry.getValue().equals(classId)).map(entry -> entry.getKey().toString())
-                    .findFirst().orElse("none");
-            DungeonGenerationCommand.suggest(player, "<green>" + classId + "</green> <gray>selected by=<white>"
-                            + selected + "</white> (click to select)</gray>", "/dungeon class select " + classId);
+            long selected = snapshot.selectedClasses().values().stream().filter(classId::equals).count();
+            String label = configRegistry.snapshot().classes().containsKey(classId)
+                    ? configRegistry.snapshot().classes().get(classId).displayName() : classId;
+            DungeonGenerationCommand.suggest(player, "<green>" + label + "</green> <gray>"
+                            + (selected == 0 ? "Available" : "Chosen by " + selected + " player"
+                            + (selected == 1 ? "" : "s")) + ". Click to select.</gray>",
+                    "/dungeon class select " + classId);
         });
     }
 
@@ -248,14 +250,18 @@ public final class DungeonPhaseFiveCommand {
         }
         var result = runs.selectClass(instanceId, player.getUniqueId(), classId.toLowerCase(java.util.Locale.ROOT));
         if (!result.successful()) {
-            DungeonMessages.send(player, DungeonMessages.error(result.detail()));
+            DungeonMessages.send(player, DungeonMessages.error(playerError(result.detail())));
             return;
         }
         render(result.door());
-        DungeonMessages.send(player, DungeonMessages.success(result.detail() + " class=<white>" + classId
-                + "</white>."));
-        actionBar.show(player, MiniMessageUtils.miniMessage("<green>Class selected: <white>" + classId
-                + "</white>. Choose a class, then open the start door.</green>"));
+        String label = configRegistry.snapshot().classes().containsKey(classId)
+                ? configRegistry.snapshot().classes().get(classId).displayName() : classId;
+        boolean ready = result.door().state() == me.lidan.dungeonCrawlers.core.door.DoorService.DoorState.READY;
+        DungeonMessages.send(player, DungeonMessages.success("You chose <white>" + label + "</white>. "
+                + (ready ? "The start door is ready." : "Waiting for your party to choose.")));
+        actionBar.show(player, MiniMessageUtils.miniMessage(ready
+                ? "<green>Open the start door to begin.</green>"
+                : "<yellow>Waiting for your party to choose a class.</yellow>"));
     }
 
     /** Called by the admin instance-cancel path before generation cleanup. */
@@ -319,14 +325,17 @@ public final class DungeonPhaseFiveCommand {
         var result = runs.openDoor(door.orElseThrow().instanceId(), player.getUniqueId());
         if (result.successful()) {
             render(result.door());
-            DungeonMessages.send(player, DungeonMessages.success(result.detail() + " state=<white>"
-                    + result.door().state().name().toLowerCase(java.util.Locale.ROOT) + "</white>."));
+            DungeonMessages.send(player, DungeonMessages.success(result.snapshot().state()
+                    == RunPreparationService.RunState.RUNNING
+                    ? "The start door is open. Your dungeon begins!"
+                    : "The dungeon has already started."));
             if (result.snapshot().state() == RunPreparationService.RunState.RUNNING) {
                 if (lifecycle != null) {
                     var started = lifecycle.start(result.snapshot().instanceId());
                     if (!started.successful()) {
                         abort(result.snapshot().instanceId(), started.detail());
-                        DungeonMessages.send(player, DungeonMessages.error(started.detail()));
+                        DungeonMessages.send(player, DungeonMessages.error(
+                                "The dungeon could not start. Please try again later."));
                         return;
                     }
                 }
@@ -335,7 +344,7 @@ public final class DungeonPhaseFiveCommand {
             }
         } else {
             if (result.rollbackRequired()) abort(door.orElseThrow().instanceId(), result.detail());
-            DungeonMessages.send(player, DungeonMessages.error(result.detail()));
+            DungeonMessages.send(player, DungeonMessages.error(playerError(result.detail())));
         }
     }
 
@@ -365,8 +374,8 @@ public final class DungeonPhaseFiveCommand {
             pendingRecovery.put(playerId, snapshot);
         }
         DungeonMessages.send(player, restored.successful()
-                ? DungeonMessages.success("Escape restore: " + restored.detail())
-                : DungeonMessages.error("Escape restore failed: " + restored.detail()));
+                ? DungeonMessages.success("You left the dungeon. Your previous player state was restored.")
+                : DungeonMessages.error("Your previous player state could not be restored. Recovery will retry when you join."));
         cancelEmptyPreparation(instanceId);
     }
 
@@ -390,8 +399,10 @@ public final class DungeonPhaseFiveCommand {
         if (instanceId == null) return;
         if (lifecycle != null && lifecycle.player(instanceId, playerId).isPresent()) {
             var result = lifecycle.escape(instanceId, playerId);
-            DungeonMessages.send(player, result.successful() ? DungeonMessages.success(result.detail())
-                    : DungeonMessages.error(result.detail()));
+            if (!result.successful()) {
+                DungeonMessages.send(player, DungeonMessages.error(
+                        "You could not leave the dungeon right now. Please try again later."));
+            }
             return;
         }
         if (player.getWorld().getName().equals(generationWorldName)) restoreRemovedPlayer(instanceId, playerId);
@@ -487,8 +498,8 @@ public final class DungeonPhaseFiveCommand {
             pendingRecovery.put(player.getUniqueId(), snapshot);
         }
         DungeonMessages.send(player, restored.successful()
-                ? DungeonMessages.success("Recovery restore: " + restored.detail())
-                : DungeonMessages.error("Recovery restore failed: " + restored.detail()));
+                ? DungeonMessages.success("Your player state was restored after the dungeon closed.")
+                : DungeonMessages.error("Your player state could not be restored. Recovery will retry when you join."));
     }
 
     private void authorizeRestore(UUID playerId,
@@ -642,17 +653,50 @@ public final class DungeonPhaseFiveCommand {
                 if (restored.successful()) {
                     BukkitGhostState.exit(player);
                     deleteSnapshotAfterRestore(snapshot);
-                    DungeonMessages.send(player, "<red>" + reason + "; " + outcome
-                            + ", and your player state was restored.</red>");
+                    DungeonMessages.send(player, DungeonMessages.warning(closedMessage(outcome)
+                            + " Your previous player state was restored."));
                 } else {
                     pendingRecovery.put(playerId, snapshot);
-                    DungeonMessages.send(player, "<red>" + reason + "; " + outcome
-                            + ". Recovery is pending: " + restored.detail() + "</red>");
+                    DungeonMessages.send(player, DungeonMessages.error(closedMessage(outcome)
+                            + " Your player state could not be restored. Recovery will retry when you join."));
                 }
             } else {
                 pendingRecovery.put(playerId, snapshot);
             }
         });
+    }
+
+    private static String closedMessage(String outcome) {
+        return switch (outcome) {
+            case "preparation deadline ended" -> "Class selection timed out.";
+            case "failed run closed" -> "The failed dungeon has closed.";
+            case "run closed" -> "The reward period has ended.";
+            case "run wiped" -> "Your party was defeated.";
+            default -> "Dungeon preparation was cancelled.";
+        };
+    }
+
+    private static String playerError(String detail) {
+        String normalized = detail == null ? "" : detail.toLowerCase(java.util.Locale.ROOT);
+        if (normalized.contains("capacity") || normalized.contains("slot")) {
+            return "The dungeon is temporarily full. Please try again shortly.";
+        }
+        if (normalized.contains("starts are blocked") || normalized.contains("recovery")) {
+            return "Dungeon starts are temporarily paused while recovery finishes.";
+        }
+        if (normalized.contains("every active member") || normalized.contains("select a class")) {
+            return "Every player must choose a class before the dungeon can start.";
+        }
+        if (normalized.contains("class is not allowed") || normalized.contains("unknown class")) {
+            return "That class is not available for this dungeon.";
+        }
+        if (normalized.contains("snapshot") || normalized.contains("preparation")) {
+            return "Dungeon preparation is still in progress. Please try again in a moment.";
+        }
+        if (normalized.contains("already started") || normalized.contains("run is already")) {
+            return "The dungeon has already started.";
+        }
+        return "The dungeon could not complete that action right now.";
     }
 
     private void render(me.lidan.dungeonCrawlers.core.door.DoorService.DoorSnapshot door) {

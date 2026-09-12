@@ -98,8 +98,9 @@ public final class DungeonPhaseFourCommand {
             CentralUpdateService.TickReport report = updates.advanceInstanceTime(id, duration);
             DungeonMessages.send(sender, report.successful()
                     ? DungeonMessages.success("Instance <white>" + id + "</white> advanced by <white>"
-                    + duration.getSeconds() + "s</white>; attempted=<white>" + report.attempted() + "</white>.")
-                    : DungeonMessages.error("Instance time advance failed: " + report.failures()));
+                    + duration.getSeconds() + "s</white>. Ticks processed: <white>" + report.attempted()
+                    + "</white>.")
+                    : DungeonMessages.error("Could not advance instance time: " + report.failures()));
         } catch (RuntimeException exception) {
             DungeonMessages.send(sender, DungeonMessages.error(message(exception)));
         }
@@ -113,10 +114,14 @@ public final class DungeonPhaseFourCommand {
         try {
             UUID id = resolve(sender, instanceId);
             updates.time(id).ifPresentOrElse(
-                    time -> DungeonMessages.send(sender, "<gray>Instance <white>" + id
-                            + "</white>: real now=<white>" + time.realNow() + "</white>, dungeon now=<white>"
-                            + time.schedulerNow() + "</white>, speed=<white>" + time.timeScale()
-                            + "x</white>, offset=<white>" + time.instanceTimeOffset().getSeconds() + "s</white></gray>"),
+                    time -> DungeonMessages.send(sender, String.join("\n",
+                            "<aqua><bold>Instance time</bold></aqua>",
+                            "<gray>Instance: <white>" + id + "</white></gray>",
+                            "<gray>Real time: <white>" + time.realNow() + "</white></gray>",
+                            "<gray>Dungeon time: <white>" + time.schedulerNow() + "</white></gray>",
+                            "<gray>Test speed: <white>" + time.timeScale() + "x</white></gray>",
+                            "<gray>Advanced offset: <white>" + time.instanceTimeOffset().getSeconds()
+                                    + "s</white></gray>")),
                     () -> DungeonMessages.send(sender, DungeonMessages.error("Unknown active instance: <white>"
                             + id + "</white>")));
         } catch (RuntimeException exception) {
@@ -232,12 +237,10 @@ public final class DungeonPhaseFourCommand {
             DoorService.OpenResult result = doors.open(id,
                 () -> {
                         doorBlocks.render(generationWorld(), doors.info(id).orElseThrow());
-                        DungeonMessages.send(sender, DungeonMessages.success("Door open callback invoked once."));
                     });
             DungeonMessages.send(sender, result.opened() || result.alreadyOpen()
-                    ? DungeonMessages.success(result.detail() + " state=<white>"
-                    + result.door().state().name().toLowerCase(Locale.ROOT) + "</white>")
-                    : DungeonMessages.error(result.detail()));
+                    ? DungeonMessages.success(result.opened() ? "Door opened." : "Door is already open.")
+                    : DungeonMessages.error("The door could not be opened right now."));
         } catch (RuntimeException exception) { DungeonMessages.send(sender, DungeonMessages.error(message(exception))); }
     }
 
@@ -246,13 +249,17 @@ public final class DungeonPhaseFourCommand {
     public void protectionInspect(CommandSender sender) {
         if (!requireDebug(sender)) return;
         List<WorldProtectionService.InstanceRegion> active = regions.get();
-        DungeonMessages.send(sender, "<gray>Protection regions=<white>" + active.size()
-                + "</white>, teleport permits=<white>" + permits.size() + "</white>, policy=<white>"
-                + protection.getClass().getSimpleName() + "</white></gray>");
-        active.forEach(region -> DungeonMessages.send(sender, "<gray>instance=<white>" + region.instanceId()
-                + "</white>, world=<white>" + region.world() + "</white>, bounds=<white>"
-                + bounds(region.bounds()) + "</white>, participants=<white>" + region.participants().size()
-                + "</white></gray>"));
+        DungeonMessages.send(sender, String.join("\n",
+                "<aqua><bold>Protection overview</bold></aqua>",
+                "<gray>Regions: <white>" + active.size() + "</white></gray>",
+                "<gray>Teleport permits: <white>" + permits.size() + "</white></gray>",
+                "<gray>Policy: <white>" + protection.getClass().getSimpleName() + "</white></gray>"));
+        active.forEach(region -> DungeonMessages.send(sender, String.join("\n",
+                "<aqua><bold>Protected dungeon</bold></aqua>",
+                "<gray>Instance: <white>" + region.instanceId() + "</white></gray>",
+                "<gray>World: <white>" + region.world() + "</white></gray>",
+                "<gray>Bounds: <white>" + bounds(region.bounds()) + "</white></gray>",
+                "<gray>Participants: <white>" + region.participants().size() + "</white></gray>")));
     }
 
     @Subcommand("player snapshot")
@@ -328,15 +335,15 @@ public final class DungeonPhaseFourCommand {
     private boolean requireDebug(CommandSender sender) {
         if (debugEnabled.getAsBoolean()) return true;
         DungeonMessages.send(sender, DungeonMessages.warning(
-                "This is a debug-only command and is disabled while config.yml debug is false."));
+                "This administrative test command is unavailable while debug mode is disabled."));
         return false;
     }
 
     private static void sendDoor(CommandSender sender, DoorService.DoorSnapshot door) {
-        DungeonMessages.send(sender, DungeonMessages.success("Door <white>" + door.instanceId()
-                + "</white>: state=<white>" + door.state().name().toLowerCase(Locale.ROOT)
-                + "</white>, center=<white>" + point(door.center()) + "</white>, facing=<white>"
-                + door.outward().name().toLowerCase(Locale.ROOT) + "</white>, blocks=<white>"
+        DungeonMessages.send(sender, DungeonMessages.info("Door <white>" + door.instanceId()
+                + "</white> is <white>" + door.state().name().toLowerCase(Locale.ROOT)
+                + "</white>. Center: <white>" + point(door.center()) + "</white>; facing: <white>"
+                + door.outward().name().toLowerCase(Locale.ROOT) + "</white>; blocks: <white>"
                 + door.blocks().size() + "</white>."));
     }
 

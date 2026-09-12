@@ -4,15 +4,21 @@ import me.lidan.cavecrawlers.utils.MiniMessageUtils;
 import me.lidan.dungeonCrawlers.config.registry.ConfigRegistryService;
 import me.lidan.dungeonCrawlers.core.generation.GenerationService;
 import me.lidan.dungeonCrawlers.core.generation.SlotAllocator;
+import me.lidan.dungeonCrawlers.core.combat.CombatRoomService;
+import me.lidan.dungeonCrawlers.core.lifecycle.PlayerLifecycleService;
 import me.lidan.dungeonCrawlers.core.party.PartySnapshotPolicy;
+import me.lidan.dungeonCrawlers.core.portal.PortalEncounterService;
 import me.lidan.dungeonCrawlers.core.protection.TeleportPermitService;
 import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
+import me.lidan.dungeonCrawlers.core.score.ScoreService;
+import me.lidan.dungeonCrawlers.core.secret.SecretDiscoveryService;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
 import me.lidan.dungeonCrawlers.integration.PartyProvider;
 import me.lidan.dungeonCrawlers.integration.DungeonMessages;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Location;
 import org.bukkit.Server;
 import org.bukkit.World;
@@ -26,10 +32,13 @@ import revxrsal.commands.bukkit.annotation.CommandPermission;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 
 @Command("dungeon")
 public final class DungeonGenerationCommand {
@@ -45,6 +54,11 @@ public final class DungeonGenerationCommand {
     private final Consumer<UUID> preparationCancel;
     private final RunPreparationService runs;
     private final BooleanSupplier debugEnabled;
+    private final PlayerLifecycleService lifecycle;
+    private final SecretDiscoveryService secrets;
+    private final Function<UUID, ScoreService.FinalScoreSnapshot> scores;
+    private final CombatRoomService combat;
+    private final PortalEncounterService portal;
 
     public DungeonGenerationCommand(ConfigRegistryService configRegistry, PartyProvider parties,
                                     GenerationService generation, Server server, String generationWorldName,
@@ -59,6 +73,29 @@ public final class DungeonGenerationCommand {
                                     TeleportPermitService teleportPermits, Clock clock,
                                     Consumer<UUID> preparationCancel, RunPreparationService runs,
                                     BooleanSupplier debugEnabled) {
+        this(configRegistry, parties, generation, server, generationWorldName, teleportPermits, clock,
+                preparationCancel, runs, debugEnabled, null, null, ignored -> null, null, null);
+    }
+
+    public DungeonGenerationCommand(ConfigRegistryService configRegistry, PartyProvider parties,
+                                    GenerationService generation, Server server, String generationWorldName,
+                                    TeleportPermitService teleportPermits, Clock clock,
+                                    Consumer<UUID> preparationCancel, RunPreparationService runs,
+                                    BooleanSupplier debugEnabled, PlayerLifecycleService lifecycle,
+                                    SecretDiscoveryService secrets,
+                                    Function<UUID, ScoreService.FinalScoreSnapshot> scores) {
+        this(configRegistry, parties, generation, server, generationWorldName, teleportPermits, clock,
+                preparationCancel, runs, debugEnabled, lifecycle, secrets, scores, null, null);
+    }
+
+    public DungeonGenerationCommand(ConfigRegistryService configRegistry, PartyProvider parties,
+                                    GenerationService generation, Server server, String generationWorldName,
+                                    TeleportPermitService teleportPermits, Clock clock,
+                                    Consumer<UUID> preparationCancel, RunPreparationService runs,
+                                    BooleanSupplier debugEnabled, PlayerLifecycleService lifecycle,
+                                    SecretDiscoveryService secrets,
+                                    Function<UUID, ScoreService.FinalScoreSnapshot> scores,
+                                    CombatRoomService combat, PortalEncounterService portal) {
         this.configRegistry = configRegistry;
         this.parties = parties;
         this.generation = generation;
@@ -69,6 +106,11 @@ public final class DungeonGenerationCommand {
         this.preparationCancel = preparationCancel;
         this.runs = runs;
         this.debugEnabled = debugEnabled;
+        this.lifecycle = lifecycle;
+        this.secrets = secrets;
+        this.scores = scores;
+        this.combat = combat;
+        this.portal = portal;
     }
 
     @Subcommand("instance generate-debug")
@@ -110,23 +152,8 @@ public final class DungeonGenerationCommand {
         UUID id = resolve(sender, instanceId);
         if (id == null) return;
         generation.info(id).ifPresentOrElse(value -> {
-            SlotAllocator.SlotLease slot = slotFor(id);
-            GenerationService.PlayerSpawn spawn = generation.playerSpawn(id).orElse(null);
-            if (slot == null) {
-                DungeonMessages.send(sender, DungeonMessages.info("Instance " + value.instanceId()
-                        + ": status=<white>" + value.status().name().toLowerCase() + "</white>, slot=<white>"
-                        + value.slotId() + "</white>, participants=<white>" + value.participants().size()
-                        + "</white>, seed=<white>" + value.seed() + "</white>"));
-                return;
-            }
-            suggest(sender, "<green>Instance " + value.instanceId() + "</green> <gray>status=<white>"
-                    + value.status().name().toLowerCase() + "</white>, slot=<white>" + value.slotId()
-                    + "</white>, participants=<white>" + value.participants().size() + "</white>, seed=<white>"
-                    + value.seed() + "</white> origin=<white>" + point(slot.origin()) + "</white> usable=<white>"
-                    + bounds(slot.usableBounds()) + "</white>" + (spawn == null ? "" : " spawn=<white>"
-                    + point(spawn.point()) + "</white> facing yaw=<white>" + spawn.yaw() + "</white>")
-                    + " <gray>(click to teleport)</gray>",
-                    "/dungeon instance tp " + id);
+            boolean teleportable = slotFor(id) != null && generation.playerSpawn(id).isPresent();
+            sendInstance(sender, value, teleportable ? "/dungeon instance tp " + id : null);
         }, () -> DungeonMessages.send(sender, DungeonMessages.error("Unknown instance: <white>"
                 + instanceId + "</white>")));
     }
@@ -170,19 +197,8 @@ public final class DungeonGenerationCommand {
     public void instances(CommandSender sender) {
         var instances = generation.instances();
         DungeonMessages.send(sender, DungeonMessages.info("Instances: <white>" + instances.size() + "</white>"));
-        instances.forEach(instance -> {
-            SlotAllocator.SlotLease slot = slotFor(instance.instanceId());
-            GenerationService.PlayerSpawn spawn = generation.playerSpawn(instance.instanceId()).orElse(null);
-            String suffix = slot == null ? "" : " origin=<white>" + point(slot.origin())
-                    + "</white> usable=<white>" + bounds(slot.usableBounds()) + "</white>";
-            if (spawn != null) suffix += " spawn=<white>" + point(spawn.point()) + "</white> facing yaw=<white>"
-                    + spawn.yaw() + "</white>";
-            suggest(sender, "<aqua>Instance " + instance.instanceId() + "</aqua> <gray>status=<white>"
-                    + instance.status().name().toLowerCase() + "</white>, slot=<white>" + instance.slotId()
-                    + "</white>, participants=<white>" + instance.participants().size() + "</white>, seed=<white>"
-                    + instance.seed() + "</white>, detail=<white>" + instance.detail() + "</white>" + suffix
-                    + "</gray>", "/dungeon instance info " + instance.instanceId());
-        });
+        instances.forEach(instance -> sendInstance(sender, instance,
+                "/dungeon instance info " + instance.instanceId()));
     }
 
     @Subcommand("slots")
@@ -193,10 +209,10 @@ public final class DungeonGenerationCommand {
                 .SlotAllocator.SlotState.FREE).count();
         DungeonMessages.send(sender, DungeonMessages.info("Slots free: <white>" + free + "/" + slots.size()
                 + "</white>"));
-        slots.forEach(slot -> DungeonMessages.send(sender, "<gray>slot <white>" + slot.id()
-                + "</white>: state=<white>" + slot.state().name().toLowerCase() + "</white>, owner=<white>"
-                + (slot.instanceId() == null ? "none" : slot.instanceId()) + "</white>, origin=<white>"
-                + point(slot.origin()) + "</white>, usable=<white>" + bounds(slot.usableBounds())
+        slots.forEach(slot -> DungeonMessages.send(sender, "<gray>Slot <white>" + slot.id()
+                + "</white>  <white>" + slot.state().name() + "</white>  Owner: <white>"
+                + (slot.instanceId() == null ? "none" : slot.instanceId()) + "</white>  Origin: <white>"
+                + point(slot.origin()) + "</white>  Bounds: <white>" + bounds(slot.usableBounds())
                 + "</white></gray>"));
     }
 
@@ -204,10 +220,11 @@ public final class DungeonGenerationCommand {
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void recoveryStatus(CommandSender sender) {
         var status = generation.recoveryStatus();
-        DungeonMessages.send(sender, "<gray>Recovery: starts enabled=<white>" + status.startsEnabled()
-                + "</white>, running=<white>" + status.running() + "</white>, discovered=<white>"
-                + status.discovered() + "</white>, cleared=<white>" + status.cleared()
-                + "</white>, blockers=<white>" + String.join(", ", status.blockers())
+        DungeonMessages.send(sender, "<gray>Recovery <white>" + (status.running() ? "RUNNING" : "IDLE")
+                + "</white>  Starts: <white>" + (status.startsEnabled() ? "enabled" : "paused")
+                + "</white>  Found: <white>" + status.discovered() + "</white>  Cleared: <white>"
+                + status.cleared() + "</white>  Blockers: <white>"
+                + (status.blockers().isEmpty() ? "none" : String.join(", ", status.blockers()))
                 + "</white></gray>");
     }
 
@@ -233,12 +250,13 @@ public final class DungeonGenerationCommand {
         GenerationService.StartResult result = generation.start(new GenerationService.StartRequest(snapshot, floor,
                 party.snapshot(), seed, delayMillis));
         if (!result.accepted()) {
-            DungeonMessages.send(player, DungeonMessages.error(result.detail()));
+            DungeonMessages.send(player, DungeonMessages.error(playerError(result.detail())));
             return;
         }
-        suggest(player, "<green>Dungeon admitted</green> <gray>instance=<white>" + result.instanceId()
-                + "</white>, slot=<white>" + result.slotId()
-                + "</white> (click for instance info)</gray>",
+        suggest(player, "<green>Preparing " + floor.displayName() + " for "
+                + party.snapshot().onlineMembers().size()
+                + (party.snapshot().onlineMembers().size() == 1 ? " player" : " players") + ".</green> "
+                + "<gray>Click for instance details.</gray>",
                 "/dungeon instance info " + result.instanceId());
     }
 
@@ -247,6 +265,101 @@ public final class DungeonGenerationCommand {
                 .filter(slot -> instanceId.equals(slot.instanceId()))
                 .findFirst()
                 .orElse(null);
+    }
+
+    private void sendInstance(CommandSender sender, GenerationService.InstanceSnapshot instance, String command) {
+        UUID id = instance.instanceId();
+        var run = runs.info(id).orElse(null);
+        var players = lifecycle == null ? null : lifecycle.info(id).orElse(null);
+        var secretState = secrets == null ? null : secrets.info(id).orElse(null);
+        var score = scores.apply(id);
+        var combatState = combat == null ? null : combat.info(id).orElse(null);
+        var bossState = portal == null ? null : portal.info(id).orElse(null);
+        var slot = generation.slots().stream().filter(value -> value.id() == instance.slotId())
+                .findFirst().orElse(null);
+        var layout = generation.layoutPlan(id).orElse(null);
+        int playerCount = run == null ? instance.participants().size() : run.participants().size();
+        String state = instance.status() == GenerationService.InstanceStatus.DESTROYED || run == null
+                ? instance.status().name().replace('_', ' ')
+                : run.state().name().replace('_', ' ');
+        Duration elapsed = run == null || run.startedAt() == null ? null
+                : Duration.between(run.startedAt(), run.completedAt() == null ? clock.instant() : run.completedAt());
+        String runtime = elapsed == null ? "--" : duration(elapsed);
+        String count = playerCount + (playerCount == 1 ? " player" : " players");
+        Component line = Component.text(id.toString(), NamedTextColor.AQUA)
+                .append(Component.text("  " + instance.floorName() + "  " + state + "  " + count
+                        + "  " + runtime, NamedTextColor.GRAY));
+        List<String> details = new ArrayList<>();
+        details.add("Instance #" + id);
+        details.add("");
+        details.add("Floor: " + instance.floorName());
+        details.add("State: " + state);
+        details.add("Seed: " + instance.seed());
+        details.add("Players: " + playerCount);
+        if (players != null) {
+            long alive = players.players().stream().filter(value -> value.state()
+                    == PlayerLifecycleService.PlayerState.ALIVE).count();
+            long ghosts = players.players().stream().filter(value -> value.state()
+                    == PlayerLifecycleService.PlayerState.GHOST).count();
+            int deaths = players.players().stream().mapToInt(PlayerLifecycleService.PlayerSnapshot::deaths).sum();
+            details.add("Alive: " + alive);
+            details.add("Ghosts: " + ghosts);
+            details.add("Deaths: " + deaths);
+        }
+        if (secretState != null) {
+            long found = secretState.secrets().stream().filter(SecretDiscoveryService.SecretSnapshot::discovered).count();
+            details.add("Secrets: " + found + "/" + secretState.secrets().size());
+        }
+        if (score != null) details.add("Score: " + score.total() + " ("
+                + score.rank().name().replace('_', '+') + ")");
+        details.add("Runtime: " + (elapsed == null ? "Not started" : durationWords(elapsed)));
+        if (layout != null) details.add("Rooms: " + layout.placements().size());
+        if (combatState != null) {
+            var currentRoom = combatState.rooms().stream()
+                    .filter(room -> room.state() == CombatRoomService.RoomState.ACTIVE)
+                    .findFirst()
+                    .or(() -> combatState.rooms().stream()
+                            .filter(room -> room.state() == CombatRoomService.RoomState.CLEARED)
+                            .reduce((first, second) -> second));
+            details.add("Current room: " + currentRoom.map(room -> room.index() + " ("
+                    + room.state().name() + ")").orElse("not started"));
+        }
+        if (bossState != null) details.add("Boss: " + bossState.status().name());
+        if (run != null && run.runDeadline() != null) {
+            details.add("Timeout seconds remaining: " + secondsRemaining(run.runDeadline()));
+        }
+        if (run != null && run.completionDeadline() != null) {
+            details.add("Reward seconds remaining: " + secondsRemaining(run.completionDeadline()));
+        }
+        details.add("Slot: " + instance.slotId());
+        if (slot != null) details.add("Origin: " + point(slot.origin()));
+        if (instance.status() == GenerationService.InstanceStatus.CLEAR_FAILED) {
+            details.add("Cleanup issue: " + instance.detail());
+        }
+        if (command != null) {
+            line = line.clickEvent(ClickEvent.suggestCommand(command));
+            details.add("");
+            details.add("Click to suggest " + command);
+        }
+        DungeonMessages.send(sender, line.hoverEvent(HoverEvent.showText(
+                Component.text(String.join("\n", details), NamedTextColor.GRAY))));
+    }
+
+    private static String duration(Duration elapsed) {
+        long seconds = Math.max(0, elapsed.toSeconds());
+        long hours = seconds / 3600;
+        return hours == 0 ? "%d:%02d".formatted(seconds / 60, seconds % 60)
+                : "%d:%02d:%02d".formatted(hours, seconds / 60 % 60, seconds % 60);
+    }
+
+    private static String durationWords(Duration elapsed) {
+        long seconds = Math.max(0, elapsed.toSeconds());
+        long hours = seconds / 3600;
+        return (hours == 0 ? "" : hours + "h ") + (seconds / 60 % 60) + "m " + seconds % 60 + "s";
+    }
+
+    private long secondsRemaining(Instant deadline) {
+        return Math.max(0, Duration.between(clock.instant(), deadline).toSeconds());
     }
 
     static void suggest(CommandSender sender, String message, String command) {
@@ -259,7 +372,8 @@ public final class DungeonGenerationCommand {
 
     private static void report(CommandSender sender, GenerationService.ActionResult result) {
         DungeonMessages.send(sender, result.successful()
-                ? DungeonMessages.success(result.detail()) : DungeonMessages.error(result.detail()));
+                ? DungeonMessages.success(readableDetail(result.detail()))
+                : DungeonMessages.error(readableDetail(result.detail())));
     }
 
     private UUID resolve(CommandSender sender, String value) {
@@ -278,8 +392,24 @@ public final class DungeonGenerationCommand {
     private boolean requireDebug(CommandSender sender) {
         if (debugEnabled.getAsBoolean()) return true;
         DungeonMessages.send(sender, DungeonMessages.warning(
-                "This is a debug-only command and is disabled while config.yml debug is false."));
+                "This administrative test command is unavailable while debug mode is disabled."));
         return false;
+    }
+
+    private static String playerError(String detail) {
+        String normalized = detail == null ? "" : detail.toLowerCase(java.util.Locale.ROOT);
+        if (normalized.contains("capacity") || normalized.contains("slot")) {
+            return "The dungeon is temporarily full. Please try again shortly.";
+        }
+        if (normalized.contains("starts are blocked") || normalized.contains("recovery")) {
+            return "Dungeon starts are temporarily paused while recovery finishes.";
+        }
+        return "The dungeon could not be started right now. Please try again later.";
+    }
+
+    private static String readableDetail(String detail) {
+        if (detail == null || detail.isBlank()) return "No additional details.";
+        return detail.replace("=", ": ").replace("; ", " · ");
     }
 
     private static String point(Point point) {

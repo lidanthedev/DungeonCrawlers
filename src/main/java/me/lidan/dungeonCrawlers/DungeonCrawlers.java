@@ -448,7 +448,7 @@ public final class DungeonCrawlers extends JavaPlugin {
                 PartyProviders.forServer(getServer()), generation, getServer(),
                 generationWorldName,
                 teleportPermits, phaseClock(), phaseFiveCommand::cancelFromAdmin, runPreparation,
-                debugSettings::enabled));
+                debugSettings::enabled, lifecycle, phaseSeven, latestScores::get, combat, phaseNine));
         commandHandler.register(phaseFiveCommand);
         commandHandler.register(new DungeonPhaseSixCommand(combat, runPreparation, debugSettings::enabled));
         commandHandler.register(new DungeonPhaseSevenCommand(phaseSeven, runPreparation, debugSettings::enabled));
@@ -591,7 +591,7 @@ public final class DungeonCrawlers extends JavaPlugin {
             case RUN_WARNING -> notifyDeadline(players,
                     "<yellow>Dungeon time limit expires in <white>1 minute</white>.</yellow>");
             case RUN_FAILED -> {
-                notifyDeadline(players, "<red>Dungeon failed: <white>" + notice.detail() + "</white>.</red>");
+                notifyDeadline(players, "<red>" + runFailureMessage(notice.detail()) + "</red>");
                 players.forEach(player -> showLifecycleTitle(player, "<red>Dungeon Failed</red>",
                         "<yellow>Reading period: 10 seconds</yellow>", 5, 40, 10));
             }
@@ -606,6 +606,15 @@ public final class DungeonCrawlers extends JavaPlugin {
 
     private static void notifyDeadline(List<Player> players, String message) {
         players.forEach(player -> DungeonMessages.send(player, message));
+    }
+
+    private static String runFailureMessage(String detail) {
+        String normalized = detail == null ? "" : detail.toLowerCase(Locale.ROOT);
+        if (normalized.contains("time limit")) return "Dungeon failed: the time limit was reached.";
+        if (normalized.contains("no online active alive player")) {
+            return "Dungeon failed: no active players remain.";
+        }
+        return "Dungeon failed. The run has entered its reading period.";
     }
 
     private void notifyCombatRoom(CombatRoomService.RoomNotice notice) {

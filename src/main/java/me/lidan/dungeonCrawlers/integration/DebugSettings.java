@@ -23,7 +23,7 @@ public final class DebugSettings {
     public boolean require(CommandSender sender) {
         if (enabled()) return true;
         DungeonMessages.send(sender, DungeonMessages.warning(
-                "This is a debug-only command and is disabled in production."));
+                "This administrative test command is unavailable while debug mode is disabled."));
         return false;
     }
 }

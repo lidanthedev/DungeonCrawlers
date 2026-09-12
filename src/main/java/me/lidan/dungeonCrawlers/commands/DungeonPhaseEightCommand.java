@@ -11,6 +11,10 @@ import revxrsal.commands.annotation.Subcommand;
 import revxrsal.commands.annotation.SuggestWith;
 import revxrsal.commands.bukkit.annotation.CommandPermission;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
@@ -18,6 +22,9 @@ import java.util.function.BooleanSupplier;
 /** Phase 8 death, ghost, rejoin, escape, and wipe diagnostics. */
 @Command("dungeon")
 public final class DungeonPhaseEightCommand {
+    private static final DateTimeFormatter ADMIN_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z")
+            .withZone(ZoneId.systemDefault());
+
     private final PlayerLifecycleService lifecycle;
     private final RunPreparationService runs;
     private final DungeonPhaseFiveCommand phaseFive;
@@ -40,7 +47,7 @@ public final class DungeonPhaseEightCommand {
     @CommandPermission("dungeoncrawlers.use")
     public void escape(Player player) {
         if (runs.instanceFor(player.getUniqueId()).isEmpty()) {
-            send(player, "<red>You are not in a running dungeon.</red>");
+            send(player, DungeonMessages.error("You are not currently in a dungeon."));
             return;
         }
         phaseFive.leaveFromDungeon(player);
@@ -58,12 +65,16 @@ public final class DungeonPhaseEightCommand {
                      @SuggestWith(OfflinePlayerSuggestionProvider.class) OfflinePlayer player) {
         UUID id = parse(sender, instanceId);
         if (id == null) return;
-        lifecycle.player(id, player.getUniqueId()).ifPresentOrElse(value -> send(sender, "<gray>instance=<white>" + id
-                        + "</white> player=<white>" + playerLabel(player) + "</white> state=<white>"
-                        + value.state().name().toLowerCase() + "</white>"
-                        + " deaths=" + value.deaths() + " reviveAt="
-                        + (value.reviveAt() == null ? "none" : value.reviveAt()) + "</white></gray>"),
-                () -> send(sender, "<red>Unknown lifecycle player.</red>"));
+        lifecycle.player(id, player.getUniqueId()).ifPresentOrElse(value -> send(sender, String.join("\n",
+                        "<aqua><bold>Player status</bold></aqua>",
+                        "<gray>Instance: <white>" + id + "</white></gray>",
+                        "<gray>Player: <white>" + playerLabel(player) + "</white></gray>",
+                        "<gray>Connection: <white>" + (value.online() ? "Online" : "Offline") + "</white></gray>",
+                        "<gray>State: <white>" + displayName(value.state().name()) + "</white></gray>",
+                        "<gray>Deaths: <white>" + value.deaths() + "</white></gray>",
+                        "<gray>Revive: <white>" + (value.reviveAt() == null ? "Not scheduled"
+                                : formatInstant(value.reviveAt())) + "</white></gray>")),
+                () -> send(sender, DungeonMessages.error("No lifecycle record was found for that player in this dungeon.")));
     }
 
     @Subcommand("player death")
@@ -105,7 +116,7 @@ public final class DungeonPhaseEightCommand {
         UUID id = parse(sender, instanceId);
         if (id == null) return;
         var result = lifecycle.wipe(id, "admin wipe");
-        sendResult(sender, result.successful(), result.detail());
+        sendResult(sender, result.successful(), readableDetail(result.detail()));
     }
 
     private void transition(CommandSender sender, String instanceId, OfflinePlayer player,
@@ -113,14 +124,16 @@ public final class DungeonPhaseEightCommand {
         UUID id = parse(sender, instanceId);
         if (id == null) return;
         var result = transition.apply(id, player.getUniqueId());
-        sendResult(sender, result.successful(), "player=" + playerLabel(player) + " " + result.detail());
+        sendResult(sender, result.successful(), "Player <white>" + playerLabel(player) + "</white>: "
+                + readableDetail(result.detail()));
     }
 
     private UUID parse(CommandSender sender, String value) {
         try {
             return DungeonInstanceResolver.require(sender, value, runs);
         } catch (IllegalArgumentException exception) {
-            send(sender, "<red>" + exception.getMessage() + "</red>");
+            send(sender, DungeonMessages.error("Could not find that dungeon: <white>"
+                    + exception.getMessage() + "</white>"));
             return null;
         }
     }
@@ -130,8 +143,7 @@ public final class DungeonPhaseEightCommand {
     }
 
     private static void sendResult(CommandSender sender, boolean successful, String detail) {
-        String color = successful ? "green" : "red";
-        send(sender, "<" + color + ">" + detail + "</" + color + ">");
+        send(sender, successful ? DungeonMessages.success(detail) : DungeonMessages.error(detail));
     }
 
     private static void send(CommandSender sender, String message) {
@@ -141,8 +153,22 @@ public final class DungeonPhaseEightCommand {
     private boolean requireDebug(CommandSender sender) {
         if (debugEnabled.getAsBoolean()) return true;
         DungeonMessages.send(sender, DungeonMessages.warning(
-                "This is a debug-only command and is disabled while config.yml debug is false."));
+                "This administrative test command is unavailable while debug mode is disabled."));
         return false;
+    }
+
+    private static String displayName(String value) {
+        String readable = value.toLowerCase(Locale.ROOT).replace('_', ' ');
+        return Character.toUpperCase(readable.charAt(0)) + readable.substring(1);
+    }
+
+    private static String formatInstant(Instant instant) {
+        return ADMIN_TIME_FORMAT.format(instant);
+    }
+
+    private static String readableDetail(String detail) {
+        String readable = detail.replace("=", ": ").replace("; ", " · ");
+        return readable.isEmpty() ? readable : Character.toUpperCase(readable.charAt(0)) + readable.substring(1);
     }
 
     @FunctionalInterface

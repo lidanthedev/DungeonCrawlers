@@ -7,6 +7,8 @@ import me.lidan.cavecrawlers.utils.StringUtils;
 import me.lidan.dungeonCrawlers.config.registry.ConfigRegistryService;
 import me.lidan.dungeonCrawlers.core.generation.GenerationService;
 import me.lidan.dungeonCrawlers.core.claim.RewardClaimService;
+import me.lidan.dungeonCrawlers.core.claim.OfferMode;
+import me.lidan.dungeonCrawlers.core.claim.OfferState;
 import me.lidan.dungeonCrawlers.core.lifecycle.PlayerLifecycleService;
 import me.lidan.dungeonCrawlers.core.reward.RewardEntitlementService;
 import me.lidan.dungeonCrawlers.core.reward.RewardRoller;
@@ -140,16 +142,16 @@ public final class DungeonPhaseElevenCommand {
         if (id == null) return;
         RewardEntitlementService.RunSnapshot snapshot = rewards.info(id).orElse(null);
         if (snapshot == null) {
-            send(sender, false, "no reward entitlements registered");
+            send(sender, false, "No reward entitlements are registered for that dungeon.");
             return;
         }
-        send(sender, true, "instance=" + id + " score=" + snapshot.score().total()
-                + " players=" + snapshot.players().size());
+        send(sender, true, "Reward details for instance <white>" + id + "</white>: score <white>"
+                + snapshot.score().total() + "</white>; players <white>" + snapshot.players().size() + "</white>.");
         snapshot.players().values().stream().sorted(java.util.Comparator.comparing(value -> value.playerId().toString()))
                 .forEach(player -> DungeonMessages.send(sender,
-                        "<gray>player=<white>" + player.playerId() + "</white> mode=<white>"
-                                + player.mode().name().toLowerCase(java.util.Locale.ROOT)
-                                + "</white> offers=<white>" + player.offers().size() + "</white></gray>"));
+                        "<gray>Player <white>" + player.playerId() + "</white>: <white>"
+                                + modeLabel(player.mode()) + "</white> access; offers <white>"
+                                + player.offers().size() + "</white>.</gray>"));
         snapshot.players().values().stream().flatMap(player -> player.offers().values().stream())
                 .sorted(java.util.Comparator.comparing(RewardEntitlementService.RewardOffer::rewardId))
                 .forEach(offer -> {
@@ -157,12 +159,12 @@ public final class DungeonPhaseElevenCommand {
                                     .filter(player -> player.offers().containsValue(offer)).findFirst()
                                     .map(RewardEntitlementService.PlayerEntitlement::playerId).orElse(null))
                             .flatMap(record -> Optional.ofNullable(record.offers().get(offer.offerId())))
-                            .map(value -> " state=" + value.state().name().toLowerCase(java.util.Locale.ROOT)
-                                    + " claim=" + value.offerId()).orElse("");
-                    DungeonMessages.send(sender, "<gray>reward=<white>" + offer.rewardId()
-                            + "</white> locked=<white>" + offer.locked() + "</white> price=<white>"
-                            + offer.price() + "</white> rolls=<white>" + formatRolls(offer.rolls())
-                            + "</white>" + claimState + "</gray>");
+                            .map(value -> "; claim <white>" + stateLabel(value.state())
+                                    + "</white> (id <white>" + value.offerId() + "</white>)").orElse("");
+                    DungeonMessages.send(sender, "<gray>Reward <white>" + offer.rewardId()
+                            + "</white>: <white>" + offerAvailability(offer.locked()) + "</white>; price <gold>"
+                            + priceLabel(offer.price()) + "</gold>; items <white>" + formatRolls(offer.rolls())
+                            + "</white>" + claimState + ".</gray>");
                 });
     }
 
@@ -177,16 +179,16 @@ public final class DungeonPhaseElevenCommand {
         UUID playerId = player.getUniqueId();
         var entitlement = rewards.open(id, playerId).orElse(null);
         if (entitlement == null) {
-            send(sender, false, "player has no active reward entitlement");
+            send(sender, false, "That player has no active reward entitlement.");
             return;
         }
-        send(sender, true, "player=" + playerLabel(player) + " mode="
-                + entitlement.mode().name().toLowerCase(java.util.Locale.ROOT));
+        send(sender, true, "Player <white>" + playerLabel(player) + "</white> has <white>"
+                + modeLabel(entitlement.mode()) + "</white> reward access.");
         entitlement.offers().values().stream().sorted(java.util.Comparator.comparing(
                         RewardEntitlementService.RewardOffer::rewardId))
-                .forEach(offer -> DungeonMessages.send(sender, "<gray>reward=<white>" + offer.rewardId()
-                        + "</white> locked=<white>" + offer.locked() + "</white> rolls=<white>"
-                        + formatRolls(offer.rolls()) + "</white></gray>"));
+                .forEach(offer -> DungeonMessages.send(sender, "<gray>Reward <white>" + offer.rewardId()
+                        + "</white>: <white>" + offerAvailability(offer.locked()) + "</white>; items <white>"
+                        + formatRolls(offer.rolls()) + "</white>.</gray>"));
     }
 
     @Subcommand("reward open")
@@ -204,7 +206,7 @@ public final class DungeonPhaseElevenCommand {
         Objects.requireNonNull(instanceId, "instanceId");
         RewardEntitlementService.PlayerEntitlement entitlement = rewards.open(instanceId, player.getUniqueId()).orElse(null);
         if (entitlement == null) {
-            send(player, false, "no active reward entitlement");
+            send(player, false, "No active reward entitlement was found.");
             return;
         }
         openOverview(player, instanceId, entitlement);
@@ -219,11 +221,11 @@ public final class DungeonPhaseElevenCommand {
         if (id == null) return;
         var offer = rewards.preview(id, player.getUniqueId(), rewardId).orElse(null);
         if (offer == null) {
-            send(player, false, "reward is unavailable or expired");
+            send(player, false, "This reward is unavailable or has expired.");
             return;
         }
         if (offer.locked()) {
-            send(player, false, "reward is locked; score requirement not met");
+            send(player, false, "This reward is locked because your score is too low.");
             return;
         }
         openPreview(player, id, offer);
@@ -244,7 +246,7 @@ public final class DungeonPhaseElevenCommand {
     public void rewardReconcile(CommandSender sender, String claimId, String decision, String evidence) {
         if (!requireDebug(sender)) return;
         if (claims == null) {
-            send(sender, false, "reward claiming is not enabled");
+            send(sender, false, "Reward purchases are not enabled on this server.");
             return;
         }
         UUID id;
@@ -253,12 +255,17 @@ public final class DungeonPhaseElevenCommand {
             id = UUID.fromString(claimId);
             parsed = RewardClaimService.Decision.valueOf(decision.replace('-', '_').toUpperCase(java.util.Locale.ROOT));
         } catch (IllegalArgumentException exception) {
-            send(sender, false, "claim id or decision is invalid; use charged or not-charged");
+            send(sender, false, "Claim ID or decision is invalid. Use charged or not-charged.");
             return;
         }
-        claims.reconcile(id, parsed, sender.getName(), evidence, result -> send(sender, result.successful(),
-                "claim=" + id + " state=" + result.state().name().toLowerCase(java.util.Locale.ROOT)
-                        + " detail=" + result.detail()));
+        claims.reconcile(id, parsed, sender.getName(), evidence, result -> {
+            String state = result.state() == null ? "unresolved" : stateLabel(result.state());
+            String message = result.successful()
+                    ? "Claim <white>" + id + "</white> reconciled as <white>" + state + "</white>."
+                    : "Claim <white>" + id + "</white> could not be reconciled; current state is <white>"
+                    + state + "</white>.";
+            send(sender, result.successful(), message + " Details: " + readableDetail(result.detail()));
+        });
     }
 
     @Subcommand("reward delivery-pause-test")
@@ -266,7 +273,7 @@ public final class DungeonPhaseElevenCommand {
     public void rewardDeliveryPauseTest(CommandSender sender, String mode) {
         if (!requireDebug(sender)) return;
         if (claims == null) {
-            send(sender, false, "reward claiming is not enabled");
+            send(sender, false, "Reward purchases are not enabled on this server.");
             return;
         }
         Boolean paused = switch (mode.toLowerCase(java.util.Locale.ROOT)) {
@@ -275,12 +282,13 @@ public final class DungeonPhaseElevenCommand {
             default -> null;
         };
         if (paused == null) {
-            send(sender, false, "use on or off");
+            send(sender, false, "Use on or off.");
             return;
         }
         claims.setDeliveryPausedForTesting(paused);
-        send(sender, true, "reward delivery pause test=" + (paused ? "ON" : "OFF")
-                + (paused ? "; next delivery remains owned until restart/rejoin" : "; delivery resumes"));
+        send(sender, true, paused
+                ? "Reward delivery pause test enabled. The next delivery will wait for recovery."
+                : "Reward delivery pause test disabled. Pending deliveries will resume.");
     }
 
     @Subcommand("reward delivery-recover-test")
@@ -288,35 +296,31 @@ public final class DungeonPhaseElevenCommand {
     public void rewardDeliveryRecoverTest(Player player) {
         if (!requireDebug(player)) return;
         if (claims == null) {
-            send(player, false, "reward claiming is not enabled");
+            send(player, false, "Reward purchases are not enabled on this server.");
             return;
         }
         claims.setDeliveryPausedForTesting(false);
-        DungeonMessages.send(player, "<yellow>Running reward delivery recovery test...</yellow>");
+        DungeonMessages.send(player, DungeonMessages.info("Attempting reward delivery recovery..."));
         claims.deliverPending(player, delivery -> RewardDeliveryMessages.send(player, delivery));
     }
 
     public void claimReward(Player player, UUID instanceId, String rewardId) {
         if (claims == null) {
-            send(player, false, "BUY is preview-only until Phase 12 is enabled");
+            send(player, false, "Reward purchases are not enabled on this server.");
             return;
         }
-        DungeonMessages.send(player, "<yellow>Purchase processing...</yellow>");
+        DungeonMessages.send(player, DungeonMessages.info("Processing reward purchase..."));
         claims.claim(instanceId, player.getUniqueId(), rewardId, player, result -> {
             if (!result.successful()) {
                 if (result.insufficientFunds()) {
                     player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
-                    DungeonMessages.send(player, "<red>Not enough money for this reward.</red>");
+                    DungeonMessages.send(player, DungeonMessages.error("Not enough money for this reward."));
                     return;
                 }
-                String color = result.status() == RewardClaimService.ClaimStatus.RECONCILIATION_REQUIRED
-                        ? "red" : "yellow";
-                DungeonMessages.send(player, "<" + color + ">Reward claim: "
-                        + result.status().name().toLowerCase(java.util.Locale.ROOT) + " - " + result.detail()
-                        + "</" + color + ">");
+                DungeonMessages.send(player, DungeonMessages.error(claimFailureMessage(result)));
                 return;
             }
-            DungeonMessages.send(player, "<green>Reward purchased. Delivering items...</green>");
+            DungeonMessages.send(player, DungeonMessages.success("Reward purchased. Delivering your items..."));
             claims.deliver(instanceId, player.getUniqueId(), player,
                     delivery -> RewardDeliveryMessages.send(player, delivery));
         });
@@ -332,7 +336,7 @@ public final class DungeonPhaseElevenCommand {
         var context = generation.layoutContext(id).orElse(null);
         var run = runs.info(id).orElse(null);
         if (context == null || run == null) {
-            send(sender, false, "generated run not found");
+            send(sender, false, "Generated run not found.");
             return;
         }
         var lifecycleSnapshot = lifecycle == null ? null : lifecycle.info(id).orElse(null);
@@ -342,11 +346,11 @@ public final class DungeonPhaseElevenCommand {
             rewards.resetTest(id);
             rewards.register(new RewardEntitlementService.Completion(id, context.seed(), Instant.now(), maxScore(),
                     participants, context.floor().rewards()));
-            send(sender, true, "reward entitlements reset; use /dungeon reward open " + id);
+            send(sender, true, "Reward entitlements reset. Use /dungeon reward open " + id + ".");
         };
         if (claims == null) reset.run();
         else claims.resetInstance(id, cleared -> {
-            if (!cleared) send(sender, false, "could not clear durable reward claims");
+            if (!cleared) send(sender, false, "Could not clear saved reward claims.");
             else reset.run();
         });
     }
@@ -584,10 +588,58 @@ public final class DungeonPhaseElevenCommand {
                 .collect(java.util.stream.Collectors.joining(", "));
     }
 
+    private static String modeLabel(OfferMode mode) {
+        return mode == OfferMode.LIVE ? "live" : "recovered";
+    }
+
+    private static String stateLabel(OfferState state) {
+        return switch (state) {
+            case AVAILABLE -> "available";
+            case OFFER_BLOCKED_PROVIDER -> "waiting for economy provider";
+            case OFFER_PAYLOAD_QUARANTINED -> "item data needs repair";
+            case DEBIT_ATTEMPTED -> "payment needs review";
+            case RECONCILIATION_REQUIRED -> "needs staff review";
+            case OWNED -> "purchased";
+            case OWNED_DELIVERY_QUARANTINED -> "delivery needs review";
+            case DELIVERY_PENDING -> "delivery pending";
+            case DELIVERED -> "delivered";
+            case EXPIRED -> "expired";
+        };
+    }
+
+    private static String offerAvailability(boolean locked) {
+        return locked ? "Locked" : "Available";
+    }
+
+    private static String claimFailureMessage(RewardClaimService.ClaimResult result) {
+        return switch (result.status()) {
+            case PROCESSING -> "Another reward purchase is still processing. Please wait a moment.";
+            case ALREADY_CLAIMED -> "This reward has already been claimed.";
+            case EXPIRED -> "This reward is no longer available.";
+            case RECONCILIATION_REQUIRED -> "This reward purchase needs staff review. Choose another reward.";
+            case PERSISTENCE_FAILED -> "Your reward could not be saved. Please try again later.";
+            case BLOCKED_PROVIDER -> "Reward purchases are temporarily unavailable.";
+            case BLOCKED_PAYLOAD -> "This reward is temporarily unavailable.";
+            case REJECTED -> "Reward purchase declined: " + sentence(result.detail());
+            case CLAIMED -> "Reward purchase completed.";
+        };
+    }
+
     private boolean requireDebug(CommandSender sender) {
         if (debugEnabled.getAsBoolean()) return true;
         DungeonMessages.send(sender, DungeonMessages.warning(
-                "This is a debug-only command and is disabled while config.yml debug is false."));
+                "This administrative test command is unavailable while debug mode is disabled."));
         return false;
+    }
+
+    private static String sentence(String detail) {
+        String value = readableDetail(detail).trim();
+        if (value.isEmpty()) return "the reward is no longer available.";
+        return value.endsWith(".") || value.endsWith("!") || value.endsWith("?") ? value : value + ".";
+    }
+
+    private static String readableDetail(String detail) {
+        if (detail == null || detail.isBlank()) return "No additional details.";
+        return detail.replace("=", ": ").replace("; ", " · ");
     }
 }

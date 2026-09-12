@@ -9,6 +9,7 @@ import revxrsal.commands.annotation.Subcommand;
 import revxrsal.commands.annotation.SuggestWith;
 import revxrsal.commands.bukkit.annotation.CommandPermission;
 
+import java.util.Locale;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -63,9 +64,10 @@ public final class DungeonPhaseNineCommand {
         PortalEncounterService.BossResult result = encounters.status(id);
         send(sender, result);
         if (result.successful() && result.snapshot() != null) {
-            DungeonMessages.send(sender, "<gray>status=<white>"
-                    + result.snapshot().status().name().toLowerCase() + "</white> reward chest=<white>"
-                    + point(result.snapshot().rewardChest()) + "</white></gray>");
+            DungeonMessages.send(sender, String.join("\n",
+                    "<aqua><bold>Boss encounter</bold></aqua>",
+                    "<gray>Status: <white>" + displayName(result.snapshot().status().name()) + "</white></gray>",
+                    "<gray>Reward chest: <white>" + point(result.snapshot().rewardChest()) + "</white></gray>"));
         }
     }
 
@@ -114,7 +116,33 @@ public final class DungeonPhaseNineCommand {
         } else {
             successful = false; detail = "unsupported portal operation result";
         }
-        DungeonMessages.send(sender, successful ? DungeonMessages.success(detail) : DungeonMessages.error(detail));
+        String readable = readableDetail(detail);
+        DungeonMessages.send(sender, successful ? DungeonMessages.success(readable) : DungeonMessages.error(readable));
+    }
+
+    private static String displayName(String value) {
+        String readable = value.toLowerCase(Locale.ROOT).replace('_', ' ');
+        return Character.toUpperCase(readable.charAt(0)) + readable.substring(1);
+    }
+
+    private static String readableDetail(String detail) {
+        String readable = detail
+                .replace("boss encounter preparing encounter=", "Boss encounter is preparing. Encounter: ")
+                .replace("boss encounter active encounter=", "Boss encounter is active. Encounter: ")
+                .replace("boss defeated; reward location=", "Boss defeated. Reward chest: ")
+                .replace("portal countdown started by ", "Boss countdown started by ")
+                .replace("portal countdown aborted by ", "Boss countdown cancelled by ")
+                .replace("portal countdown already active", "The boss countdown is already active.")
+                .replace("portal countdown is not active", "The boss countdown is not active.")
+                .replace("boss encounter already active", "The boss encounter is already active.")
+                .replace("boss already defeated", "The boss has already been defeated.")
+                .replace("unknown portal instance ", "Unknown dungeon: ")
+                .replace("central update is not registered for this instance", "The boss portal is temporarily unavailable.")
+                .replace("run is not running", "The dungeon is not currently running.")
+                .replace("; ", " · ")
+                .replace("=", ": ");
+        if (readable.isEmpty()) return readable;
+        return Character.toUpperCase(readable.charAt(0)) + readable.substring(1);
     }
 
     private static String point(me.lidan.dungeonCrawlers.core.template.TemplateModels.Point point) {
