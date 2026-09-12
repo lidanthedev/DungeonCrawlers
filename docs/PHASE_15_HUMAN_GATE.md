@@ -182,3 +182,6 @@ tests remain part of the full suite.
 - 2026-09-12: The user completed the player-facing active-run deadline check with
   `/dungeon tick speed-test 600`: the one-minute warning appeared, the run reached its time limit,
   and failed-run cleanup restored the player. The active-run warning check is now passed.
+- 2026-09-12: The user also confirmed the instance-scoped deadline check reached
+  `Dungeon failed: run time limit reached.`, emitted the expected failed score, and completed failed-run
+  cleanup with the player restored. The instance-scoped advance path is working as intended.
