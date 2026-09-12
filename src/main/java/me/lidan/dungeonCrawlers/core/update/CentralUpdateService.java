@@ -1,6 +1,7 @@
 package me.lidan.dungeonCrawlers.core.update;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -13,11 +14,17 @@ import java.util.function.Consumer;
 
 /** One clock-driven update loop shared by all active instances. */
 public final class CentralUpdateService {
+    public static final long MIN_TIME_SCALE = 1L;
+    public static final long MAX_TIME_SCALE = 3_600L;
+
     private final Clock clock;
     private final Consumer<String> diagnostics;
     private final Map<UUID, List<Consumer<Instant>>> updates = new LinkedHashMap<>();
     private boolean frozen;
     private int activeTicks;
+    private long timeScale = MIN_TIME_SCALE;
+    private Instant scaleRealAnchor;
+    private Instant scaleVirtualAnchor;
 
     public CentralUpdateService(Clock clock, Consumer<String> diagnostics) {
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -58,7 +65,50 @@ public final class CentralUpdateService {
     }
 
     public TickReport tick() {
-        return tick(clock.instant());
+        return tick(scaledNow(clock.instant()));
+    }
+
+    /**
+     * Returns the scheduler timestamp after applying the optional admin test speed.
+     * Explicit timestamps passed to {@link #tick(Instant)} remain unscaled for
+     * deterministic boundary tests.
+     */
+    private synchronized Instant scaledNow(Instant realNow) {
+        if (timeScale == MIN_TIME_SCALE) return realNow;
+        if (scaleRealAnchor == null || scaleVirtualAnchor == null) {
+            scaleRealAnchor = realNow;
+            scaleVirtualAnchor = realNow;
+        }
+        return scaleVirtualAnchor.plus(Duration.between(scaleRealAnchor, realNow).multipliedBy(timeScale));
+    }
+
+    /** Changes the scheduler's virtual elapsed-time rate for an admin test. */
+    public synchronized void setTimeScale(long multiplier) {
+        if (multiplier < MIN_TIME_SCALE || multiplier > MAX_TIME_SCALE) {
+            throw new IllegalArgumentException("time scale must be in " + MIN_TIME_SCALE + ".." + MAX_TIME_SCALE);
+        }
+        Instant realNow = clock.instant();
+        Instant virtualNow = scaledNow(realNow);
+        if (multiplier == MIN_TIME_SCALE) {
+            timeScale = MIN_TIME_SCALE;
+            scaleRealAnchor = null;
+            scaleVirtualAnchor = null;
+            return;
+        }
+        timeScale = multiplier;
+        scaleRealAnchor = realNow;
+        scaleVirtualAnchor = virtualNow;
+    }
+
+    /** Restores normal one-to-one scheduler time after an admin test. */
+    public synchronized void resetTimeScale() {
+        timeScale = MIN_TIME_SCALE;
+        scaleRealAnchor = null;
+        scaleVirtualAnchor = null;
+    }
+
+    public synchronized long timeScale() {
+        return timeScale;
     }
 
     public TickReport tick(Instant now) {

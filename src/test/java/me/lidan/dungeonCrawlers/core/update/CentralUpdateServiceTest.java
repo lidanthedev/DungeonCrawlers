@@ -109,6 +109,34 @@ class CentralUpdateServiceTest {
     }
 
     @Test
+    void schedulerTickUsesAcceleratedElapsedTimeAndCanBeReset() {
+        Instant start = Instant.parse("2026-01-01T00:00:00Z");
+        AdvancingClock clock = new AdvancingClock(start);
+        List<Instant> observed = new ArrayList<>();
+        CentralUpdateService service = new CentralUpdateService(clock, ignored -> { });
+        service.register(UUID.randomUUID(), observed::add);
+
+        service.setTimeScale(60);
+        clock.advanceSeconds(2);
+        service.tick();
+        assertEquals(List.of(start.plusSeconds(120)), observed);
+
+        service.resetTimeScale();
+        clock.advanceSeconds(2);
+        service.tick();
+        assertEquals(List.of(start.plusSeconds(120), start.plusSeconds(4)), observed);
+    }
+
+    @Test
+    void schedulerTimeScaleRejectsUnsafeValues() {
+        CentralUpdateService service = new CentralUpdateService(Clock.systemUTC(), ignored -> { });
+
+        assertThrows(IllegalArgumentException.class, () -> service.setTimeScale(0));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.setTimeScale(CentralUpdateService.MAX_TIME_SCALE + 1));
+    }
+
+    @Test
     void freezeStopsRacingTicksAndRejectsNewRegistrations() {
         CentralUpdateService service = new CentralUpdateService(Clock.systemUTC(), ignored -> { });
         UUID instance = UUID.randomUUID();
@@ -168,6 +196,33 @@ class CentralUpdateServiceTest {
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new AssertionError(exception);
+        }
+    }
+
+    private static final class AdvancingClock extends Clock {
+        private Instant current;
+
+        private AdvancingClock(Instant current) {
+            this.current = current;
+        }
+
+        @Override
+        public ZoneOffset getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(java.time.ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return current;
+        }
+
+        private void advanceSeconds(long seconds) {
+            current = current.plusSeconds(seconds);
         }
     }
 }

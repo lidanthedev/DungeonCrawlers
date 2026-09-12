@@ -87,6 +87,26 @@ public final class DungeonPhaseFourCommand {
         sender.sendMessage("[PASS] test tick clock reset");
     }
 
+    @Subcommand("tick speed-test")
+    @CommandPermission("dungeoncrawlers.admin.generation")
+    public void tickSpeed(CommandSender sender, long multiplier) {
+        if (multiplier < CentralUpdateService.MIN_TIME_SCALE
+                || multiplier > CentralUpdateService.MAX_TIME_SCALE) {
+            sender.sendMessage("[FAIL] test tick speed must be in " + CentralUpdateService.MIN_TIME_SCALE
+                    + ".." + CentralUpdateService.MAX_TIME_SCALE);
+            return;
+        }
+        updates.setTimeScale(multiplier);
+        sender.sendMessage("[PASS] dungeon test time speed=" + multiplier + "x real time");
+    }
+
+    @Subcommand("tick speed-reset-test")
+    @CommandPermission("dungeoncrawlers.admin.generation")
+    public void resetTickSpeed(CommandSender sender) {
+        updates.resetTimeScale();
+        sender.sendMessage("[PASS] dungeon test time speed reset to 1x real time");
+    }
+
     @Subcommand("door register-test")
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void registerDoor(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
