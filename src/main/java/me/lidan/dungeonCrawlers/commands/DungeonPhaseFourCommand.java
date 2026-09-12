@@ -23,6 +23,7 @@ import revxrsal.commands.annotation.SuggestWith;
 import revxrsal.commands.bukkit.annotation.CommandPermission;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.UUID;
@@ -44,7 +45,6 @@ public final class DungeonPhaseFourCommand {
     private final BukkitDoorBlockService doorBlocks = new BukkitDoorBlockService();
     private final Supplier<List<WorldProtectionService.InstanceRegion>> regions;
     private final RunPreparationService runs;
-    private Instant testTick;
 
     public DungeonPhaseFourCommand(CentralUpdateService updates, DoorService doors,
                                    WorldProtectionService protection, TeleportPermitService permits,
@@ -66,16 +66,24 @@ public final class DungeonPhaseFourCommand {
         this.runs = java.util.Objects.requireNonNull(runs);
     }
 
-    @Subcommand("tick advance-test")
+    @Subcommand("tick advance")
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void tickAdvance(CommandSender sender, long seconds) {
+        advanceTicks(sender, seconds);
+    }
+
+    @Subcommand("tick advance-test")
+    @CommandPermission("dungeoncrawlers.admin.generation")
+    public void tickAdvanceTest(CommandSender sender, long seconds) {
+        advanceTicks(sender, seconds);
+    }
+
+    private void advanceTicks(CommandSender sender, long seconds) {
         if (seconds < 0 || seconds > 3_600) {
             sender.sendMessage("[FAIL] test tick seconds must be in 0..3600");
             return;
         }
-        Instant base = testTick == null ? clock.instant() : testTick;
-        testTick = base.plusSeconds(seconds);
-        CentralUpdateService.TickReport report = updates.tick(testTick);
+        CentralUpdateService.TickReport report = updates.advanceTime(Duration.ofSeconds(seconds));
         sender.sendMessage("[" + (report.successful() ? "PASS" : "FAIL") + "] tick=" + report.now()
                 + " attempted=" + report.attempted() + " failures=" + report.failures());
     }
@@ -83,8 +91,17 @@ public final class DungeonPhaseFourCommand {
     @Subcommand("tick reset-test")
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void resetTestTick(CommandSender sender) {
-        testTick = null;
+        updates.resetManualTime();
         sender.sendMessage("[PASS] test tick clock reset");
+    }
+
+    @Subcommand("tick time")
+    @CommandPermission("dungeoncrawlers.admin.generation")
+    public void tickTime(CommandSender sender) {
+        CentralUpdateService.TimeSnapshot time = updates.time();
+        sender.sendMessage("[PASS] real=" + time.realNow() + " dungeon=" + time.schedulerNow()
+                + " speed=" + time.timeScale() + "x manualAdvance="
+                + time.manualTimeOffset().getSeconds() + "s");
     }
 
     @Subcommand("tick speed-test")

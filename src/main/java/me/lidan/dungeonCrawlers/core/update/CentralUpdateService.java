@@ -25,6 +25,7 @@ public final class CentralUpdateService {
     private long timeScale = MIN_TIME_SCALE;
     private Instant scaleRealAnchor;
     private Instant scaleVirtualAnchor;
+    private Duration manualTimeOffset = Duration.ZERO;
 
     public CentralUpdateService(Clock clock, Consumer<String> diagnostics) {
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -65,16 +66,19 @@ public final class CentralUpdateService {
     }
 
     public TickReport tick() {
-        return tick(scaledNow(clock.instant()));
+        return tick(schedulerNow(clock.instant()));
     }
 
     /**
-     * Returns the scheduler timestamp after applying the optional admin test speed.
+     * Returns the scheduler timestamp after applying the optional admin test speed and time jump.
      * Explicit timestamps passed to {@link #tick(Instant)} remain unscaled for
      * deterministic boundary tests.
      */
+    private synchronized Instant schedulerNow(Instant realNow) {
+        return scaledNow(realNow).plus(manualTimeOffset);
+    }
+
     private synchronized Instant scaledNow(Instant realNow) {
-        if (timeScale == MIN_TIME_SCALE) return realNow;
         if (scaleRealAnchor == null || scaleVirtualAnchor == null) {
             scaleRealAnchor = realNow;
             scaleVirtualAnchor = realNow;
@@ -89,12 +93,6 @@ public final class CentralUpdateService {
         }
         Instant realNow = clock.instant();
         Instant virtualNow = scaledNow(realNow);
-        if (multiplier == MIN_TIME_SCALE) {
-            timeScale = MIN_TIME_SCALE;
-            scaleRealAnchor = null;
-            scaleVirtualAnchor = null;
-            return;
-        }
         timeScale = multiplier;
         scaleRealAnchor = realNow;
         scaleVirtualAnchor = virtualNow;
@@ -102,13 +100,37 @@ public final class CentralUpdateService {
 
     /** Restores normal one-to-one scheduler time after an admin test. */
     public synchronized void resetTimeScale() {
+        Instant realNow = clock.instant();
+        Instant virtualNow = scaledNow(realNow);
         timeScale = MIN_TIME_SCALE;
-        scaleRealAnchor = null;
-        scaleVirtualAnchor = null;
+        scaleRealAnchor = realNow;
+        scaleVirtualAnchor = virtualNow;
     }
 
     public synchronized long timeScale() {
         return timeScale;
+    }
+
+    /** Advances the scheduler timeline and dispatches one tick at the new time. */
+    public TickReport advanceTime(Duration amount) {
+        Objects.requireNonNull(amount, "amount");
+        if (amount.isNegative()) throw new IllegalArgumentException("time advance must not be negative");
+        Instant advanced;
+        synchronized (this) {
+            advanced = schedulerNow(clock.instant()).plus(amount);
+            manualTimeOffset = manualTimeOffset.plus(amount);
+        }
+        return tick(advanced);
+    }
+
+    /** Clears admin time jumps while leaving the selected rate unchanged. */
+    public synchronized void resetManualTime() {
+        manualTimeOffset = Duration.ZERO;
+    }
+
+    public synchronized TimeSnapshot time() {
+        Instant realNow = clock.instant();
+        return new TimeSnapshot(realNow, schedulerNow(realNow), timeScale, manualTimeOffset);
     }
 
     public TickReport tick(Instant now) {
@@ -199,6 +221,17 @@ public final class CentralUpdateService {
 
         public boolean successful() {
             return failures.isEmpty();
+        }
+    }
+
+    public record TimeSnapshot(Instant realNow, Instant schedulerNow, long timeScale, Duration manualTimeOffset) {
+        public TimeSnapshot {
+            Objects.requireNonNull(realNow, "realNow");
+            Objects.requireNonNull(schedulerNow, "schedulerNow");
+            Objects.requireNonNull(manualTimeOffset, "manualTimeOffset");
+            if (timeScale < MIN_TIME_SCALE || timeScale > MAX_TIME_SCALE) {
+                throw new IllegalArgumentException("timeScale is outside the supported range");
+            }
         }
     }
 }

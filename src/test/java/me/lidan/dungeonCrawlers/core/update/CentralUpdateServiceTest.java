@@ -3,6 +3,7 @@ package me.lidan.dungeonCrawlers.core.update;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -124,7 +125,27 @@ class CentralUpdateServiceTest {
         service.resetTimeScale();
         clock.advanceSeconds(2);
         service.tick();
-        assertEquals(List.of(start.plusSeconds(120), start.plusSeconds(4)), observed);
+        assertEquals(List.of(start.plusSeconds(120), start.plusSeconds(122)), observed);
+    }
+
+    @Test
+    void manualAdvancePersistsAcrossSchedulerTicksAndCanBeReset() {
+        Instant start = Instant.parse("2026-01-01T00:00:00Z");
+        AdvancingClock clock = new AdvancingClock(start);
+        List<Instant> observed = new ArrayList<>();
+        CentralUpdateService service = new CentralUpdateService(clock, ignored -> { });
+        service.register(UUID.randomUUID(), observed::add);
+
+        CentralUpdateService.TickReport advanced = service.advanceTime(Duration.ofSeconds(60));
+        assertEquals(start.plusSeconds(60), advanced.now());
+        clock.advanceSeconds(2);
+        service.tick();
+        assertEquals(List.of(start.plusSeconds(60), start.plusSeconds(62)), observed);
+        assertEquals(start.plusSeconds(62), service.time().schedulerNow());
+        assertEquals(Duration.ofSeconds(60), service.time().manualTimeOffset());
+
+        service.resetManualTime();
+        assertEquals(start.plusSeconds(2), service.time().schedulerNow());
     }
 
     @Test
