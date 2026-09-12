@@ -15,6 +15,8 @@ import java.util.UUID;
 
 /** Main-thread renderer for progress reported by asynchronous DungeonCrawlers work. */
 public final class BukkitProgressBarService implements ProgressBarService {
+    private static final String ADMIN_PERMISSION = "dungeoncrawlers.admin";
+
     private final Plugin plugin;
     private final Map<UUID, ActiveTask> active = new HashMap<>();
     private volatile boolean closed;
@@ -121,7 +123,7 @@ public final class BukkitProgressBarService implements ProgressBarService {
         private ActiveTask(String title, Collection<? extends Player> players) {
             this.title = Objects.requireNonNull(title, "title");
             for (Player player : players) {
-                if (player == null || !player.isOnline()) continue;
+                if (player == null || !player.isOnline() || !player.hasPermission(ADMIN_PERMISSION)) continue;
                 BossBar bar = Bukkit.createBossBar(title, BarColor.BLUE, BarStyle.SOLID);
                 bar.addPlayer(player);
                 bars.put(player.getUniqueId(), bar);
