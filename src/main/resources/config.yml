@@ -1,4 +1,7 @@
-schema-version: 3
+schema-version: 4
+
+# Enables implementation diagnostics and debug-only commands. Keep disabled on production servers.
+debug: false
 
 # Leave blank to use the first loaded world's spawn when Essentials spawn is unavailable.
 fallback-spawn-world: ""

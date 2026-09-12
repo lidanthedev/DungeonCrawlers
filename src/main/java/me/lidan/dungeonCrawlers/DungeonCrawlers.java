@@ -69,6 +69,8 @@ import me.lidan.dungeonCrawlers.integration.BukkitDungeonRunListener;
 import me.lidan.dungeonCrawlers.integration.BukkitDungeonLifecycleListener;
 import me.lidan.dungeonCrawlers.integration.BukkitDungeonActionBar;
 import me.lidan.dungeonCrawlers.integration.BukkitGhostState;
+import me.lidan.dungeonCrawlers.integration.DebugSettings;
+import me.lidan.dungeonCrawlers.integration.DungeonPlaceholderExpansion;
 import me.lidan.dungeonCrawlers.integration.mythic.MythicMobsAdapter;
 import me.lidan.dungeonCrawlers.integration.cave.CaveActionBarAdapter;
 import me.lidan.dungeonCrawlers.integration.cave.CaveItemsAdapter;
@@ -101,6 +103,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -135,6 +139,9 @@ public final class DungeonCrawlers extends JavaPlugin {
     private BukkitBossIdentity bossIdentity;
     private MythicMobsAdapter mythicMobs;
     private PlayerLifecycleService lifecycle;
+    private DebugSettings debugSettings;
+    private DungeonPlaceholderExpansion placeholderExpansion;
+    private final Map<UUID, Integer> latestScores = new ConcurrentHashMap<>();
     private volatile boolean disabling;
 
     @Override
@@ -169,6 +176,7 @@ public final class DungeonCrawlers extends JavaPlugin {
             throw new IllegalStateException("config.yml schema-version must be "
                     + BoostedConfigFactory.CURRENT_SCHEMA_VERSION);
         }
+        debugSettings = new DebugSettings(configuredBoolean("debug", false));
         try {
             migrateVersionedDataConfigs();
         } catch (IOException exception) {
@@ -290,6 +298,19 @@ public final class DungeonCrawlers extends JavaPlugin {
                 detail -> getLogger().warning(detail));
         runPreparation.configureDeadlineHandlers(this::handleRunFailure, this::hasActiveCompletionGroup,
                 this::handleDeadlineNotice);
+        registerPlaceholderExpansion();
+    }
+
+    private void registerPlaceholderExpansion() {
+        if (!getServer().getPluginManager().isPluginEnabled("PlaceholderAPI")) return;
+        placeholderExpansion = new DungeonPlaceholderExpansion(this, generation, runPreparation, lifecycle, phaseSeven,
+                debugSettings, latestScores::get);
+        if (!placeholderExpansion.register()) {
+            placeholderExpansion = null;
+            getLogger().warning("PlaceholderAPI hook could not be registered");
+            return;
+        }
+        getLogger().info("PlaceholderAPI hook enabled (dungeoncrawlers)");
     }
 
     private void cancelDeadlineInstance(UUID instanceId) {
@@ -329,6 +350,13 @@ public final class DungeonCrawlers extends JavaPlugin {
             throw new IllegalStateException("config.yml " + route + " must be an integer in "
                     + minimum + ".." + maximum);
         }
+    }
+
+    private boolean configuredBoolean(String route, boolean defaultValue) {
+        if (!mainConfig.contains(route, true)) return defaultValue;
+        Object value = mainConfig.get(route);
+        if (value instanceof Boolean enabled) return enabled;
+        throw new IllegalStateException("config.yml " + route + " must be true or false");
     }
 
     private void registerSerializer() {
@@ -467,6 +495,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         if (context == null || run == null || lifecycleSnapshot == null || world == null) return false;
         List<RewardEntitlementService.Participant> participants = rewardParticipants(run, lifecycleSnapshot);
         ScoreService.ScoreReport score = calculateScore(run, lifecycleSnapshot, true, phaseClock().instant());
+        latestScores.put(snapshot.instanceId(), score.result().total());
         rewards.register(new RewardEntitlementService.Completion(snapshot.instanceId(),
                 context.seed(), phaseClock().instant(), score.finalSnapshot(), participants,
                 context.floor().rewards()));
@@ -493,6 +522,7 @@ public final class DungeonCrawlers extends JavaPlugin {
                 : run.failedDeadline().minus(RunPreparationService.FAILED_READING_PERIOD);
         try {
             ScoreService.ScoreReport score = calculateScore(run, lifecycleSnapshot, false, failedAt);
+            latestScores.put(instanceId, score.result().total());
             List<RewardEntitlementService.Participant> participants = rewardParticipants(run, lifecycleSnapshot);
             rewards.register(new RewardEntitlementService.Completion(instanceId, context.seed(), failedAt,
                     score.finalSnapshot(), participants, context.floor().rewards()));
@@ -710,6 +740,7 @@ public final class DungeonCrawlers extends JavaPlugin {
     @Override
     public void onDisable() {
         disabling = true;
+        if (placeholderExpansion != null) placeholderExpansion.unregister();
         if (reservations != null) reservations.pauseAdmission();
         if (generation != null) generation.freezeForDisable();
         if (runPreparation != null) runPreparation.freezeForDisable();

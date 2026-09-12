@@ -22,6 +22,7 @@ repositories {
     maven("https://repo.essentialsx.net/releases/")
     maven("https://repo.alessiodp.com/releases/")
     maven("https://jitpack.io")
+    maven("https://repo.extendedclip.com/content/repositories/placeholderapi/")
 }
 
 dependencies {
@@ -34,6 +35,7 @@ dependencies {
     compileOnly(libs.essentials)
     compileOnly(libs.parties.api)
     compileOnly(libs.gson)
+    compileOnly("me.clip:placeholderapi:2.11.6")
 
     compileOnly(libs.lamp.common)
     compileOnly(libs.lamp.bukkit)
