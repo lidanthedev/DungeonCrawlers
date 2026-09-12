@@ -46,7 +46,7 @@ class DungeonGenerationCommandTest {
         var score = mock(ScoreService.FinalScoreSnapshot.class);
         var instance = new GenerationService.InstanceSnapshot(id, 7,
                 GenerationService.InstanceStatus.GENERATED, List.of(playerId), 918273645L,
-                "Floor V", "generation complete");
+                "<gold>Floor V", "generation complete");
         when(generation.instances()).thenReturn(List.of(instance));
         when(generation.slots()).thenReturn(List.of(new SlotAllocator.SlotLease(7, id,
                 SlotAllocator.SlotState.ALLOCATED, new Point(70000, 64, 0),
@@ -77,11 +77,13 @@ class DungeonGenerationCommandTest {
         String hover = PlainTextComponentSerializer.plainText().serialize(
                 (Component) row.children().getLast().hoverEvent().value());
         assertTrue(visible.contains("Floor V  RUNNING  1 player  14:32"));
+        assertFalse(visible.contains("<gold>"));
         for (String field : List.of("Floor: Floor V", "State: RUNNING", "Alive: 1", "Ghosts: 0",
                 "Deaths: 2", "Secrets: 0/0", "Score: 286 (S)", "Runtime: 14m 32s",
                 "Rooms: 12", "Slot: 7", "Origin: 70000, 64, 0")) {
             assertTrue(hover.contains(field), () -> "Missing hover field: " + field);
         }
+        assertFalse(hover.contains("<gold>"));
     }
 
     @Test

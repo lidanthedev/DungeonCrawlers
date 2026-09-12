@@ -287,8 +287,9 @@ public final class DungeonGenerationCommand {
         String runtime = elapsed == null ? "--" : duration(elapsed);
         String count = playerCount + (playerCount == 1 ? " player" : " players");
         Component line = Component.text(id.toString(), NamedTextColor.AQUA)
-                .append(Component.text("  " + instance.floorName() + "  " + state + "  " + count
-                        + "  " + runtime, NamedTextColor.GRAY));
+                .append(Component.text("  ", NamedTextColor.GRAY))
+                .append(MiniMessageUtils.miniMessage(instance.floorName()))
+                .append(Component.text("  " + state + "  " + count + "  " + runtime, NamedTextColor.GRAY));
         List<String> details = new ArrayList<>();
         details.add("Instance #" + id);
         details.add("");
@@ -341,8 +342,22 @@ public final class DungeonGenerationCommand {
             details.add("");
             details.add("Click to suggest " + command);
         }
-        DungeonMessages.send(sender, line.hoverEvent(HoverEvent.showText(
-                Component.text(String.join("\n", details), NamedTextColor.GRAY))));
+        DungeonMessages.send(sender, line.hoverEvent(HoverEvent.showText(renderDetails(details))));
+    }
+
+    private static Component renderDetails(List<String> details) {
+        Component rendered = Component.empty();
+        for (int index = 0; index < details.size(); index++) {
+            if (index > 0) rendered = rendered.append(Component.newline());
+            String detail = details.get(index);
+            if (detail.startsWith("Floor: ")) {
+                rendered = rendered.append(Component.text("Floor: ", NamedTextColor.GRAY))
+                        .append(MiniMessageUtils.miniMessage(detail.substring("Floor: ".length())));
+            } else {
+                rendered = rendered.append(Component.text(detail, NamedTextColor.GRAY));
+            }
+        }
+        return rendered;
     }
 
     private static String duration(Duration elapsed) {
