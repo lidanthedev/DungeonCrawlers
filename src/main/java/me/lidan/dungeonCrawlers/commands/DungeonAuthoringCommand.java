@@ -142,7 +142,7 @@ public final class DungeonAuthoringCommand {
 
     static List<String> markerLegend() {
         return List.of(
-                "[INFO] DungeonCrawlers marker blocks:",
+                "DungeonCrawlers marker blocks:",
                 "- Entrance: JIGSAW named dungeoncrawlers:entrance",
                 "- Exit/door: JIGSAW named dungeoncrawlers:exit",
                 "- Normal mob: GRAY_CONCRETE_POWDER",

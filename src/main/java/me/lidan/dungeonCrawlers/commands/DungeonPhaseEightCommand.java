@@ -67,7 +67,7 @@ public final class DungeonPhaseEightCommand {
     }
 
     @Subcommand("player death")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void death(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
                       @SuggestWith(OfflinePlayerSuggestionProvider.class) OfflinePlayer player) {
         if (!requireDebug(sender)) return;
@@ -75,7 +75,7 @@ public final class DungeonPhaseEightCommand {
     }
 
     @Subcommand("player ghost")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void ghost(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
                       @SuggestWith(OfflinePlayerSuggestionProvider.class) OfflinePlayer player) {
         if (!requireDebug(sender)) return;
@@ -83,7 +83,7 @@ public final class DungeonPhaseEightCommand {
     }
 
     @Subcommand("player revive")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void revive(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
                        @SuggestWith(OfflinePlayerSuggestionProvider.class) OfflinePlayer player) {
         if (!requireDebug(sender)) return;
@@ -91,7 +91,7 @@ public final class DungeonPhaseEightCommand {
     }
 
     @Subcommand("player remove")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void remove(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
                        @SuggestWith(OfflinePlayerSuggestionProvider.class) OfflinePlayer player) {
         if (!requireDebug(sender)) return;
@@ -99,7 +99,7 @@ public final class DungeonPhaseEightCommand {
     }
 
     @Subcommand("instance wipe")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void wipe(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
         if (!requireDebug(sender)) return;
         UUID id = parse(sender, instanceId);

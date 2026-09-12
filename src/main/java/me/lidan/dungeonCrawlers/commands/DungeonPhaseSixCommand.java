@@ -32,7 +32,7 @@ public final class DungeonPhaseSixCommand {
     }
 
     @Subcommand("room activate")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void roomActivate(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
                              int roomIndex) {
         if (!requireDebug(sender)) return;
@@ -41,7 +41,7 @@ public final class DungeonPhaseSixCommand {
     }
 
     @Subcommand("room clear")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void roomClear(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
                           int roomIndex) {
         if (!requireDebug(sender)) return;
@@ -50,7 +50,7 @@ public final class DungeonPhaseSixCommand {
     }
 
     @Subcommand("mob list")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void mobList(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
                         @Optional Integer roomIndex) {
         if (!requireDebug(sender)) return;
@@ -92,7 +92,7 @@ public final class DungeonPhaseSixCommand {
     }
 
     @Subcommand("mob spawn")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void mobSpawn(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
                           int roomIndex, String mobId) {
         if (!requireDebug(sender)) return;
@@ -101,7 +101,7 @@ public final class DungeonPhaseSixCommand {
     }
 
     @Subcommand("mob kill")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void mobKill(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
                          int roomIndex, UUID entityId) {
         if (!requireDebug(sender)) return;
@@ -110,7 +110,7 @@ public final class DungeonPhaseSixCommand {
     }
 
     @Subcommand("mob remove")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void mobRemove(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
                            int roomIndex, UUID entityId) {
         if (!requireDebug(sender)) return;
@@ -119,7 +119,7 @@ public final class DungeonPhaseSixCommand {
     }
 
     @Subcommand("mob reconcile")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void mobReconcile(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
         if (!requireDebug(sender)) return;
         UUID id = parse(sender, instanceId);
@@ -143,7 +143,7 @@ public final class DungeonPhaseSixCommand {
             case CombatRoomService.ClearResult value -> value.detail();
             case CombatRoomService.AdminResult value -> value.detail();
             case CombatRoomService.ReconcileResult value -> value.detail();
-            default -> result.toString();
+            default -> "unsupported combat result";
         };
         DungeonMessages.send(sender, successful ? DungeonMessages.success(detail) : DungeonMessages.error(detail));
     }

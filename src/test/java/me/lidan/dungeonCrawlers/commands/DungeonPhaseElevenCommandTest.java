@@ -153,9 +153,9 @@ class DungeonPhaseElevenCommandTest {
         RewardEntitlementService.RewardOffer free = new RewardEntitlementService.RewardOffer(
                 UUID.randomUUID(), "wooden", 0, false, List.of());
 
-        assertEquals("<dark_purple>Reward Preview - <gold>1,234</gold></dark_purple>",
+        assertEquals("<dark_purple>Reward Preview: <white>wooden</white> <gray>|</gray> <gold>1,234</gold></dark_purple>",
                 DungeonPhaseElevenCommand.previewTitle(priced));
-        assertEquals("<dark_purple>Reward Preview - <gold>FREE</gold></dark_purple>",
+        assertEquals("<dark_purple>Reward Preview: <white>wooden</white> <gray>|</gray> <gold>FREE</gold></dark_purple>",
                 DungeonPhaseElevenCommand.previewTitle(free));
     }
 

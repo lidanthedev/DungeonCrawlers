@@ -24,7 +24,6 @@ import me.lidan.dungeonCrawlers.integration.PartyProvider;
 import me.lidan.dungeonCrawlers.integration.ProgressBarService;
 import me.lidan.dungeonCrawlers.integration.SpawnProvider;
 import me.lidan.dungeonCrawlers.integration.spawn.BukkitSpawnProvider;
-import net.kyori.adventure.text.Component;
 import org.bukkit.Location;
 import org.bukkit.Server;
 import org.bukkit.World;
@@ -331,7 +330,8 @@ public final class DungeonPhaseFiveCommand {
                         return;
                     }
                 }
-                actionBar.show(player, Component.text("Dungeon started — first room active"));
+                actionBar.show(player, MiniMessageUtils.miniMessage(
+                        "<green>Dungeon started: first room active</green>"));
             }
         } else {
             if (result.rollbackRequired()) abort(door.orElseThrow().instanceId(), result.detail());
@@ -611,7 +611,8 @@ public final class DungeonPhaseFiveCommand {
                 abort(instanceId, "teleport rejected for " + playerId);
                 return;
             }
-            actionBar.show(player, Component.text("Choose your dungeon class, then open the coal door"));
+            actionBar.show(player, MiniMessageUtils.miniMessage(
+                    "<yellow>Choose your dungeon class, then open the coal door</yellow>"));
         }
     }
 

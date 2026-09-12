@@ -55,7 +55,7 @@ public final class DungeonPhaseSevenCommand {
     }
 
     @Subcommand("secret list")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void secretList(CommandSender sender,
                            @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
         if (!requireDebug(sender)) return;
@@ -79,7 +79,7 @@ public final class DungeonPhaseSevenCommand {
     }
 
     @Subcommand("secret discover")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void secretDiscover(CommandSender sender,
                                @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
                                int x, int y, int z) {
@@ -94,7 +94,7 @@ public final class DungeonPhaseSevenCommand {
     }
 
     @Subcommand("secret reset")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void secretReset(CommandSender sender,
                             @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
         if (!requireDebug(sender)) return;
@@ -106,7 +106,7 @@ public final class DungeonPhaseSevenCommand {
     }
 
     @Subcommand("blessing list")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void blessingList(CommandSender sender,
                              @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
         if (!requireDebug(sender)) return;
@@ -122,7 +122,7 @@ public final class DungeonPhaseSevenCommand {
     }
 
     @Subcommand("blessing add")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void blessingAdd(CommandSender sender,
                             @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
                             @SuggestWith(BlessingIdSuggestionProvider.class) String blessingId,
@@ -145,7 +145,7 @@ public final class DungeonPhaseSevenCommand {
     }
 
     @Subcommand("blessing remove")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void blessingRemove(CommandSender sender,
                                @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
                                @SuggestWith(BlessingIdSuggestionProvider.class) String blessingId) {
@@ -158,7 +158,7 @@ public final class DungeonPhaseSevenCommand {
     }
 
     @Subcommand("blessing clear")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void blessingClear(CommandSender sender,
                               @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
         if (!requireDebug(sender)) return;

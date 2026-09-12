@@ -72,14 +72,14 @@ public final class DungeonGenerationCommand {
     }
 
     @Subcommand("instance generate-debug")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void generateDebug(Player player, @SuggestWith(FloorIdSuggestionProvider.class) String floorId, long seed) {
         if (!requireDebug(player)) return;
         generate(player, floorId, seed, 0);
     }
 
     @Subcommand("instance generate-debug-slow")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void generateDebugSlow(Player player, @SuggestWith(FloorIdSuggestionProvider.class) String floorId,
                                   long seed, long delayMillis) {
         if (!requireDebug(player)) return;
@@ -205,7 +205,7 @@ public final class DungeonGenerationCommand {
     public void recoveryStatus(CommandSender sender) {
         var status = generation.recoveryStatus();
         DungeonMessages.send(sender, "<gray>Recovery: starts enabled=<white>" + status.startsEnabled()
-                + "</white>, running=<white>" + status.recoveryRunning() + "</white>, discovered=<white>"
+                + "</white>, running=<white>" + status.running() + "</white>, discovered=<white>"
                 + status.discovered() + "</white>, cleared=<white>" + status.cleared()
                 + "</white>, blockers=<white>" + String.join(", ", status.blockers())
                 + "</white></gray>");

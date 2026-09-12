@@ -2,6 +2,7 @@ package me.lidan.dungeonCrawlers.commands;
 
 import me.lidan.cavecrawlers.CaveCrawlers;
 import me.lidan.cavecrawlers.utils.BoostedCustomConfig;
+import me.lidan.cavecrawlers.utils.MiniMessageUtils;
 import me.lidan.dungeonCrawlers.compatibility.CompatibilityReport;
 import me.lidan.dungeonCrawlers.compatibility.CompatibilityService;
 import me.lidan.dungeonCrawlers.compatibility.ProbeResult;
@@ -29,7 +30,6 @@ import me.lidan.dungeonCrawlers.integration.spawn.BukkitSpawnProvider;
 import me.lidan.dungeonCrawlers.integration.vault.VaultEconomyAdapter;
 import me.lidan.dungeonCrawlers.integration.worldedit.WorldEditAdapter;
 import me.lidan.dungeonCrawlers.persistence.DurableRepository;
-import net.kyori.adventure.text.Component;
 import net.milkbowl.vault.economy.Economy;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
@@ -47,6 +47,7 @@ import revxrsal.commands.bukkit.annotation.CommandPermission;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.io.IOException;
 import java.util.HexFormat;
 import java.util.UUID;
 import java.time.Duration;
@@ -74,13 +75,15 @@ public final class DungeonCrawlersCommand {
     private final GenerationService generation;
     private final Consumer<UUID> preparationCancel;
     private final BooleanSupplier reloadBlocked;
+    private final BooleanSupplier debugEnabled;
+    private final Consumer<Boolean> debugUpdate;
 
     public DungeonCrawlersCommand(JavaPlugin plugin, CompatibilityService compatibility,
                                   BoostedCustomConfig mainConfig,
                                   ConfigRegistryService configRegistry, PlayerReservationService reservations,
                                   DurableRepository durableRepository) {
         this(plugin, compatibility, mainConfig, configRegistry, reservations, durableRepository,
-                null, ignored -> { }, () -> false);
+                null, ignored -> { }, () -> false, () -> false, ignored -> { });
     }
 
     public DungeonCrawlersCommand(JavaPlugin plugin, CompatibilityService compatibility,
@@ -89,7 +92,7 @@ public final class DungeonCrawlersCommand {
                                   DurableRepository durableRepository, GenerationService generation,
                                   Consumer<UUID> preparationCancel) {
         this(plugin, compatibility, mainConfig, configRegistry, reservations, durableRepository, generation,
-                preparationCancel, () -> false);
+                preparationCancel, () -> false, () -> false, ignored -> { });
     }
 
     public DungeonCrawlersCommand(JavaPlugin plugin, CompatibilityService compatibility,
@@ -97,6 +100,16 @@ public final class DungeonCrawlersCommand {
                                   ConfigRegistryService configRegistry, PlayerReservationService reservations,
                                   DurableRepository durableRepository, GenerationService generation,
                                   Consumer<UUID> preparationCancel, BooleanSupplier reloadBlocked) {
+        this(plugin, compatibility, mainConfig, configRegistry, reservations, durableRepository, generation,
+                preparationCancel, reloadBlocked, () -> false, ignored -> { });
+    }
+
+    public DungeonCrawlersCommand(JavaPlugin plugin, CompatibilityService compatibility,
+                                  BoostedCustomConfig mainConfig,
+                                  ConfigRegistryService configRegistry, PlayerReservationService reservations,
+                                  DurableRepository durableRepository, GenerationService generation,
+                                  Consumer<UUID> preparationCancel, BooleanSupplier reloadBlocked,
+                                  BooleanSupplier debugEnabled, Consumer<Boolean> debugUpdate) {
         this.plugin = plugin;
         this.compatibility = compatibility;
         this.mainConfig = mainConfig;
@@ -106,7 +119,37 @@ public final class DungeonCrawlersCommand {
         this.generation = generation;
         this.preparationCancel = preparationCancel;
         this.reloadBlocked = reloadBlocked;
+        this.debugEnabled = debugEnabled;
+        this.debugUpdate = debugUpdate;
         this.parties = PartyProviders.forServer(plugin.getServer());
+    }
+
+    @Subcommand("help")
+    @CommandPermission("dungeoncrawlers.use")
+    public void help(CommandSender sender) {
+        DungeonMessages.send(sender, DungeonMessages.info(
+                "<aqua><bold>DungeonCrawlers</bold></aqua> commands. Click a line to fill in a command."));
+        DungeonGenerationCommand.suggest(sender, "<green>Start a solo or party dungeon</green>",
+                "/dungeon start floor_1");
+        DungeonGenerationCommand.suggest(sender, "<green>Choose your class</green>", "/dungeon class list");
+        DungeonGenerationCommand.suggest(sender, "<green>Check your dungeon location</green>", "/dungeon whereami");
+        DungeonGenerationCommand.suggest(sender, "<green>Open completed rewards</green>", "/dungeon reward open ");
+        if (sender.hasPermission("dungeoncrawlers.admin.generation")) {
+            DungeonMessages.send(sender, DungeonMessages.info("Admin commands"));
+            DungeonGenerationCommand.suggest(sender, "<yellow>List active instances</yellow>",
+                    "/dungeon instance list");
+            DungeonGenerationCommand.suggest(sender, "<yellow>Inspect an instance</yellow>",
+                    "/dungeon instance info ");
+        }
+        if (sender.hasPermission("dungeoncrawlers.admin.reload")) {
+            DungeonGenerationCommand.suggest(sender, "<yellow>Validate and reload configuration</yellow>",
+                    "/dungeon config validate");
+            DungeonGenerationCommand.suggest(sender, "<yellow>Reload the registry</yellow>", "/dungeon reload");
+        }
+        if (sender.hasPermission("dungeoncrawlers.admin.debug")) {
+            DungeonMessages.send(sender, DungeonMessages.warning(
+                    "Debug tools require config.yml debug: true."));
+        }
     }
 
     @Subcommand("config validate")
@@ -230,12 +273,15 @@ public final class DungeonCrawlersCommand {
     private void reloadAsync(CommandSender sender, Runnable completion) {
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
+                mainConfig.reload();
+                boolean updatedDebug = configuredDebug();
                 ConfigRegistryService.ReloadResult result = reservations.withAdmissionPaused(configRegistry::reload);
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    if (result.swapped()) debugUpdate.accept(updatedDebug);
                     reportReload(sender, result);
                     if (completion != null) completion.run();
                 });
-            } catch (RuntimeException exception) {
+            } catch (IOException | RuntimeException exception) {
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
                     sendReloadMessage(sender, "<red>Reload failed: " + exception.getMessage() + "</red>");
                     if (completion != null) completion.run();
@@ -248,8 +294,14 @@ public final class DungeonCrawlersCommand {
         result.warnings().forEach(warning -> sendReloadMessage(sender, "<yellow>" + warning + "</yellow>"));
         result.errors().forEach(error -> sendReloadMessage(sender, "<red>Reload failed: " + error + "</red>"));
         if (result.swapped()) {
-            sendReloadMessage(sender, "<green>Configuration reloaded. Active hash: <white>"
-                    + result.snapshot().hash() + "</white></green>");
+            sendReloadMessage(sender, "<green>Configuration reload complete.</green>");
+            sendReloadMessage(sender, "<gray>Floors: <white>" + result.snapshot().floors().size()
+                    + "</white>, rooms: <white>" + result.snapshot().rooms().size()
+                    + "</white>, boss encounters: <white>" + result.snapshot().encounters().size()
+                    + "</white>, rewards: <white>" + result.snapshot().floors().values().stream()
+                    .mapToInt(floor -> floor.rewards().size()).sum()
+                    + "</white>, warnings: <white>" + result.warnings().size()
+                    + "</white>, hash: <white>" + result.snapshot().hash() + "</white></gray>");
         } else if (result.errors().stream().anyMatch(error -> error.contains("reservation(s) are active"))) {
             sendReloadMessage(sender, "<red>Reload refused because a dungeon is active. Use "
                     + "<click:suggest_command:'/dungeon reload force'><aqua>/dungeon reload force</aqua></click>"
@@ -341,7 +393,7 @@ public final class DungeonCrawlersCommand {
     }
 
     @Subcommand("state simulate")
-    @CommandPermission("dungeoncrawlers.admin.simulate")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void stateSimulate(CommandSender sender, String from, String to) {
         if (!debug(sender)) return;
         try {
@@ -356,7 +408,7 @@ public final class DungeonCrawlersCommand {
     }
 
     @Subcommand("score simulate")
-    @CommandPermission("dungeoncrawlers.admin.simulate")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void scoreSimulate(CommandSender sender, boolean successful, int deaths, long elapsedMinutes,
                               int foundSecrets, int totalSecrets) {
         if (!debug(sender)) return;
@@ -370,7 +422,7 @@ public final class DungeonCrawlersCommand {
     }
 
     @Subcommand("repository")
-    @CommandPermission("dungeoncrawlers.admin.diagnostics")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void repository(CommandSender sender) {
         if (!debug(sender)) return;
         DungeonMessages.send(sender, DungeonMessages.info("Repository diagnostics: <white>"
@@ -378,7 +430,7 @@ public final class DungeonCrawlersCommand {
     }
 
     @Subcommand("reservation race")
-    @CommandPermission("dungeoncrawlers.admin.simulate")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void reservationRace(CommandSender sender) {
         if (!debug(sender)) return;
         DungeonMessages.send(sender, DungeonMessages.info("Running isolated reservation race..."));
@@ -422,7 +474,7 @@ public final class DungeonCrawlersCommand {
     }
 
     @Subcommand("compatibility item")
-    @CommandPermission("dungeoncrawlers.admin.compatibility")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void item(CommandSender sender, String itemId) {
         if (!debug(sender)) return;
         ItemStack built = caveItems.build(itemId, 1).orElse(null);
@@ -441,7 +493,7 @@ public final class DungeonCrawlersCommand {
     }
 
     @Subcommand("compatibility mythic")
-    @CommandPermission("dungeoncrawlers.admin.compatibility")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void mythic(Player player, String mobId) {
         if (!debug(player)) return;
         MythicMobGateway.SpawnResult spawned = mythic.spawn(mobId, player.getLocation(), 1);
@@ -460,7 +512,7 @@ public final class DungeonCrawlersCommand {
     }
 
     @Subcommand("compatibility selection")
-    @CommandPermission("dungeoncrawlers.admin.compatibility")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void selection(Player player) {
         if (!debug(player)) return;
         WorldEditGateway.SelectionResult result = worldEdit.selection(player);
@@ -469,7 +521,7 @@ public final class DungeonCrawlersCommand {
     }
 
     @Subcommand("compatibility party")
-    @CommandPermission("dungeoncrawlers.admin.compatibility")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void party(Player player) {
         if (!debug(player)) return;
         PartyProvider.PartyLookup result = parties.lookup(player.getUniqueId());
@@ -482,7 +534,7 @@ public final class DungeonCrawlersCommand {
     }
 
     @Subcommand("compatibility economy")
-    @CommandPermission("dungeoncrawlers.admin.compatibility")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void economy(Player player, double amount) {
         if (!debug(player)) return;
         if (!Double.isFinite(amount) || amount <= 0) {
@@ -558,16 +610,17 @@ public final class DungeonCrawlersCommand {
     }
 
     @Subcommand("compatibility actionbar")
-    @CommandPermission("dungeoncrawlers.admin.compatibility")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void actionbar(Player player) {
         if (!debug(player)) return;
-        new CaveActionBarAdapter().show(player, Component.text("DungeonCrawlers action-bar probe"));
+        new CaveActionBarAdapter().show(player, MiniMessageUtils.miniMessage(
+                "<aqua>DungeonCrawlers action-bar probe</aqua>"));
         DungeonMessages.send(player, DungeonMessages.info(
                 "Confirm the action bar is visible and restores its previous value after one second."));
     }
 
     @Subcommand("compatibility stats")
-    @CommandPermission("dungeoncrawlers.admin.compatibility")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void stats(Player player) {
         if (!debug(player)) return;
         AttributeInstance maxHealth = player.getAttribute(Attribute.MAX_HEALTH);
@@ -590,11 +643,16 @@ public final class DungeonCrawlersCommand {
     }
 
     private boolean debug(CommandSender sender) {
-        Object value = mainConfig.get("debug");
-        if (value instanceof Boolean enabled && enabled) return true;
+        if (debugEnabled.getAsBoolean()) return true;
         DungeonMessages.send(sender, DungeonMessages.warning(
                 "This is a debug-only command and is disabled while config.yml debug is false."));
         return false;
+    }
+
+    private boolean configuredDebug() {
+        Object value = mainConfig.get("debug");
+        if (value instanceof Boolean enabled) return enabled;
+        throw new IllegalStateException("config.yml debug must be true or false");
     }
 
     private static void sendField(CommandSender sender, String name, Object value) {

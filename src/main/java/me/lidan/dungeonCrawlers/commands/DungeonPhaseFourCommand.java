@@ -83,7 +83,7 @@ public final class DungeonPhaseFourCommand {
     }
 
     @Subcommand("instance advance")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void instanceAdvance(CommandSender sender,
                                 @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
                                 String amount) {
@@ -106,7 +106,7 @@ public final class DungeonPhaseFourCommand {
     }
 
     @Subcommand("instance time")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void instanceTime(CommandSender sender,
                              @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
         if (!requireDebug(sender)) return;
@@ -125,7 +125,7 @@ public final class DungeonPhaseFourCommand {
     }
 
     @Subcommand("tick speed-test")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void tickSpeed(CommandSender sender, long multiplier) {
         if (!requireDebug(sender)) return;
         if (multiplier < CentralUpdateService.MIN_TIME_SCALE
@@ -140,7 +140,7 @@ public final class DungeonPhaseFourCommand {
     }
 
     @Subcommand("tick speed-reset-test")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void resetTickSpeed(CommandSender sender) {
         if (!requireDebug(sender)) return;
         updates.resetTimeScale();
@@ -180,7 +180,7 @@ public final class DungeonPhaseFourCommand {
     }
 
     @Subcommand("door register-test")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void registerDoor(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
                               int x, int y, int z, String facing) {
         if (!requireDebug(sender)) return;
@@ -195,7 +195,7 @@ public final class DungeonPhaseFourCommand {
     }
 
     @Subcommand("door info")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void doorInfo(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
         if (!requireDebug(sender)) return;
         try {
@@ -207,7 +207,7 @@ public final class DungeonPhaseFourCommand {
     }
 
     @Subcommand("door set")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void doorSet(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
                         String state) {
         if (!requireDebug(sender)) return;
@@ -224,7 +224,7 @@ public final class DungeonPhaseFourCommand {
     }
 
     @Subcommand("door open")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void doorOpen(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
         if (!requireDebug(sender)) return;
         try {
@@ -242,7 +242,7 @@ public final class DungeonPhaseFourCommand {
     }
 
     @Subcommand("protection inspect")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void protectionInspect(CommandSender sender) {
         if (!requireDebug(sender)) return;
         List<WorldProtectionService.InstanceRegion> active = regions.get();
@@ -256,7 +256,7 @@ public final class DungeonPhaseFourCommand {
     }
 
     @Subcommand("player snapshot")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void playerSnapshot(Player player, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
         if (!requireDebug(player)) return;
         try {
@@ -278,7 +278,7 @@ public final class DungeonPhaseFourCommand {
     }
 
     @Subcommand("player restore-test")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void playerRestore(Player player) {
         if (!requireDebug(player)) return;
         snapshots.read(player.getUniqueId()).whenCompleteAsync((snapshot, failure) -> {

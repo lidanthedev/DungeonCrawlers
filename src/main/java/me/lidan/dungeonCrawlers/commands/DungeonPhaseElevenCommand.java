@@ -166,7 +166,7 @@ public final class DungeonPhaseElevenCommand {
     }
 
     @Subcommand("reward roll")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void rewardRoll(CommandSender sender,
                            @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
                            @SuggestWith(OfflinePlayerSuggestionProvider.class) OfflinePlayer player) {
@@ -238,7 +238,7 @@ public final class DungeonPhaseElevenCommand {
     }
 
     @Subcommand("reward reconcile")
-    @CommandPermission("dungeoncrawlers.admin.diagnostics")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void rewardReconcile(CommandSender sender, String claimId, String decision, String evidence) {
         if (!requireDebug(sender)) return;
         if (claims == null) {
@@ -259,7 +259,7 @@ public final class DungeonPhaseElevenCommand {
     }
 
     @Subcommand("reward delivery-pause-test")
-    @CommandPermission("dungeoncrawlers.admin.diagnostics")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void rewardDeliveryPauseTest(CommandSender sender, String mode) {
         if (!requireDebug(sender)) return;
         if (claims == null) {
@@ -281,7 +281,7 @@ public final class DungeonPhaseElevenCommand {
     }
 
     @Subcommand("reward delivery-recover-test")
-    @CommandPermission("dungeoncrawlers.admin.diagnostics")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void rewardDeliveryRecoverTest(Player player) {
         if (!requireDebug(player)) return;
         if (claims == null) {
@@ -320,7 +320,7 @@ public final class DungeonPhaseElevenCommand {
     }
 
     @Subcommand("reward reset-test")
-    @CommandPermission("dungeoncrawlers.admin.generation")
+    @CommandPermission("dungeoncrawlers.admin.debug")
     public void rewardResetTest(CommandSender sender,
                                 @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
         if (!requireDebug(sender)) return;
@@ -370,6 +370,9 @@ public final class DungeonPhaseElevenCommand {
                               RewardEntitlementService.PlayerEntitlement entitlement) {
         Gui gui = Gui.gui().rows(3).title(MiniMessageUtils.miniMessage("<dark_purple>Dungeon Rewards</dark_purple>"))
                 .disableAllInteractions().create();
+        rewards.info(instanceId).map(RewardEntitlementService.RunSnapshot::score)
+                .ifPresent(score -> gui.setItem(4, ItemBuilder.from(resultCard(score)).asGuiItem(event ->
+                        event.setCancelled(true))));
         int slot = 10;
         for (RewardEntitlementService.RewardOffer offer : sortedOffers(entitlement.offers().values())) {
             if (slot >= 17) break;
@@ -425,10 +428,11 @@ public final class DungeonPhaseElevenCommand {
                     .asGuiItem(event -> event.setCancelled(true)));
         }
         gui.setItem(PREVIEW_BUY_SLOT, ItemBuilder.from(Material.EMERALD)
-                .name(MiniMessageUtils.miniMessage("<green>BUY</green>"))
-                .lore(List.of(MiniMessageUtils.miniMessage(claims == null
-                        ? "<gray>Claiming is enabled in Phase 12.</gray>"
-                        : "<gray>Purchase this reward and deliver its rolled items.</gray>")))
+                .name(MiniMessageUtils.miniMessage("<green>PURCHASE</green>"))
+                .lore(List.of(MiniMessageUtils.miniMessage("<gray>Price: <gold>" + priceLabel(offer.price())
+                        + "</gold></gray>"), MiniMessageUtils.miniMessage(claims == null
+                        ? "<gray>Claiming is not enabled.</gray>"
+                        : "<gray>Click to purchase and receive the rolled items.</gray>")))
                 .asGuiItem(event -> {
                     event.setCancelled(true);
                     player.closeInventory();
@@ -485,7 +489,8 @@ public final class DungeonPhaseElevenCommand {
 
     static String previewTitle(RewardEntitlementService.RewardOffer offer) {
         String price = priceLabel(offer.price());
-        return "<dark_purple>Reward Preview - <gold>" + price + "</gold></dark_purple>";
+        return "<dark_purple>Reward Preview: <white>" + offer.rewardId() + "</white> <gray>|</gray> <gold>"
+                + price + "</gold></dark_purple>";
     }
 
     private static String priceLabel(long price) {
@@ -533,6 +538,20 @@ public final class DungeonPhaseElevenCommand {
         RewardRoller.RolledReward roll = offer.rolls().getFirst();
         return caveItems.build(roll.itemId(), roll.amount())
                 .orElseGet(() -> new org.bukkit.inventory.ItemStack(Material.BARRIER));
+    }
+
+    private static ItemStack resultCard(ScoreService.FinalScoreSnapshot score) {
+        ItemStack item = new ItemStack(Material.NETHER_STAR);
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) return item;
+        String rank = score.rank() == DungeonRank.S_PLUS ? "S+" : score.rank().name();
+        meta.displayName(MiniMessageUtils.miniMessage("<aqua>Your dungeon result</aqua>"));
+        meta.lore(List.of(
+                MiniMessageUtils.miniMessage("<gray>Score: <white>" + score.total() + "</white></gray>"),
+                MiniMessageUtils.miniMessage("<gray>Rank: <aqua>" + rank + "</aqua></gray>"),
+                MiniMessageUtils.miniMessage("<gray>Choose one reward chest below.</gray>")));
+        item.setItemMeta(meta);
+        return item;
     }
 
     private UUID parse(CommandSender sender, String value) {
