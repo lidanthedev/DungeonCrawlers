@@ -772,7 +772,7 @@ public final class GenerationService {
     public enum InstanceStatus { PLANNING, JOURNALING, PASTING, GENERATED, CANCELLING, CLEARING, CLEAR_FAILED, DESTROYED }
 
     public record InstanceSnapshot(UUID instanceId, int slotId, InstanceStatus status, List<UUID> participants,
-                                   long seed, String detail) { }
+                                   long seed, String floorName, String detail) { }
 
     public record PlayerSpawn(Point point, float yaw) {
         public PlayerSpawn {
@@ -874,7 +874,7 @@ public final class GenerationService {
 
         private InstanceSnapshot snapshot() {
             return new InstanceSnapshot(instanceId, slot.id(), state, request.party().onlineMembers(),
-                    request.seed(), detail);
+                    request.seed(), request.floor().displayName(), detail);
         }
     }
 }

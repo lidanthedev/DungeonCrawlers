@@ -56,6 +56,7 @@ class BoostedConfigMigrationTest {
                 () -> assertEquals("dungeon_instances", reopened.getString("generation.world"), reopened.dump()),
                 () -> assertEquals(4, reopened.getInt("generation.capacity"), reopened.dump()),
                 () -> assertEquals(10_000, reopened.getInt("generation.slot-spacing"), reopened.dump()),
+                () -> assertFalse(reopened.getBoolean("debug")),
                 () -> assertEquals("custom_world", reopened.getString("fallback-spawn-world"), reopened.dump()),
                 () -> assertTrue(Files.readString(configFile).contains(
                         "schema-version: " + BoostedConfigFactory.CURRENT_SCHEMA_VERSION)),

@@ -58,7 +58,9 @@ public final class BukkitCombatListener implements Listener {
             result.openedDoorBlocks().forEach(opened -> event.getClickedBlock().getWorld()
                     .getBlockAt(opened.x(), opened.y(), opened.z()).setType(Material.AIR, false));
         }
-        event.getPlayer().sendMessage("[" + (result.successful() ? "PASS" : "FAIL") + "] " + result.detail());
+        DungeonMessages.send(event.getPlayer(), result.successful()
+                ? DungeonMessages.success(playerMessage(result.detail()))
+                : DungeonMessages.error(playerMessage(result.detail())));
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -92,5 +94,27 @@ public final class BukkitCombatListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onWorldLoad(WorldLoadEvent event) {
         unloadingWorlds.remove(event.getWorld().getUID());
+    }
+
+    private static String playerMessage(String detail) {
+        String value = detail == null ? "" : detail;
+        String normalized = value.toLowerCase(java.util.Locale.ROOT);
+        if (normalized.startsWith("room active; required mobs=")) {
+            return "Room opened. Required enemies: " + value.substring("room active; required mobs=".length()) + ".";
+        }
+        if (normalized.equals("room already active")) return "This room is already open.";
+        if (normalized.equals("room already cleared")) return "This room has already been cleared.";
+        if (normalized.equals("portal room ready")) return "The portal room is ready.";
+        if (normalized.contains("previous room") && normalized.contains("is not cleared")) {
+            return "Clear the previous room before opening this door.";
+        }
+        if (normalized.contains("is locked")) return "This room is still locked.";
+        if (normalized.contains("chunk-ticket budget") || normalized.contains("spawn exhausted")) {
+            return "This room could not be opened right now. Please try again later.";
+        }
+        if (normalized.startsWith("unknown combat") || normalized.contains("no combat door")) {
+            return "This dungeon door is no longer active.";
+        }
+        return "This dungeon door could not be opened right now.";
     }
 }

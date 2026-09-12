@@ -364,7 +364,8 @@ public final class PortalEncounterService {
         runs.fail(state.instanceId, detail);
         updates.removeSupplemental(state.instanceId, state.callback);
         if (state.encounter != null) state.encounter.cleanup();
-        participants.notice(state.instanceId, "<red>Boss encounter failed: " + detail + "</red>");
+        participants.notice(state.instanceId,
+                "<red>Boss encounter could not start. Please try again later or contact staff.</red>");
         return PortalResult.failure(detail);
     }
 

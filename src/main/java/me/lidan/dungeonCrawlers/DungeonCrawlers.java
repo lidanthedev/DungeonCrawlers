@@ -69,6 +69,9 @@ import me.lidan.dungeonCrawlers.integration.BukkitDungeonRunListener;
 import me.lidan.dungeonCrawlers.integration.BukkitDungeonLifecycleListener;
 import me.lidan.dungeonCrawlers.integration.BukkitDungeonActionBar;
 import me.lidan.dungeonCrawlers.integration.BukkitGhostState;
+import me.lidan.dungeonCrawlers.integration.DebugSettings;
+import me.lidan.dungeonCrawlers.integration.DungeonMessages;
+import me.lidan.dungeonCrawlers.integration.DungeonPlaceholderExpansion;
 import me.lidan.dungeonCrawlers.integration.mythic.MythicMobsAdapter;
 import me.lidan.dungeonCrawlers.integration.cave.CaveActionBarAdapter;
 import me.lidan.dungeonCrawlers.integration.cave.CaveItemsAdapter;
@@ -101,6 +104,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -135,6 +140,9 @@ public final class DungeonCrawlers extends JavaPlugin {
     private BukkitBossIdentity bossIdentity;
     private MythicMobsAdapter mythicMobs;
     private PlayerLifecycleService lifecycle;
+    private DebugSettings debugSettings;
+    private DungeonPlaceholderExpansion placeholderExpansion;
+    private final Map<UUID, ScoreService.FinalScoreSnapshot> latestScores = new ConcurrentHashMap<>();
     private volatile boolean disabling;
 
     @Override
@@ -169,6 +177,7 @@ public final class DungeonCrawlers extends JavaPlugin {
             throw new IllegalStateException("config.yml schema-version must be "
                     + BoostedConfigFactory.CURRENT_SCHEMA_VERSION);
         }
+        debugSettings = new DebugSettings(configuredBoolean("debug", false));
         try {
             migrateVersionedDataConfigs();
         } catch (IOException exception) {
@@ -190,7 +199,9 @@ public final class DungeonCrawlers extends JavaPlugin {
         durableRepository = new FileDurableRepository(getDataFolder().toPath().resolve("runtime"), queueCapacity,
                 callback -> getServer().getScheduler().runTask(this, callback));
         initializePhaseThreeServices();
-        getLogger().info("Loaded Phase 3 config hash " + loaded.snapshot().hash());
+        getLogger().info("Loaded DungeonCrawlers configuration: floors=" + loaded.snapshot().floors().size()
+                + ", rooms=" + loaded.snapshot().rooms().size() + ", bossEncounters="
+                + loaded.snapshot().encounters().size() + ", hash=" + loaded.snapshot().hash());
     }
 
     private void initializePhaseThreeServices() {
@@ -223,7 +234,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         generation = new GenerationService(reservations, slots, durableRepository, generationWorld,
                 new GenerationPreparationProvider(catalog, authoring, new LayoutPlanner()), generationExecutor,
                 callback -> getServer().getScheduler().runTask(this, callback), getServer()::isPrimaryThread,
-                getLogger()::info, phaseClock(), worldName, progress -> {
+                this::generationDiagnostic, phaseClock(), worldName, progress -> {
                     if (progress.terminal()) {
                         if (progress.successful()) progressBars.complete(progress.instanceId(), progress.detail());
                         else progressBars.fail(progress.instanceId(), progress.detail());
@@ -241,7 +252,7 @@ public final class DungeonCrawlers extends JavaPlugin {
     }
 
     private void initializePhaseFourServices(String worldName) {
-        centralUpdates = new CentralUpdateService(phaseClock(), getLogger()::info);
+        centralUpdates = new CentralUpdateService(phaseClock(), this::diagnosticWarning);
         doors = new DoorService();
         playerSnapshots = new PlayerSnapshotService(durableRepository);
         protectionPolicy = new WorldProtectionService();
@@ -258,14 +269,14 @@ public final class DungeonCrawlers extends JavaPlugin {
         combat = new CombatRoomService(
                 new BukkitCombatMobGateway(getServer(), this::generationWorld,
                         mythicMobs, entityIdentity),
-                chunkTickets, getLogger()::info, this::notifyCombatRoom);
+                chunkTickets, this::diagnosticWarning, this::notifyCombatRoom);
         runPreparation = new RunPreparationService(doors, centralUpdates, new StateTransitionService(), phaseClock(),
                 instanceId -> {
                     var result = combat.activateFirst(instanceId);
                     if (!result.successful()) {
                         throw new IllegalStateException(result.detail());
                     }
-                    getLogger().info("instance=" + instanceId + " first room activated");
+                    debugLog("instance=" + instanceId + " first room activated");
                 }, getLogger()::warning, instanceId -> {
                     cancelDeadlineInstance(instanceId);
                 }, true);
@@ -290,6 +301,19 @@ public final class DungeonCrawlers extends JavaPlugin {
                 detail -> getLogger().warning(detail));
         runPreparation.configureDeadlineHandlers(this::handleRunFailure, this::hasActiveCompletionGroup,
                 this::handleDeadlineNotice);
+        registerPlaceholderExpansion();
+    }
+
+    private void registerPlaceholderExpansion() {
+        if (!getServer().getPluginManager().isPluginEnabled("PlaceholderAPI")) return;
+        placeholderExpansion = new DungeonPlaceholderExpansion(this, generation, runPreparation, lifecycle, phaseSeven,
+                combat, debugSettings, latestScores::get);
+        if (!placeholderExpansion.register()) {
+            placeholderExpansion = null;
+            getLogger().warning("PlaceholderAPI hook could not be registered");
+            return;
+        }
+        getLogger().info("PlaceholderAPI hook enabled (dungeoncrawlers)");
     }
 
     private void cancelDeadlineInstance(UUID instanceId) {
@@ -329,6 +353,13 @@ public final class DungeonCrawlers extends JavaPlugin {
             throw new IllegalStateException("config.yml " + route + " must be an integer in "
                     + minimum + ".." + maximum);
         }
+    }
+
+    private boolean configuredBoolean(String route, boolean defaultValue) {
+        if (!mainConfig.contains(route, true)) return defaultValue;
+        Object value = mainConfig.get(route);
+        if (value instanceof Boolean enabled) return enabled;
+        throw new IllegalStateException("config.yml " + route + " must be true or false");
     }
 
     private void registerSerializer() {
@@ -410,27 +441,29 @@ public final class DungeonCrawlers extends JavaPlugin {
         commandHandler.register(new DungeonCrawlersCommand(this,
                 new CompatibilityService(this, mainConfig, configRegistry), mainConfig, configRegistry,
                 reservations, durableRepository, generation, phaseFiveCommand::cancelFromAdmin,
-                this::hasCompletionPending));
+                this::hasCompletionPending, debugSettings::enabled, debugSettings::setEnabled));
         commandHandler.register(new DungeonAuthoringCommand(this, mainConfig, configRegistry, reservations, authoring,
                 generation::activeTemplateIds, progressBars));
         commandHandler.register(new DungeonGenerationCommand(configRegistry,
                 PartyProviders.forServer(getServer()), generation, getServer(),
                 generationWorldName,
-                teleportPermits, phaseClock(), phaseFiveCommand::cancelFromAdmin, runPreparation));
+                teleportPermits, phaseClock(), phaseFiveCommand::cancelFromAdmin, runPreparation,
+                debugSettings::enabled, lifecycle, phaseSeven, latestScores::get, combat, phaseNine));
         commandHandler.register(phaseFiveCommand);
-        commandHandler.register(new DungeonPhaseSixCommand(combat, runPreparation));
-        commandHandler.register(new DungeonPhaseSevenCommand(phaseSeven, runPreparation));
-        commandHandler.register(new DungeonPhaseEightCommand(lifecycle, runPreparation, phaseFiveCommand));
+        commandHandler.register(new DungeonPhaseSixCommand(combat, runPreparation, debugSettings::enabled));
+        commandHandler.register(new DungeonPhaseSevenCommand(phaseSeven, runPreparation, debugSettings::enabled));
+        commandHandler.register(new DungeonPhaseEightCommand(lifecycle, runPreparation, phaseFiveCommand,
+                debugSettings::enabled));
         commandHandler.register(new DungeonPhaseNineCommand(phaseNine, runPreparation,
                 phaseFiveCommand::cancelFromAdmin));
         phaseElevenCommand = new DungeonPhaseElevenCommand(rewards, generation, runPreparation, configRegistry,
-                lifecycle, claims);
+                lifecycle, claims, debugSettings::enabled);
         commandHandler.register(phaseElevenCommand);
         commandHandler.register(new DungeonPhaseFourCommand(centralUpdates, doors, protectionPolicy,
                 teleportPermits, playerSnapshots, getServer(), this, phaseClock(),
                 generationWorldName,
                 () -> generation.protectionRegions().stream().map(WorldProtectionService.InstanceRegion::from).toList(),
-                runPreparation));
+                runPreparation, debugSettings::enabled));
     }
 
     private void registerEvents() {
@@ -467,6 +500,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         if (context == null || run == null || lifecycleSnapshot == null || world == null) return false;
         List<RewardEntitlementService.Participant> participants = rewardParticipants(run, lifecycleSnapshot);
         ScoreService.ScoreReport score = calculateScore(run, lifecycleSnapshot, true, phaseClock().instant());
+        latestScores.put(snapshot.instanceId(), score.finalSnapshot());
         rewards.register(new RewardEntitlementService.Completion(snapshot.instanceId(),
                 context.seed(), phaseClock().instant(), score.finalSnapshot(), participants,
                 context.floor().rewards()));
@@ -475,7 +509,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         participants.stream().map(RewardEntitlementService.Participant::playerId)
                 .map(getServer()::getPlayer)
                 .filter(java.util.Objects::nonNull)
-                .forEach(player -> player.sendMessage(ScoreResultRenderer.render(score)));
+                .forEach(player -> DungeonMessages.send(player, ScoreResultRenderer.render(score)));
         return true;
     }
 
@@ -493,11 +527,12 @@ public final class DungeonCrawlers extends JavaPlugin {
                 : run.failedDeadline().minus(RunPreparationService.FAILED_READING_PERIOD);
         try {
             ScoreService.ScoreReport score = calculateScore(run, lifecycleSnapshot, false, failedAt);
+            latestScores.put(instanceId, score.finalSnapshot());
             List<RewardEntitlementService.Participant> participants = rewardParticipants(run, lifecycleSnapshot);
             rewards.register(new RewardEntitlementService.Completion(instanceId, context.seed(), failedAt,
                     score.finalSnapshot(), participants, context.floor().rewards()));
             run.participants().stream().map(getServer()::getPlayer).filter(java.util.Objects::nonNull)
-                    .forEach(player -> player.sendMessage(ScoreResultRenderer.render(score)));
+                    .forEach(player -> DungeonMessages.send(player, ScoreResultRenderer.render(score)));
         } catch (RuntimeException exception) {
             getLogger().warning("instance=" + instanceId + " failed result persistence failed: "
                     + exception.getClass().getSimpleName() + ": " + exception.getMessage());
@@ -556,7 +591,7 @@ public final class DungeonCrawlers extends JavaPlugin {
             case RUN_WARNING -> notifyDeadline(players,
                     "<yellow>Dungeon time limit expires in <white>1 minute</white>.</yellow>");
             case RUN_FAILED -> {
-                notifyDeadline(players, "<red>Dungeon failed: <white>" + notice.detail() + "</white>.</red>");
+                notifyDeadline(players, "<red>" + runFailureMessage(notice.detail()) + "</red>");
                 players.forEach(player -> showLifecycleTitle(player, "<red>Dungeon Failed</red>",
                         "<yellow>Reading period: 10 seconds</yellow>", 5, 40, 10));
             }
@@ -570,7 +605,16 @@ public final class DungeonCrawlers extends JavaPlugin {
     }
 
     private static void notifyDeadline(List<Player> players, String message) {
-        players.forEach(player -> player.sendMessage(MiniMessageUtils.miniMessage(message)));
+        players.forEach(player -> DungeonMessages.send(player, message));
+    }
+
+    private static String runFailureMessage(String detail) {
+        String normalized = detail == null ? "" : detail.toLowerCase(Locale.ROOT);
+        if (normalized.contains("time limit")) return "Dungeon failed: the time limit was reached.";
+        if (normalized.contains("no online active alive player")) {
+            return "Dungeon failed: no active players remain.";
+        }
+        return "Dungeon failed. The run has entered its reading period.";
     }
 
     private void notifyCombatRoom(CombatRoomService.RoomNotice notice) {
@@ -582,7 +626,7 @@ public final class DungeonCrawlers extends JavaPlugin {
                     : "<green>Room <white>" + notice.clearedRoom()
                     + "</white> cleared. <yellow>Door to room <white>" + notice.unlockedRoom()
                     + "</white> unlocked.</yellow></green>";
-            player.sendMessage(MiniMessageUtils.miniMessage(message));
+            DungeonMessages.send(player, message);
         }));
     }
 
@@ -593,8 +637,8 @@ public final class DungeonCrawlers extends JavaPlugin {
                 if (player == null) return;
                 BukkitGhostState.enter(player, remainingGhostDuration(notice.reviveAt()));
                 showLifecycleTitle(player, "", "<yellow>" + notice.detail() + "</yellow>", 0, 30, 5);
-                player.sendMessage(MiniMessageUtils.miniMessage(
-                        "<gray>You are a ghost. You will revive in 60 seconds if the run remains active.</gray>"));
+                DungeonMessages.send(player,
+                        "<gray>You are a ghost. You will revive in 60 seconds if the run remains active.</gray>");
             }
             case GHOST_COUNTDOWN, RECONNECTED -> {
                 if (player == null || notice.reviveAt() == null) return;
@@ -617,7 +661,7 @@ public final class DungeonCrawlers extends JavaPlugin {
                 scheduleReviveHeal(notice.instanceId(), player, 1L);
                 scheduleReviveHeal(notice.instanceId(), player, 20L);
                 showLifecycleTitle(player, "<green>Revived</green>", "<white>Welcome back</white>", 5, 40, 10);
-                player.sendMessage(MiniMessageUtils.miniMessage("<green>You have been revived.</green>"));
+                DungeonMessages.send(player, "<green>You have been revived.</green>");
             }
             case REMOVED -> {
                 if (player != null) BukkitGhostState.exit(player);
@@ -710,12 +754,13 @@ public final class DungeonCrawlers extends JavaPlugin {
     @Override
     public void onDisable() {
         disabling = true;
+        if (placeholderExpansion != null) placeholderExpansion.unregister();
         if (reservations != null) reservations.pauseAdmission();
         if (generation != null) generation.freezeForDisable();
         if (runPreparation != null) runPreparation.freezeForDisable();
         if (centralUpdates != null) centralUpdates.freeze();
         if (lifecycle != null) lifecycle.freezeForDisable();
-        getLogger().info("[OPS] event=disable phase=callbacks_frozen admission=paused");
+        getLogger().info("Shutdown: callbacks frozen and admission paused");
 
         if (progressBars != null) progressBars.cancelAll();
         closeAllGuis();
@@ -728,8 +773,8 @@ public final class DungeonCrawlers extends JavaPlugin {
                     .forEach(BukkitGhostState::exit);
         }
         int restored = phaseFiveCommand == null ? 0 : phaseFiveCommand.restoreOnlinePlayersForDisable();
-        getLogger().info("[OPS] event=disable phase=snapshots_restored online=" + restored
-                + " offline_retained=true");
+        getLogger().info("Shutdown: online snapshots restored=" + restored
+                + "; offline recovery retained");
 
         if (phaseSeven != null) phaseSeven.cleanupAll();
         if (phaseNine != null) phaseNine.cleanupAll();
@@ -740,7 +785,27 @@ public final class DungeonCrawlers extends JavaPlugin {
         getServer().getScheduler().cancelTasks(this);
         if (durableRepository != null) durableRepository.close();
         if (generationExecutor != null) generationExecutor.shutdownNow();
-        getLogger().info("[OPS] event=disable phase=complete journals_retained_for_startup_recovery=true");
+        latestScores.clear();
+        getLogger().info("Shutdown complete; journals retained for startup recovery");
+    }
+
+    private void debugLog(String message) {
+        if (debugSettings != null && debugSettings.enabled()) getLogger().info("[debug] " + message);
+    }
+
+    private void generationDiagnostic(String message) {
+        String normalized = message.toLowerCase(Locale.ROOT);
+        if (normalized.contains("failed") || normalized.contains("failure")
+                || normalized.contains("deadline") || normalized.contains("blocked")
+                || normalized.contains("callback") || normalized.startsWith("p0 ")) {
+            diagnosticWarning(message);
+        } else {
+            debugLog(message);
+        }
+    }
+
+    private void diagnosticWarning(String message) {
+        getLogger().warning("DungeonCrawlers: " + message);
     }
 
     /**
