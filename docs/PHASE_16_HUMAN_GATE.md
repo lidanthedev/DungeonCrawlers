@@ -76,16 +76,18 @@ warnings and errors should still be logged after debug is disabled.
   no reroll, no duplicate claim, and each player retains the same offers.
 - [x] Disconnect and reconnect during an active run. Confirm ghost/revive messaging and bounded
   invisibility remain correct, then confirm a wiped run cannot be resurrected.
-- [ ] If PlaceholderAPI is installed, check `%dungeoncrawlers_in_dungeon%`,
+- [x] If PlaceholderAPI is installed, check `%dungeoncrawlers_in_dungeon%`,
   `%dungeoncrawlers_instance_<uuid>_state%` using the actual instance UUID, and
   `%dungeoncrawlers_instance_this_state%` using the supplied player's active instance,
   `%dungeoncrawlers_instance_<uuid>_score%`,
-  `%dungeoncrawlers_player_deaths%`, and `%dungeoncrawlers_active_instances%` in and outside a run.
-  Confirm unknown or unavailable contexts resolve safely. Repeat the plugin reload with PlaceholderAPI
-  absent if practical and confirm DungeonCrawlers still enables.
-- [ ] Run the generation, portal, boss, and cleanup diagnostics with debug enabled only. Confirm
-  FAWE failures remain actionable, boss fallback behavior is readable, and real warnings/errors are
-  still logged when debug is disabled.
+  `%dungeoncrawlers_player_deaths%`, and `%dungeoncrawlers_active_instances%`; the supported
+  placeholders, including `instance_this`, resolved correctly in the exercised run.
+- [ ] Confirm unknown or unavailable PlaceholderAPI contexts resolve safely. Repeat the plugin reload
+  with PlaceholderAPI absent if practical and confirm DungeonCrawlers still enables.
+- [x] Run the generation, portal, boss, and cleanup diagnostics with debug enabled only. The diagnostic
+  sequence and full portal/boss testing completed correctly.
+- [ ] Confirm FAWE failures remain actionable, boss fallback behavior is readable, and real warnings/errors
+  are still logged when debug is disabled.
 
 ## Automated coverage
 
@@ -158,6 +160,8 @@ here as checks are completed. Do not mark this gate passed until every required 
   `DungeonPlaceholderExpansionTest` and full Java 21 clean build passed. The JAR has SHA-256
   `394008c31be3c58b626b86a3e13f2e1663a4592e9640b0f784a773669a282a68`; it was uploaded to
   server `fa696721`, `cc reload all` reported `DungeonCrawlers reloaded!`, and post-reload
-  configuration, operations, and repository checks passed. A live active-run `this` lookup still
-  needs a player smoke test; the implementation returns the documented `false`/`0`/empty fallback
-  outside a dungeon.
+  configuration, operations, and repository checks passed. The implementation returns the
+  documented `false`/`0`/empty fallback outside a dungeon.
+- 2026-09-13: Human-gate follow-up confirmed the active-run `instance_this` PlaceholderAPI check,
+  the diagnostic sequence, and the full portal/boss testing work correctly. Unknown-context,
+  PlaceholderAPI-absent, and debug-off failure/logging checks remain open.
