@@ -64,9 +64,10 @@ timers on this server and is intended for disposable admin tests.
 - [x] Start a fresh run without selecting a class or opening the door and confirm the preparation
   warning appears one minute before its deadline. The live check produced `Class selection closes in
   1 minute.` after four minutes, then correctly kicked the participant when the deadline expired.
-- [ ] Continue a run after opening the door and confirm the active-run warning appears one minute
-  before its deadline, not one minute after the run starts. Use `/dungeon tick speed-test 60` and
-  `/dungeon tick speed-reset-test` above instead of waiting 59 minutes.
+- [x] Continue a run after opening the door and confirm the active-run warning appears one minute
+  before its deadline, not one minute after the run starts. The user confirmed the 600x live check
+  emitted the warning, reached `Dungeon failed: run time limit reached.`, and completed failed-run
+  cleanup with the player restored.
 - [x] While a participant is in a dungeon, run `/spawn` and confirm EssentialsX can change their
   world, the participant is removed and remains at the requested destination, and the command is
   not cancelled by DungeonCrawlers. The live `/spawn` check passed. As an admin, teleport into the
@@ -164,8 +165,7 @@ tests remain part of the full suite.
   `6073f702bad3f41821661190d1bef05dedf46762a77f9f72346e412689c98dff`; it uploaded to server
   `fa696721`, and `cc reload all` enabled DungeonCrawlers successfully. The live speed command
   returned `60x real time`, the reset command returned `1x real time`, and post-reload operations,
-  configuration validation, and repository diagnostics were clean. The active-run warning still
-  requires the actual player-facing 60x check.
+  configuration validation, and repository diagnostics were clean.
 - 2026-09-12: Commit `a1153d2` makes `/dungeon tick advance <seconds>` persist its jump in the
   central scheduler timeline, retains `advance-test` as an alias, and adds `/dungeon tick time`.
   The Java 21 clean build, full test suite, shadow-JAR shading verification, and live console smoke
@@ -173,5 +173,7 @@ tests remain part of the full suite.
   timestamp 60 seconds ahead of real time. JAR SHA-256 was
   `91400e39d7cd0a00257e539ac70a019f338e8925e28e8847a3a7cc440e2badf0`; it uploaded to server
   `fa696721`, and `cc reload all` enabled DungeonCrawlers successfully. Post-reload operations,
-  configuration validation, and repository diagnostics were clean. The active-run warning still
-  requires the actual player-facing speed or advance check.
+  configuration validation, and repository diagnostics were clean.
+- 2026-09-12: The user completed the player-facing active-run deadline check with
+  `/dungeon tick speed-test 600`: the one-minute warning appeared, the run reached its time limit,
+  and failed-run cleanup restored the player. The active-run warning check is now passed.
