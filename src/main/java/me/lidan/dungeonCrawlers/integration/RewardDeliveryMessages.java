@@ -1,6 +1,5 @@
 package me.lidan.dungeonCrawlers.integration;
 
-import me.lidan.cavecrawlers.utils.MiniMessageUtils;
 import me.lidan.dungeonCrawlers.core.claim.RewardClaimService;
 import org.bukkit.entity.Player;
 
@@ -17,6 +16,6 @@ public final class RewardDeliveryMessages {
                 : delivery.pending()
                 ? "<yellow>Reward delivery pending: " + delivery.detail() + "</yellow>"
                 : "<red>Reward delivery failed: " + delivery.detail() + "</red>";
-        player.sendMessage(MiniMessageUtils.miniMessage(message));
+        DungeonMessages.send(player, message);
     }
 }

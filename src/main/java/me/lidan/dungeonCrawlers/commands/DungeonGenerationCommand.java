@@ -9,6 +9,7 @@ import me.lidan.dungeonCrawlers.core.protection.TeleportPermitService;
 import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
 import me.lidan.dungeonCrawlers.integration.PartyProvider;
+import me.lidan.dungeonCrawlers.integration.DungeonMessages;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
@@ -28,6 +29,7 @@ import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.function.BooleanSupplier;
 
 @Command("dungeon")
 public final class DungeonGenerationCommand {
@@ -42,11 +44,21 @@ public final class DungeonGenerationCommand {
     private final Clock clock;
     private final Consumer<UUID> preparationCancel;
     private final RunPreparationService runs;
+    private final BooleanSupplier debugEnabled;
 
     public DungeonGenerationCommand(ConfigRegistryService configRegistry, PartyProvider parties,
                                     GenerationService generation, Server server, String generationWorldName,
                                     TeleportPermitService teleportPermits, Clock clock,
                                     Consumer<UUID> preparationCancel, RunPreparationService runs) {
+        this(configRegistry, parties, generation, server, generationWorldName, teleportPermits, clock,
+                preparationCancel, runs, () -> false);
+    }
+
+    public DungeonGenerationCommand(ConfigRegistryService configRegistry, PartyProvider parties,
+                                    GenerationService generation, Server server, String generationWorldName,
+                                    TeleportPermitService teleportPermits, Clock clock,
+                                    Consumer<UUID> preparationCancel, RunPreparationService runs,
+                                    BooleanSupplier debugEnabled) {
         this.configRegistry = configRegistry;
         this.parties = parties;
         this.generation = generation;
@@ -56,11 +68,13 @@ public final class DungeonGenerationCommand {
         this.clock = clock;
         this.preparationCancel = preparationCancel;
         this.runs = runs;
+        this.debugEnabled = debugEnabled;
     }
 
     @Subcommand("instance generate-debug")
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void generateDebug(Player player, @SuggestWith(FloorIdSuggestionProvider.class) String floorId, long seed) {
+        if (!requireDebug(player)) return;
         generate(player, floorId, seed, 0);
     }
 
@@ -68,6 +82,7 @@ public final class DungeonGenerationCommand {
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void generateDebugSlow(Player player, @SuggestWith(FloorIdSuggestionProvider.class) String floorId,
                                   long seed, long delayMillis) {
+        if (!requireDebug(player)) return;
         generate(player, floorId, seed, delayMillis);
     }
 
@@ -98,15 +113,22 @@ public final class DungeonGenerationCommand {
             SlotAllocator.SlotLease slot = slotFor(id);
             GenerationService.PlayerSpawn spawn = generation.playerSpawn(id).orElse(null);
             if (slot == null) {
-                sender.sendMessage("[PASS] " + value);
+                DungeonMessages.send(sender, DungeonMessages.info("Instance " + value.instanceId()
+                        + ": status=<white>" + value.status().name().toLowerCase() + "</white>, slot=<white>"
+                        + value.slotId() + "</white>, participants=<white>" + value.participants().size()
+                        + "</white>, seed=<white>" + value.seed() + "</white>"));
                 return;
             }
-            suggest(sender, "<green>[PASS]</green> " + value + " origin=" + slot.origin()
-                    + " usable=" + slot.usableBounds() + (spawn == null ? "" : " spawn=" + spawn.point()
-                    + " facingYaw=" + spawn.yaw())
+            suggest(sender, "<green>Instance " + value.instanceId() + "</green> <gray>status=<white>"
+                    + value.status().name().toLowerCase() + "</white>, slot=<white>" + value.slotId()
+                    + "</white>, participants=<white>" + value.participants().size() + "</white>, seed=<white>"
+                    + value.seed() + "</white> origin=<white>" + point(slot.origin()) + "</white> usable=<white>"
+                    + bounds(slot.usableBounds()) + "</white>" + (spawn == null ? "" : " spawn=<white>"
+                    + point(spawn.point()) + "</white> facing yaw=<white>" + spawn.yaw() + "</white>")
                     + " <gray>(click to teleport)</gray>",
                     "/dungeon instance tp " + id);
-        }, () -> sender.sendMessage("[FAIL] unknown instance " + instanceId));
+        }, () -> DungeonMessages.send(sender, DungeonMessages.error("Unknown instance: <white>"
+                + instanceId + "</white>")));
     }
 
     @Subcommand("instance tp")
@@ -132,13 +154,14 @@ public final class DungeonGenerationCommand {
                     spawn.point().y() + 1.0, spawn.point().z() + 0.5, spawn.yaw(), 0.0f);
             if (!player.teleport(destination)) {
                 teleportPermits.revoke(player.getUniqueId());
-                player.sendMessage("[FAIL] teleport to instance " + id + " was rejected");
+                DungeonMessages.send(player, DungeonMessages.error("Teleport to instance <white>" + id
+                        + "</white> was rejected."));
                 return;
             }
-            suggest(player, "<green>[PASS]</green> teleported to instance " + id
+            suggest(player, "<green>Teleported to instance " + id
                     + " <gray>(click for instance info)</gray>", "/dungeon instance info " + id);
         } catch (RuntimeException exception) {
-            player.sendMessage("[FAIL] " + message(exception));
+            DungeonMessages.send(player, DungeonMessages.error(message(exception)));
         }
     }
 
@@ -146,13 +169,19 @@ public final class DungeonGenerationCommand {
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void instances(CommandSender sender) {
         var instances = generation.instances();
-        sender.sendMessage("[PASS] instances=" + instances.size());
+        DungeonMessages.send(sender, DungeonMessages.info("Instances: <white>" + instances.size() + "</white>"));
         instances.forEach(instance -> {
             SlotAllocator.SlotLease slot = slotFor(instance.instanceId());
             GenerationService.PlayerSpawn spawn = generation.playerSpawn(instance.instanceId()).orElse(null);
-            String suffix = slot == null ? "" : " origin=" + slot.origin() + " usable=" + slot.usableBounds();
-            if (spawn != null) suffix += " spawn=" + spawn.point() + " facingYaw=" + spawn.yaw();
-            suggest(sender, instance + suffix, "/dungeon instance info " + instance.instanceId());
+            String suffix = slot == null ? "" : " origin=<white>" + point(slot.origin())
+                    + "</white> usable=<white>" + bounds(slot.usableBounds()) + "</white>";
+            if (spawn != null) suffix += " spawn=<white>" + point(spawn.point()) + "</white> facing yaw=<white>"
+                    + spawn.yaw() + "</white>";
+            suggest(sender, "<aqua>Instance " + instance.instanceId() + "</aqua> <gray>status=<white>"
+                    + instance.status().name().toLowerCase() + "</white>, slot=<white>" + instance.slotId()
+                    + "</white>, participants=<white>" + instance.participants().size() + "</white>, seed=<white>"
+                    + instance.seed() + "</white>, detail=<white>" + instance.detail() + "</white>" + suffix
+                    + "</gray>", "/dungeon instance info " + instance.instanceId());
         });
     }
 
@@ -162,15 +191,24 @@ public final class DungeonGenerationCommand {
         var slots = generation.slots();
         long free = slots.stream().filter(slot -> slot.state() == me.lidan.dungeonCrawlers.core.generation
                 .SlotAllocator.SlotState.FREE).count();
-        sender.sendMessage("[PASS] free=" + free + "/" + slots.size());
-        slots.forEach(slot -> sender.sendMessage("slot=" + slot.id() + " state=" + slot.state()
-                + " owner=" + slot.instanceId() + " origin=" + slot.origin() + " usable=" + slot.usableBounds()));
+        DungeonMessages.send(sender, DungeonMessages.info("Slots free: <white>" + free + "/" + slots.size()
+                + "</white>"));
+        slots.forEach(slot -> DungeonMessages.send(sender, "<gray>slot <white>" + slot.id()
+                + "</white>: state=<white>" + slot.state().name().toLowerCase() + "</white>, owner=<white>"
+                + (slot.instanceId() == null ? "none" : slot.instanceId()) + "</white>, origin=<white>"
+                + point(slot.origin()) + "</white>, usable=<white>" + bounds(slot.usableBounds())
+                + "</white></gray>"));
     }
 
     @Subcommand("recovery status")
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void recoveryStatus(CommandSender sender) {
-        sender.sendMessage("[PASS] " + generation.recoveryStatus());
+        var status = generation.recoveryStatus();
+        DungeonMessages.send(sender, "<gray>Recovery: starts enabled=<white>" + status.startsEnabled()
+                + "</white>, running=<white>" + status.recoveryRunning() + "</white>, discovered=<white>"
+                + status.discovered() + "</white>, cleared=<white>" + status.cleared()
+                + "</white>, blockers=<white>" + String.join(", ", status.blockers())
+                + "</white></gray>");
     }
 
     @Subcommand("recovery run")
@@ -183,23 +221,24 @@ public final class DungeonGenerationCommand {
         var snapshot = configRegistry.snapshot();
         var floor = snapshot.floors().get(floorId);
         if (floor == null) {
-            player.sendMessage("[FAIL] unknown floor " + floorId);
+            DungeonMessages.send(player, DungeonMessages.error("Unknown floor: <white>" + floorId + "</white>"));
             return;
         }
         PartySnapshotPolicy.SnapshotResult party = partyPolicy.snapshot(player.getUniqueId(),
                 parties.lookup(player.getUniqueId()), floor.limits().maxPartySize());
         if (!party.successful()) {
-            player.sendMessage("[FAIL] " + party.error());
+            DungeonMessages.send(player, DungeonMessages.error(party.error()));
             return;
         }
         GenerationService.StartResult result = generation.start(new GenerationService.StartRequest(snapshot, floor,
                 party.snapshot(), seed, delayMillis));
         if (!result.accepted()) {
-            player.sendMessage("[FAIL] " + result.detail());
+            DungeonMessages.send(player, DungeonMessages.error(result.detail()));
             return;
         }
-        suggest(player, "<green>[PASS]</green> instance=" + result.instanceId() + " slot=" + result.slotId()
-                + " admitted; <gray>(click for instance info)</gray>",
+        suggest(player, "<green>Dungeon admitted</green> <gray>instance=<white>" + result.instanceId()
+                + "</white>, slot=<white>" + result.slotId()
+                + "</white> (click for instance info)</gray>",
                 "/dungeon instance info " + result.instanceId());
     }
 
@@ -211,7 +250,7 @@ public final class DungeonGenerationCommand {
     }
 
     static void suggest(CommandSender sender, String message, String command) {
-        Component component = MiniMessageUtils.miniMessage(message)
+        Component component = DungeonMessages.prefix(MiniMessageUtils.miniMessage(message))
                 .clickEvent(ClickEvent.suggestCommand(command))
                 .hoverEvent(HoverEvent.showText(MiniMessageUtils.miniMessage("<gray>Suggest <white>" + command
                         + "</white></gray>")));
@@ -219,19 +258,35 @@ public final class DungeonGenerationCommand {
     }
 
     private static void report(CommandSender sender, GenerationService.ActionResult result) {
-        sender.sendMessage((result.successful() ? "[PASS] " : "[FAIL] ") + result.detail());
+        DungeonMessages.send(sender, result.successful()
+                ? DungeonMessages.success(result.detail()) : DungeonMessages.error(result.detail()));
     }
 
     private UUID resolve(CommandSender sender, String value) {
         try {
             return DungeonInstanceResolver.require(sender, value, runs);
         } catch (IllegalArgumentException exception) {
-            sender.sendMessage("[FAIL] " + exception.getMessage());
+            DungeonMessages.send(sender, DungeonMessages.error(exception.getMessage()));
             return null;
         }
     }
 
     private static String message(Throwable throwable) {
         return throwable.getMessage() == null ? throwable.getClass().getSimpleName() : throwable.getMessage();
+    }
+
+    private boolean requireDebug(CommandSender sender) {
+        if (debugEnabled.getAsBoolean()) return true;
+        DungeonMessages.send(sender, DungeonMessages.warning(
+                "This is a debug-only command and is disabled while config.yml debug is false."));
+        return false;
+    }
+
+    private static String point(Point point) {
+        return point.x() + ", " + point.y() + ", " + point.z();
+    }
+
+    private static String bounds(me.lidan.dungeonCrawlers.core.template.TemplateModels.Bounds bounds) {
+        return "[" + point(bounds.minimum()) + "] to [" + point(bounds.maximum()) + "]";
     }
 }

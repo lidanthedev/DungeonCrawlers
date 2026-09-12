@@ -13,7 +13,7 @@ import java.util.function.BooleanSupplier;
 /** Refuses server/plugin reload dispatch while a completion transition is still pending. */
 public final class BukkitReloadProtectionListener implements Listener {
     private static final String MESSAGE =
-            "[FAIL] server reload is refused while dungeon reward completion is pending";
+            "<red>Server reload is refused while dungeon reward completion is pending.</red>";
     private final BooleanSupplier completionPending;
 
     public BukkitReloadProtectionListener(BooleanSupplier completionPending) {
@@ -24,7 +24,7 @@ public final class BukkitReloadProtectionListener implements Listener {
     public void onServerCommand(ServerCommandEvent event) {
         if (isReloadCommand(event.getCommand()) && blocked()) {
             event.setCancelled(true);
-            event.getSender().sendMessage(MESSAGE);
+            DungeonMessages.send(event.getSender(), MESSAGE);
         }
     }
 
@@ -32,7 +32,7 @@ public final class BukkitReloadProtectionListener implements Listener {
     public void onPlayerCommand(PlayerCommandPreprocessEvent event) {
         if (isReloadCommand(event.getMessage()) && blocked()) {
             event.setCancelled(true);
-            event.getPlayer().sendMessage(MESSAGE);
+            DungeonMessages.send(event.getPlayer(), MESSAGE);
         }
     }
 

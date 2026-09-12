@@ -47,7 +47,7 @@ class ScoreResultRendererTest {
         String hover = PlainTextComponentSerializer.plainText().serialize(
                 (Component) ScoreResultRenderer.render(report).hoverEvent().value());
 
-        assertTrue(visible.startsWith("[FAIL]"), visible);
+        assertTrue(visible.startsWith("Dungeon score:"), visible);
         assertTrue(hover.contains("Skill: 0"), hover);
     }
 }

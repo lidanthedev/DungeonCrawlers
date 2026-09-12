@@ -1,8 +1,8 @@
 package me.lidan.dungeonCrawlers.commands;
 
-import me.lidan.cavecrawlers.utils.MiniMessageUtils;
 import me.lidan.dungeonCrawlers.core.portal.PortalEncounterService;
 import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
+import me.lidan.dungeonCrawlers.integration.DungeonMessages;
 import org.bukkit.command.CommandSender;
 import revxrsal.commands.annotation.Command;
 import revxrsal.commands.annotation.Subcommand;
@@ -63,9 +63,9 @@ public final class DungeonPhaseNineCommand {
         PortalEncounterService.BossResult result = encounters.status(id);
         send(sender, result);
         if (result.successful() && result.snapshot() != null) {
-            sender.sendMessage(MiniMessageUtils.miniMessage("<gray>status=<white>"
-                    + result.snapshot().status() + "</white> reward=<white>"
-                    + result.snapshot().rewardChest() + "</white></gray>"));
+            DungeonMessages.send(sender, "<gray>status=<white>"
+                    + result.snapshot().status().name().toLowerCase() + "</white> reward chest=<white>"
+                    + point(result.snapshot().rewardChest()) + "</white></gray>");
         }
     }
 
@@ -93,9 +93,10 @@ public final class DungeonPhaseNineCommand {
         if (id == null) return;
         if (encounters.cleanup(id)) {
             cleanupRun.accept(id);
-            sender.sendMessage(MiniMessageUtils.miniMessage("<green>[PASS] boss and portal encounter cleaned</green>"));
+            DungeonMessages.send(sender, DungeonMessages.success("Boss and portal encounter cleaned."));
         } else {
-            sender.sendMessage(MiniMessageUtils.miniMessage("<red>[FAIL] no portal encounter registered for instance " + id + "</red>"));
+            DungeonMessages.send(sender, DungeonMessages.error("No portal encounter is registered for instance <white>"
+                    + id + "</white>."));
         }
     }
 
@@ -113,7 +114,10 @@ public final class DungeonPhaseNineCommand {
         } else {
             successful = false; detail = String.valueOf(result);
         }
-        sender.sendMessage(MiniMessageUtils.miniMessage("<" + (successful ? "green" : "red") + ">["
-                + (successful ? "PASS" : "FAIL") + "] " + detail + "</" + (successful ? "green" : "red") + ">"));
+        DungeonMessages.send(sender, successful ? DungeonMessages.success(detail) : DungeonMessages.error(detail));
+    }
+
+    private static String point(me.lidan.dungeonCrawlers.core.template.TemplateModels.Point point) {
+        return point.x() + ", " + point.y() + ", " + point.z();
     }
 }

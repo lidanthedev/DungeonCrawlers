@@ -70,6 +70,7 @@ import me.lidan.dungeonCrawlers.integration.BukkitDungeonLifecycleListener;
 import me.lidan.dungeonCrawlers.integration.BukkitDungeonActionBar;
 import me.lidan.dungeonCrawlers.integration.BukkitGhostState;
 import me.lidan.dungeonCrawlers.integration.DebugSettings;
+import me.lidan.dungeonCrawlers.integration.DungeonMessages;
 import me.lidan.dungeonCrawlers.integration.DungeonPlaceholderExpansion;
 import me.lidan.dungeonCrawlers.integration.mythic.MythicMobsAdapter;
 import me.lidan.dungeonCrawlers.integration.cave.CaveActionBarAdapter;
@@ -444,21 +445,23 @@ public final class DungeonCrawlers extends JavaPlugin {
         commandHandler.register(new DungeonGenerationCommand(configRegistry,
                 PartyProviders.forServer(getServer()), generation, getServer(),
                 generationWorldName,
-                teleportPermits, phaseClock(), phaseFiveCommand::cancelFromAdmin, runPreparation));
+                teleportPermits, phaseClock(), phaseFiveCommand::cancelFromAdmin, runPreparation,
+                debugSettings::enabled));
         commandHandler.register(phaseFiveCommand);
-        commandHandler.register(new DungeonPhaseSixCommand(combat, runPreparation));
-        commandHandler.register(new DungeonPhaseSevenCommand(phaseSeven, runPreparation));
-        commandHandler.register(new DungeonPhaseEightCommand(lifecycle, runPreparation, phaseFiveCommand));
+        commandHandler.register(new DungeonPhaseSixCommand(combat, runPreparation, debugSettings::enabled));
+        commandHandler.register(new DungeonPhaseSevenCommand(phaseSeven, runPreparation, debugSettings::enabled));
+        commandHandler.register(new DungeonPhaseEightCommand(lifecycle, runPreparation, phaseFiveCommand,
+                debugSettings::enabled));
         commandHandler.register(new DungeonPhaseNineCommand(phaseNine, runPreparation,
                 phaseFiveCommand::cancelFromAdmin));
         phaseElevenCommand = new DungeonPhaseElevenCommand(rewards, generation, runPreparation, configRegistry,
-                lifecycle, claims);
+                lifecycle, claims, debugSettings::enabled);
         commandHandler.register(phaseElevenCommand);
         commandHandler.register(new DungeonPhaseFourCommand(centralUpdates, doors, protectionPolicy,
                 teleportPermits, playerSnapshots, getServer(), this, phaseClock(),
                 generationWorldName,
                 () -> generation.protectionRegions().stream().map(WorldProtectionService.InstanceRegion::from).toList(),
-                runPreparation));
+                runPreparation, debugSettings::enabled));
     }
 
     private void registerEvents() {
@@ -504,7 +507,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         participants.stream().map(RewardEntitlementService.Participant::playerId)
                 .map(getServer()::getPlayer)
                 .filter(java.util.Objects::nonNull)
-                .forEach(player -> player.sendMessage(ScoreResultRenderer.render(score)));
+                .forEach(player -> DungeonMessages.send(player, ScoreResultRenderer.render(score)));
         return true;
     }
 
@@ -527,7 +530,7 @@ public final class DungeonCrawlers extends JavaPlugin {
             rewards.register(new RewardEntitlementService.Completion(instanceId, context.seed(), failedAt,
                     score.finalSnapshot(), participants, context.floor().rewards()));
             run.participants().stream().map(getServer()::getPlayer).filter(java.util.Objects::nonNull)
-                    .forEach(player -> player.sendMessage(ScoreResultRenderer.render(score)));
+                    .forEach(player -> DungeonMessages.send(player, ScoreResultRenderer.render(score)));
         } catch (RuntimeException exception) {
             getLogger().warning("instance=" + instanceId + " failed result persistence failed: "
                     + exception.getClass().getSimpleName() + ": " + exception.getMessage());
@@ -600,7 +603,7 @@ public final class DungeonCrawlers extends JavaPlugin {
     }
 
     private static void notifyDeadline(List<Player> players, String message) {
-        players.forEach(player -> player.sendMessage(MiniMessageUtils.miniMessage(message)));
+        players.forEach(player -> DungeonMessages.send(player, message));
     }
 
     private void notifyCombatRoom(CombatRoomService.RoomNotice notice) {
@@ -612,7 +615,7 @@ public final class DungeonCrawlers extends JavaPlugin {
                     : "<green>Room <white>" + notice.clearedRoom()
                     + "</white> cleared. <yellow>Door to room <white>" + notice.unlockedRoom()
                     + "</white> unlocked.</yellow></green>";
-            player.sendMessage(MiniMessageUtils.miniMessage(message));
+            DungeonMessages.send(player, message);
         }));
     }
 
@@ -623,8 +626,8 @@ public final class DungeonCrawlers extends JavaPlugin {
                 if (player == null) return;
                 BukkitGhostState.enter(player, remainingGhostDuration(notice.reviveAt()));
                 showLifecycleTitle(player, "", "<yellow>" + notice.detail() + "</yellow>", 0, 30, 5);
-                player.sendMessage(MiniMessageUtils.miniMessage(
-                        "<gray>You are a ghost. You will revive in 60 seconds if the run remains active.</gray>"));
+                DungeonMessages.send(player,
+                        "<gray>You are a ghost. You will revive in 60 seconds if the run remains active.</gray>");
             }
             case GHOST_COUNTDOWN, RECONNECTED -> {
                 if (player == null || notice.reviveAt() == null) return;
@@ -647,7 +650,7 @@ public final class DungeonCrawlers extends JavaPlugin {
                 scheduleReviveHeal(notice.instanceId(), player, 1L);
                 scheduleReviveHeal(notice.instanceId(), player, 20L);
                 showLifecycleTitle(player, "<green>Revived</green>", "<white>Welcome back</white>", 5, 40, 10);
-                player.sendMessage(MiniMessageUtils.miniMessage("<green>You have been revived.</green>"));
+                DungeonMessages.send(player, "<green>You have been revived.</green>");
             }
             case REMOVED -> {
                 if (player != null) BukkitGhostState.exit(player);

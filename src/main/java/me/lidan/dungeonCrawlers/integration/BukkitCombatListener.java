@@ -58,7 +58,8 @@ public final class BukkitCombatListener implements Listener {
             result.openedDoorBlocks().forEach(opened -> event.getClickedBlock().getWorld()
                     .getBlockAt(opened.x(), opened.y(), opened.z()).setType(Material.AIR, false));
         }
-        event.getPlayer().sendMessage("[" + (result.successful() ? "PASS" : "FAIL") + "] " + result.detail());
+        DungeonMessages.send(event.getPlayer(), result.successful()
+                ? DungeonMessages.success(result.detail()) : DungeonMessages.error(result.detail()));
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)

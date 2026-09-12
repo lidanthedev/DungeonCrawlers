@@ -84,18 +84,18 @@ public final class BukkitDungeonRunListener implements Listener {
         if (!result.successful()) return;
         event.setCancelled(true);
         if (result.status() == SecretDiscoveryService.Status.ALREADY_DISCOVERED) {
-            event.getPlayer().sendMessage(MiniMessageUtils.miniMessage("<yellow>Secret already found.</yellow>"));
+            DungeonMessages.send(event.getPlayer(), "<yellow>Secret already found.</yellow>");
             return;
         }
         if (result.blessingId() == null) {
-            event.getPlayer().sendMessage(MiniMessageUtils.miniMessage("<green>Secret discovered.</green>"));
+            DungeonMessages.send(event.getPlayer(), "<green>Secret discovered.</green>");
         } else {
             var discovery = result.blessing();
             String displayName = phaseSeven.blessingDisplayName(instanceId, result.blessingId())
                     .orElse(result.blessingId());
-            event.getPlayer().sendMessage(MiniMessageUtils.miniMessage("<light_purple>Blessing discovered: "
+            DungeonMessages.send(event.getPlayer(), "<light_purple>Blessing discovered: "
                     + displayName + " <gray>level " + discovery.levelsAwarded()
-                    + (discovery.atCap() ? " (max)" : "") + ".</light_purple>"));
+                    + (discovery.atCap() ? " (max)" : "") + ".</light_purple>");
         }
     }
 }

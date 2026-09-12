@@ -85,7 +85,7 @@ public final class BukkitPortalParticipantGateway implements PortalEncounterServ
     public void notice(UUID instanceId, String miniMessage) {
         runs.info(instanceId).ifPresent(snapshot -> snapshot.participants().stream()
                 .map(server::getPlayer).filter(Objects::nonNull)
-                .forEach(player -> player.sendMessage(MiniMessageUtils.miniMessage(miniMessage))));
+                .forEach(player -> DungeonMessages.send(player, miniMessage)));
     }
 
     @Override

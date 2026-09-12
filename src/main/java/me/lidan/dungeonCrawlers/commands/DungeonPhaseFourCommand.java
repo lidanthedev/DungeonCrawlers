@@ -11,6 +11,7 @@ import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
 import me.lidan.dungeonCrawlers.integration.BukkitPlayerRecovery;
 import me.lidan.dungeonCrawlers.integration.BukkitDoorBlockService;
 import me.lidan.dungeonCrawlers.integration.SpawnProvider;
+import me.lidan.dungeonCrawlers.integration.DungeonMessages;
 import me.lidan.dungeonCrawlers.integration.spawn.BukkitSpawnProvider;
 import org.bukkit.Server;
 import org.bukkit.Location;
@@ -30,6 +31,7 @@ import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.List;
 import java.util.function.Supplier;
+import java.util.function.BooleanSupplier;
 
 @Command("dungeon")
 public final class DungeonPhaseFourCommand {
@@ -47,6 +49,7 @@ public final class DungeonPhaseFourCommand {
     private final BukkitDoorBlockService doorBlocks = new BukkitDoorBlockService();
     private final Supplier<List<WorldProtectionService.InstanceRegion>> regions;
     private final RunPreparationService runs;
+    private final BooleanSupplier debugEnabled;
 
     public DungeonPhaseFourCommand(CentralUpdateService updates, DoorService doors,
                                    WorldProtectionService protection, TeleportPermitService permits,
@@ -54,6 +57,16 @@ public final class DungeonPhaseFourCommand {
                                    String generationWorldName,
                                    Supplier<List<WorldProtectionService.InstanceRegion>> regions,
                                    RunPreparationService runs) {
+        this(updates, doors, protection, permits, snapshots, server, plugin, clock, generationWorldName,
+                regions, runs, () -> false);
+    }
+
+    public DungeonPhaseFourCommand(CentralUpdateService updates, DoorService doors,
+                                   WorldProtectionService protection, TeleportPermitService permits,
+                                   PlayerSnapshotService snapshots, Server server, Plugin plugin, Clock clock,
+                                   String generationWorldName,
+                                   Supplier<List<WorldProtectionService.InstanceRegion>> regions,
+                                   RunPreparationService runs, BooleanSupplier debugEnabled) {
         this.updates = java.util.Objects.requireNonNull(updates);
         this.doors = java.util.Objects.requireNonNull(doors);
         this.protection = java.util.Objects.requireNonNull(protection);
@@ -66,6 +79,7 @@ public final class DungeonPhaseFourCommand {
         if (this.generationWorldName.isBlank()) throw new IllegalArgumentException("generation world name is blank");
         this.regions = java.util.Objects.requireNonNull(regions);
         this.runs = java.util.Objects.requireNonNull(runs);
+        this.debugEnabled = java.util.Objects.requireNonNull(debugEnabled);
     }
 
     @Subcommand("instance advance")
@@ -73,19 +87,21 @@ public final class DungeonPhaseFourCommand {
     public void instanceAdvance(CommandSender sender,
                                 @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
                                 String amount) {
+        if (!requireDebug(sender)) return;
         try {
             UUID id = resolve(sender, instanceId);
             Duration duration = parseAdvanceTime(amount);
             if (updates.time(id).isEmpty()) {
-                sender.sendMessage("[FAIL] unknown active instance " + id);
+                DungeonMessages.send(sender, DungeonMessages.error("Unknown active instance: <white>" + id + "</white>"));
                 return;
             }
             CentralUpdateService.TickReport report = updates.advanceInstanceTime(id, duration);
-            sender.sendMessage("[" + (report.successful() ? "PASS" : "FAIL") + "] instance=" + id
-                    + " advanced=" + duration.getSeconds() + "s tick=" + report.now()
-                    + " attempted=" + report.attempted() + " failures=" + report.failures());
+            DungeonMessages.send(sender, report.successful()
+                    ? DungeonMessages.success("Instance <white>" + id + "</white> advanced by <white>"
+                    + duration.getSeconds() + "s</white>; attempted=<white>" + report.attempted() + "</white>.")
+                    : DungeonMessages.error("Instance time advance failed: " + report.failures()));
         } catch (RuntimeException exception) {
-            sender.sendMessage("[FAIL] " + message(exception));
+            DungeonMessages.send(sender, DungeonMessages.error(message(exception)));
         }
     }
 
@@ -93,36 +109,42 @@ public final class DungeonPhaseFourCommand {
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void instanceTime(CommandSender sender,
                              @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
+        if (!requireDebug(sender)) return;
         try {
             UUID id = resolve(sender, instanceId);
             updates.time(id).ifPresentOrElse(
-                    time -> sender.sendMessage("[PASS] instance=" + id + " real=" + time.realNow()
-                            + " dungeon=" + time.schedulerNow() + " speed=" + time.timeScale() + "x advance="
-                            + time.instanceTimeOffset().getSeconds() + "s"),
-                    () -> sender.sendMessage("[FAIL] unknown active instance " + id));
+                    time -> DungeonMessages.send(sender, "<gray>Instance <white>" + id
+                            + "</white>: real now=<white>" + time.realNow() + "</white>, dungeon now=<white>"
+                            + time.schedulerNow() + "</white>, speed=<white>" + time.timeScale()
+                            + "x</white>, offset=<white>" + time.instanceTimeOffset().getSeconds() + "s</white></gray>"),
+                    () -> DungeonMessages.send(sender, DungeonMessages.error("Unknown active instance: <white>"
+                            + id + "</white>")));
         } catch (RuntimeException exception) {
-            sender.sendMessage("[FAIL] " + message(exception));
+            DungeonMessages.send(sender, DungeonMessages.error(message(exception)));
         }
     }
 
     @Subcommand("tick speed-test")
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void tickSpeed(CommandSender sender, long multiplier) {
+        if (!requireDebug(sender)) return;
         if (multiplier < CentralUpdateService.MIN_TIME_SCALE
                 || multiplier > CentralUpdateService.MAX_TIME_SCALE) {
-            sender.sendMessage("[FAIL] test tick speed must be in " + CentralUpdateService.MIN_TIME_SCALE
-                    + ".." + CentralUpdateService.MAX_TIME_SCALE);
+            DungeonMessages.send(sender, DungeonMessages.error("Test tick speed must be in "
+                    + CentralUpdateService.MIN_TIME_SCALE + ".." + CentralUpdateService.MAX_TIME_SCALE + "."));
             return;
         }
         updates.setTimeScale(multiplier);
-        sender.sendMessage("[PASS] dungeon test time speed=" + multiplier + "x real time");
+        DungeonMessages.send(sender, DungeonMessages.success("Dungeon test time speed: <white>" + multiplier
+                + "x</white> real time."));
     }
 
     @Subcommand("tick speed-reset-test")
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void resetTickSpeed(CommandSender sender) {
+        if (!requireDebug(sender)) return;
         updates.resetTimeScale();
-        sender.sendMessage("[PASS] dungeon test time speed reset to 1x real time");
+        DungeonMessages.send(sender, DungeonMessages.success("Dungeon test time speed reset to <white>1x</white>."));
     }
 
     private static Duration parseAdvanceTime(String input) {
@@ -161,30 +183,34 @@ public final class DungeonPhaseFourCommand {
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void registerDoor(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
                               int x, int y, int z, String facing) {
+        if (!requireDebug(sender)) return;
         try {
             DoorService.DoorSnapshot door = doors.register(resolve(sender, instanceId), new Point(x, y, z),
                     Facing.valueOf(facing.toUpperCase(Locale.ROOT)));
             doorBlocks.render(generationWorld(), door);
-            sender.sendMessage("[PASS] " + door + " blocks=" + door.blocks().size());
+            sendDoor(sender, door);
         } catch (RuntimeException exception) {
-            sender.sendMessage("[FAIL] " + message(exception));
+            DungeonMessages.send(sender, DungeonMessages.error(message(exception)));
         }
     }
 
     @Subcommand("door info")
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void doorInfo(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
+        if (!requireDebug(sender)) return;
         try {
             doors.info(resolve(sender, instanceId)).ifPresentOrElse(
-                    door -> sender.sendMessage("[PASS] " + door + " blocks=" + door.blocks().size()),
-                    () -> sender.sendMessage("[FAIL] unknown door " + instanceId));
-        } catch (RuntimeException exception) { sender.sendMessage("[FAIL] " + message(exception)); }
+                    door -> sendDoor(sender, door),
+                    () -> DungeonMessages.send(sender, DungeonMessages.error("Unknown door: <white>"
+                            + instanceId + "</white>")));
+        } catch (RuntimeException exception) { DungeonMessages.send(sender, DungeonMessages.error(message(exception))); }
     }
 
     @Subcommand("door set")
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void doorSet(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
                         String state) {
+        if (!requireDebug(sender)) return;
         try {
             UUID id = resolve(sender, instanceId);
             DoorService.DoorSnapshot result = switch (state.toUpperCase(Locale.ROOT)) {
@@ -193,65 +219,75 @@ public final class DungeonPhaseFourCommand {
                 default -> throw new IllegalArgumentException("state must be LOCKED or READY");
             };
             doorBlocks.render(generationWorld(), result);
-            sender.sendMessage("[PASS] " + result);
-        } catch (RuntimeException exception) { sender.sendMessage("[FAIL] " + message(exception)); }
+            sendDoor(sender, result);
+        } catch (RuntimeException exception) { DungeonMessages.send(sender, DungeonMessages.error(message(exception))); }
     }
 
     @Subcommand("door open")
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void doorOpen(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
+        if (!requireDebug(sender)) return;
         try {
             UUID id = resolve(sender, instanceId);
             DoorService.OpenResult result = doors.open(id,
                 () -> {
                         doorBlocks.render(generationWorld(), doors.info(id).orElseThrow());
-                        sender.sendMessage("[PASS] door open callback invoked once");
+                        DungeonMessages.send(sender, DungeonMessages.success("Door open callback invoked once."));
                     });
-            sender.sendMessage("[" + (result.opened() || result.alreadyOpen() ? "PASS" : "FAIL") + "] "
-                    + result.detail() + " state=" + result.door().state());
-        } catch (RuntimeException exception) { sender.sendMessage("[FAIL] " + message(exception)); }
+            DungeonMessages.send(sender, result.opened() || result.alreadyOpen()
+                    ? DungeonMessages.success(result.detail() + " state=<white>"
+                    + result.door().state().name().toLowerCase(Locale.ROOT) + "</white>")
+                    : DungeonMessages.error(result.detail()));
+        } catch (RuntimeException exception) { DungeonMessages.send(sender, DungeonMessages.error(message(exception))); }
     }
 
     @Subcommand("protection inspect")
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void protectionInspect(CommandSender sender) {
+        if (!requireDebug(sender)) return;
         List<WorldProtectionService.InstanceRegion> active = regions.get();
-        sender.sendMessage("[PASS] regions=" + active.size() + "; permits=" + permits.size()
-                + "; policy=" + protection.getClass().getSimpleName());
-        active.forEach(region -> sender.sendMessage("instance=" + region.instanceId() + " world=" + region.world()
-                + " bounds=" + region.bounds() + " participants=" + region.participants()));
+        DungeonMessages.send(sender, "<gray>Protection regions=<white>" + active.size()
+                + "</white>, teleport permits=<white>" + permits.size() + "</white>, policy=<white>"
+                + protection.getClass().getSimpleName() + "</white></gray>");
+        active.forEach(region -> DungeonMessages.send(sender, "<gray>instance=<white>" + region.instanceId()
+                + "</white>, world=<white>" + region.world() + "</white>, bounds=<white>"
+                + bounds(region.bounds()) + "</white>, participants=<white>" + region.participants().size()
+                + "</white></gray>"));
     }
 
     @Subcommand("player snapshot")
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void playerSnapshot(Player player, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId) {
+        if (!requireDebug(player)) return;
         try {
             var snapshot = BukkitPlayerRecovery.capture(player, resolve(player, instanceId), clock);
             var submission = snapshots.save(snapshot);
             if (!submission.accepted()) {
-                player.sendMessage("[FAIL] snapshot rejected: " + submission.detail());
+                DungeonMessages.send(player, DungeonMessages.error("Snapshot rejected: " + submission.detail()));
                 return;
             }
             submission.runtimeAck().whenCompleteAsync((ignored, failure) -> {
-                if (failure != null) player.sendMessage("[FAIL] snapshot ACK: " + message(failure));
+                if (failure != null) DungeonMessages.send(player, DungeonMessages.error("Snapshot acknowledgement failed: "
+                        + message(failure)));
                 else DungeonGenerationCommand.suggest(player,
-                        "<green>[PASS]</green> snapshot persisted for " + player.getUniqueId()
+                        "<green>Snapshot persisted for " + player.getUniqueId()
                                 + " <gray>(click to restore)</gray>",
                         "/dungeon player restore-test");
             }, mainThread);
-        } catch (RuntimeException exception) { player.sendMessage("[FAIL] " + message(exception)); }
+        } catch (RuntimeException exception) { DungeonMessages.send(player, DungeonMessages.error(message(exception))); }
     }
 
     @Subcommand("player restore-test")
     @CommandPermission("dungeoncrawlers.admin.generation")
     public void playerRestore(Player player) {
+        if (!requireDebug(player)) return;
         snapshots.read(player.getUniqueId()).whenCompleteAsync((snapshot, failure) -> {
             if (failure != null) {
-                player.sendMessage("[FAIL] snapshot read: " + message(failure));
+                DungeonMessages.send(player, DungeonMessages.error("Snapshot read failed: " + message(failure)));
                 return;
             }
             if (snapshot.isEmpty()) {
-                player.sendMessage("[FAIL] no recovery snapshot for " + player.getUniqueId());
+                DungeonMessages.send(player, DungeonMessages.error("No recovery snapshot exists for this player."));
                 return;
             }
             SpawnProvider fallback = new BukkitSpawnProvider(server, "");
@@ -265,8 +301,10 @@ public final class DungeonPhaseFourCommand {
             permits.authorize(player.getUniqueId(), destinations,
                     clock.instant().plus(DungeonGenerationCommand.TELEPORT_PERMIT_DURATION));
             var result = BukkitPlayerRecovery.restore(player, saved, server, fallback);
-            player.sendMessage("[" + (result.successful() ? "PASS" : "FAIL") + "] restore source="
-                    + result.source() + " detail=" + result.detail());
+            DungeonMessages.send(player, result.successful()
+                    ? DungeonMessages.success("Player restored from <white>" + result.source()
+                    + "</white>: " + result.detail())
+                    : DungeonMessages.error("Player restore failed: " + result.detail()));
         }, mainThread);
     }
 
@@ -285,5 +323,28 @@ public final class DungeonPhaseFourCommand {
 
     private UUID resolve(CommandSender sender, String value) {
         return DungeonInstanceResolver.require(sender, value, runs);
+    }
+
+    private boolean requireDebug(CommandSender sender) {
+        if (debugEnabled.getAsBoolean()) return true;
+        DungeonMessages.send(sender, DungeonMessages.warning(
+                "This is a debug-only command and is disabled while config.yml debug is false."));
+        return false;
+    }
+
+    private static void sendDoor(CommandSender sender, DoorService.DoorSnapshot door) {
+        DungeonMessages.send(sender, DungeonMessages.success("Door <white>" + door.instanceId()
+                + "</white>: state=<white>" + door.state().name().toLowerCase(Locale.ROOT)
+                + "</white>, center=<white>" + point(door.center()) + "</white>, facing=<white>"
+                + door.outward().name().toLowerCase(Locale.ROOT) + "</white>, blocks=<white>"
+                + door.blocks().size() + "</white>."));
+    }
+
+    private static String point(Point point) {
+        return point.x() + ", " + point.y() + ", " + point.z();
+    }
+
+    private static String bounds(me.lidan.dungeonCrawlers.core.template.TemplateModels.Bounds bounds) {
+        return "[" + point(bounds.minimum()) + "] to [" + point(bounds.maximum()) + "]";
     }
 }

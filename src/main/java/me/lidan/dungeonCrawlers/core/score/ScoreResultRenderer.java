@@ -22,9 +22,7 @@ public final class ScoreResultRenderer {
 
     private static Component render(ScoreService.ScoreResult result, boolean successful) {
         String color = successful ? "green" : "red";
-        String status = successful ? "PASS" : "FAIL";
-        Component visible = MiniMessageUtils.miniMessage("<" + color + ">[" + status
-                + "] Dungeon score: <white>" + result.total() + "</white> (<aqua>"
+        Component visible = MiniMessageUtils.miniMessage("<" + color + ">Dungeon score: <white>" + result.total() + "</white> (<aqua>"
                 + displayRank(result.rank()) + "</aqua>)</" + color + ">");
         return visible.hoverEvent(HoverEvent.showText(details(result)));
     }

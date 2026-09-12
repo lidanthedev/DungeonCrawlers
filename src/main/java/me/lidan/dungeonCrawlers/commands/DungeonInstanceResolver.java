@@ -1,5 +1,6 @@
 package me.lidan.dungeonCrawlers.commands;
 
+import me.lidan.dungeonCrawlers.integration.DungeonMessages;
 import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -33,7 +34,7 @@ public final class DungeonInstanceResolver {
         try {
             return require(sender, value, runs);
         } catch (IllegalArgumentException exception) {
-            sender.sendMessage("[FAIL] " + exception.getMessage());
+            DungeonMessages.send(sender, DungeonMessages.error(exception.getMessage()));
             return null;
         }
     }

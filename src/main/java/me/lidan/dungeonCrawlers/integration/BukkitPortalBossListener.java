@@ -46,7 +46,7 @@ public final class BukkitPortalBossListener implements Listener {
         event.setCancelled(true);
         var result = encounters.enterPortal(instanceId, event.getPlayer().getUniqueId());
         if (!result.successful()) {
-            event.getPlayer().sendMessage(MiniMessageUtils.miniMessage("<red>[FAIL] " + result.detail() + "</red>"));
+            DungeonMessages.send(event.getPlayer(), "<red>" + result.detail() + "</red>");
         }
     }
 
