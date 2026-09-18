@@ -39,6 +39,7 @@ public final class TemplateValidator {
         List<Point> normalMobs = new ArrayList<>();
         List<Point> minibossMobs = new ArrayList<>();
         List<Point> playerSpawns = new ArrayList<>();
+        List<Point> classSelectorNpcs = new ArrayList<>();
         List<Point> bossSpawns = new ArrayList<>();
         List<Point> rewards = new ArrayList<>();
         List<Secret> secrets = new ArrayList<>();
@@ -62,6 +63,8 @@ public final class TemplateValidator {
             } else if (block.is("emerald_block")) {
                 playerSpawns.add(point);
                 if (emeraldPolicy == EmeraldPolicy.REPLACE) solids.remove(point);
+            } else if (block.is("orange_concrete_powder")) {
+                classSelectorNpcs.add(point); solids.remove(point);
             } else if (block.is("red_concrete_powder")) {
                 bossSpawns.add(point); solids.remove(point);
             } else if (block.is("lime_concrete_powder")) {
@@ -76,7 +79,7 @@ public final class TemplateValidator {
         });
 
         validateType(type, capabilities, entrances, exits, normalMobs, minibossMobs, playerSpawns,
-                bossSpawns, rewards, portals, errors);
+                classSelectorNpcs, bossSpawns, rewards, portals, errors);
         int components = connectedComponents(portals);
         if (type == RoomType.PORTAL && components != 1) {
             errors.add("PORTAL requires exactly one connected Nether Portal component; found " + components);
@@ -84,8 +87,8 @@ public final class TemplateValidator {
 
         if (!errors.isEmpty()) return new ValidationResult(Optional.empty(), errors);
         Template template = new Template(id, type, capabilities, selection.bounds(), optionalOne(entrances),
-                optionalOne(exits), normalMobs, minibossMobs, playerSpawns, optionalPoint(bossSpawns),
-                optionalPoint(rewards), secrets, portals, solids,
+                optionalOne(exits), normalMobs, minibossMobs, playerSpawns, optionalPoint(classSelectorNpcs),
+                optionalPoint(bossSpawns), optionalPoint(rewards), secrets, portals, solids,
                 contentHash(id, type, capabilities, emeraldPolicy, selection));
         return new ValidationResult(Optional.of(template), List.of());
     }
@@ -148,7 +151,8 @@ public final class TemplateValidator {
     private static void validateType(RoomType type, Set<EncounterCapability> capabilities,
                                      List<Connector> entrances, List<Connector> exits,
                                      List<Point> normalMobs, List<Point> minibossMobs, List<Point> playerSpawns,
-                                     List<Point> bossSpawns, List<Point> rewards, Set<Point> portals,
+                                     List<Point> classSelectorNpcs, List<Point> bossSpawns, List<Point> rewards,
+                                     Set<Point> portals,
                                      List<String> errors) {
         requireCount(type, "entrance JIGSAW (dungeoncrawlers:entrance)", entrances.size(),
                 type == RoomType.NORMAL || type == RoomType.PORTAL ? 1 : 0, errors);
@@ -158,6 +162,12 @@ public final class TemplateValidator {
         requireAllowed(type, "miniboss mob (YELLOW_CONCRETE_POWDER)", minibossMobs.size(), type == RoomType.NORMAL, errors);
         requireAllowed(type, "player spawn (EMERALD_BLOCK)", playerSpawns.size(),
                 type == RoomType.START || type == RoomType.BOSS, errors);
+        requireAllowed(type, "class selector (ORANGE_CONCRETE_POWDER)", classSelectorNpcs.size(),
+                type == RoomType.START, errors);
+        if (type == RoomType.START && classSelectorNpcs.size() > 1) {
+            errors.add("START allows at most one class selector marker (ORANGE_CONCRETE_POWDER); found "
+                    + classSelectorNpcs.size());
+        }
         requireAllowed(type, "boss spawn (RED_CONCRETE_POWDER)", bossSpawns.size(), type == RoomType.BOSS, errors);
         requireAllowed(type, "reward chest (LIME_CONCRETE_POWDER)", rewards.size(), type == RoomType.BOSS, errors);
         requireAllowed(type, "portal trigger (NETHER_PORTAL)", portals.size(), type == RoomType.PORTAL, errors);

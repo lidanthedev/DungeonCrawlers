@@ -1,5 +1,6 @@
 package me.lidan.dungeonCrawlers.core.score;
 
+import me.lidan.dungeonCrawlers.config.DungeonTimings;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
@@ -11,7 +12,31 @@ import java.util.Map;
 import java.util.Objects;
 
 public final class ScoreService {
-    private static final Duration FREE_TIME = Duration.ofMinutes(8);
+    private static final Duration DEFAULT_FREE_TIME = DungeonTimings.defaults().scoreFreeTime();
+    private static final Duration DEFAULT_PENALTY_INTERVAL = DungeonTimings.defaults().scorePenaltyInterval();
+    private final Duration freeTime;
+    private final Duration penaltyInterval;
+
+    public ScoreService() {
+        this(DEFAULT_FREE_TIME, DEFAULT_PENALTY_INTERVAL);
+    }
+
+    public ScoreService(Duration freeTime) {
+        this(freeTime, DEFAULT_PENALTY_INTERVAL);
+    }
+
+    public ScoreService(Duration freeTime, Duration penaltyInterval) {
+        this.freeTime = requirePositive("free time", freeTime);
+        this.penaltyInterval = requirePositive("penalty interval", penaltyInterval);
+    }
+
+    public Duration freeTime() {
+        return freeTime;
+    }
+
+    public Duration penaltyInterval() {
+        return penaltyInterval;
+    }
 
     public ScoreResult calculate(ScoreInput input, List<BonusProvider> providers) {
         return calculateReport(input, providers).result();
@@ -26,10 +51,10 @@ public final class ScoreService {
         Objects.requireNonNull(input, "input");
         Objects.requireNonNull(providers, "providers");
         int skill = input.successful() ? Math.max(0, 100 - 2 * input.deaths()) : 0;
-        long overtimeMillis = Math.max(0, input.elapsed().minus(FREE_TIME).toMillis());
-        long penaltyMinutes = (overtimeMillis + Duration.ofMinutes(1).toMillis() - 1)
-                / Duration.ofMinutes(1).toMillis();
-        int time = (int) Math.max(0, 100 - 2 * penaltyMinutes);
+        long overtimeMillis = Math.max(0, input.elapsed().minus(freeTime).toMillis());
+        long penaltyIntervals = (overtimeMillis + penaltyInterval.toMillis() - 1)
+                / penaltyInterval.toMillis();
+        int time = (int) Math.max(0, 100 - 2 * penaltyIntervals);
         int exploration = input.totalSecrets() == 0 ? 100 : BigDecimal.valueOf(input.foundSecrets())
                 .multiply(BigDecimal.valueOf(100))
                 .divide(BigDecimal.valueOf(input.totalSecrets()), 0, RoundingMode.HALF_UP)
@@ -72,6 +97,14 @@ public final class ScoreService {
         }
         ordered.sort(Comparator.comparingInt(BonusProvider::priority).thenComparing(BonusProvider::id));
         return List.copyOf(ordered);
+    }
+
+    private static Duration requirePositive(String name, Duration duration) {
+        Objects.requireNonNull(duration, name);
+        if (duration.isZero() || duration.isNegative()) {
+            throw new IllegalArgumentException(name + " must be positive");
+        }
+        return duration;
     }
 
     public record ScoreInput(boolean successful, int deaths, Duration elapsed, int foundSecrets, int totalSecrets) {

@@ -1,5 +1,6 @@
 package me.lidan.dungeonCrawlers.core.lifecycle;
 
+import me.lidan.dungeonCrawlers.config.DungeonTimings;
 import me.lidan.dungeonCrawlers.core.update.CentralUpdateService;
 import org.bukkit.Bukkit;
 
@@ -19,19 +20,27 @@ import java.util.function.Consumer;
 
 /** Pure running-player lifecycle for alive, ghost, logout, escape, and wipe state. */
 public final class PlayerLifecycleService {
-    public static final Duration REVIVE_DURATION = Duration.ofSeconds(60);
-    public static final Duration ADMIN_REVIVE_DURATION = Duration.ofSeconds(3);
+    private static final DungeonTimings DEFAULT_TIMINGS = DungeonTimings.defaults();
+    public static final Duration REVIVE_DURATION = DEFAULT_TIMINGS.reviveDuration();
+    public static final Duration ADMIN_REVIVE_DURATION = DEFAULT_TIMINGS.adminReviveDuration();
 
     private final CentralUpdateService updates;
     private final Clock clock;
     private final Consumer<Notice> notices;
+    private final DungeonTimings timings;
     private final Map<UUID, MutableInstance> instances = new LinkedHashMap<>();
     private boolean frozen;
 
     public PlayerLifecycleService(CentralUpdateService updates, Clock clock, Consumer<Notice> notices) {
+        this(updates, clock, notices, DEFAULT_TIMINGS);
+    }
+
+    public PlayerLifecycleService(CentralUpdateService updates, Clock clock, Consumer<Notice> notices,
+                                  DungeonTimings timings) {
         this.updates = Objects.requireNonNull(updates, "updates");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.notices = Objects.requireNonNull(notices, "notices");
+        this.timings = Objects.requireNonNull(timings, "timings");
     }
 
     public synchronized RegistrationResult register(UUID instanceId, Collection<UUID> participants) {
@@ -158,11 +167,11 @@ public final class PlayerLifecycleService {
         if (player.state != PlayerState.GHOST) return TransitionResult.failure("player is not a ghost");
 
         Instant now = clock.instant();
-        player.reviveAt = now.plus(ADMIN_REVIVE_DURATION);
+        player.reviveAt = now.plus(timings.adminReviveDuration());
         player.lastCountdownSeconds = -1;
         emitCountdown(state, player, now, Event.GHOST_COUNTDOWN);
         return TransitionResult.success(Event.GHOST_COUNTDOWN,
-                "revive scheduled in " + ADMIN_REVIVE_DURATION.toSeconds() + " seconds",
+                "revive scheduled in " + timings.adminReviveDuration().toSeconds() + " seconds",
                 snapshot(state), player.id);
     }
 
@@ -246,11 +255,11 @@ public final class PlayerLifecycleService {
                                                boolean notifyPlayer) {
         player.deaths++;
         player.state = PlayerState.GHOST;
-        player.reviveAt = now.plus(REVIVE_DURATION);
+        player.reviveAt = now.plus(timings.reviveDuration());
         player.lastTarget = null;
-        player.lastCountdownSeconds = REVIVE_DURATION.toSeconds();
+        player.lastCountdownSeconds = timings.reviveDuration().toSeconds();
         Notice ghost = new Notice(state.instanceId, player.id, Event.GHOSTED,
-                "Reviving in " + REVIVE_DURATION.toSeconds() + " seconds", player.reviveAt, null);
+                "Reviving in " + timings.reviveDuration().toSeconds() + " seconds", player.reviveAt, null);
         if (noOnlineAlive(state)) return wipe(state, "no online active alive player remains", ghost);
         if (notifyPlayer) emit(ghost);
         return TransitionResult.success(Event.GHOSTED, ghost.detail(), snapshot(state), player.id);

@@ -7,6 +7,7 @@ import me.lidan.dungeonCrawlers.commands.DungeonCrawlersCommand;
 import me.lidan.dungeonCrawlers.commands.DungeonAuthoringCommand;
 import me.lidan.dungeonCrawlers.commands.DungeonGenerationCommand;
 import me.lidan.dungeonCrawlers.commands.DungeonPhaseFiveCommand;
+import me.lidan.dungeonCrawlers.commands.DungeonClassMenuService;
 import me.lidan.dungeonCrawlers.commands.DungeonPhaseSixCommand;
 import me.lidan.dungeonCrawlers.commands.ClassIdSuggestionProvider;
 import me.lidan.dungeonCrawlers.commands.FloorIdSuggestionProvider;
@@ -16,6 +17,7 @@ import me.lidan.dungeonCrawlers.commands.RoomIdSuggestionProvider;
 import me.lidan.dungeonCrawlers.authoring.TemplateAuthoringService;
 import me.lidan.dungeonCrawlers.authoring.TemplateCatalogLoader;
 import me.lidan.dungeonCrawlers.compatibility.CompatibilityService;
+import me.lidan.dungeonCrawlers.config.DungeonTimings;
 import me.lidan.dungeonCrawlers.config.registry.ConfigRegistryService;
 import me.lidan.dungeonCrawlers.config.registry.EncounterRegistry;
 import me.lidan.dungeonCrawlers.config.BoostedConfigFactory;
@@ -69,14 +71,18 @@ import me.lidan.dungeonCrawlers.integration.BukkitDungeonRunListener;
 import me.lidan.dungeonCrawlers.integration.BukkitDungeonLifecycleListener;
 import me.lidan.dungeonCrawlers.integration.BukkitDungeonActionBar;
 import me.lidan.dungeonCrawlers.integration.BukkitGhostState;
+import me.lidan.dungeonCrawlers.integration.ClassSelectorNpcService;
+import me.lidan.dungeonCrawlers.integration.NoOpClassSelectorNpcService;
 import me.lidan.dungeonCrawlers.integration.DebugSettings;
 import me.lidan.dungeonCrawlers.integration.DungeonMessages;
 import me.lidan.dungeonCrawlers.integration.DungeonPlaceholderExpansion;
+import me.lidan.dungeonCrawlers.authoring.RoomMarkerItemFactory;
 import me.lidan.dungeonCrawlers.integration.mythic.MythicMobsAdapter;
 import me.lidan.dungeonCrawlers.integration.cave.CaveActionBarAdapter;
 import me.lidan.dungeonCrawlers.integration.cave.CaveItemsAdapter;
 import me.lidan.dungeonCrawlers.integration.parties.PartyProviders;
 import me.lidan.dungeonCrawlers.integration.worldedit.FaweGenerationAdapter;
+import me.lidan.dungeonCrawlers.integration.worldedit.JigsawMarkerPlacementListener;
 import me.lidan.dungeonCrawlers.integration.worldedit.WorldEditAdapter;
 import me.lidan.dungeonCrawlers.persistence.DurableRepository;
 import me.lidan.dungeonCrawlers.persistence.FileDurableRepository;
@@ -131,6 +137,9 @@ public final class DungeonCrawlers extends JavaPlugin {
     private CombatRoomService combat;
     private RunPreparationService runPreparation;
     private DungeonPhaseFiveCommand phaseFiveCommand;
+    private DungeonClassMenuService classMenuService;
+    private ClassSelectorNpcService classSelectorNpcs;
+    private RoomMarkerItemFactory roomMarkerItems;
     private BukkitProgressBarService progressBars;
     private SecretDiscoveryService phaseSeven;
     private PortalEncounterService phaseNine;
@@ -142,6 +151,8 @@ public final class DungeonCrawlers extends JavaPlugin {
     private PlayerLifecycleService lifecycle;
     private DebugSettings debugSettings;
     private DungeonPlaceholderExpansion placeholderExpansion;
+    private DungeonTimings timings;
+    private ScoreService scoreService;
     private final Map<UUID, ScoreService.FinalScoreSnapshot> latestScores = new ConcurrentHashMap<>();
     private volatile boolean disabling;
 
@@ -177,6 +188,8 @@ public final class DungeonCrawlers extends JavaPlugin {
             throw new IllegalStateException("config.yml schema-version must be "
                     + BoostedConfigFactory.CURRENT_SCHEMA_VERSION);
         }
+        timings = configuredTimings();
+        scoreService = new ScoreService(timings.scoreFreeTime(), timings.scorePenaltyInterval());
         debugSettings = new DebugSettings(configuredBoolean("debug", false));
         try {
             migrateVersionedDataConfigs();
@@ -197,7 +210,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         int queueCapacity = loaded.snapshot().floors().values().stream()
                 .mapToInt(floor -> floor.limits().repositoryQueueCapacity()).max().orElse(1_000);
         durableRepository = new FileDurableRepository(getDataFolder().toPath().resolve("runtime"), queueCapacity,
-                callback -> getServer().getScheduler().runTask(this, callback));
+                callback -> getServer().getScheduler().runTask(this, callback), timings.persistenceShutdownGrace());
         initializePhaseThreeServices();
         getLogger().info("Loaded DungeonCrawlers configuration: floors=" + loaded.snapshot().floors().size()
                 + ", rooms=" + loaded.snapshot().rooms().size() + ", bossEncounters="
@@ -241,7 +254,7 @@ public final class DungeonCrawlers extends JavaPlugin {
                     } else {
                         progressBars.update(progress.instanceId(), progress.progress(), progress.detail());
                     }
-                });
+                }, timings.generationCleanupDeadline());
         generation.recover();
         initializePhaseFourServices(worldName);
     }
@@ -279,18 +292,18 @@ public final class DungeonCrawlers extends JavaPlugin {
                     debugLog("instance=" + instanceId + " first room activated");
                 }, getLogger()::warning, instanceId -> {
                     cancelDeadlineInstance(instanceId);
-                }, true);
+                }, true, timings);
         phaseSeven = new SecretDiscoveryService(configRegistry::snapshot);
-        lifecycle = new PlayerLifecycleService(centralUpdates, phaseClock(), this::handleLifecycleNotice);
+        lifecycle = new PlayerLifecycleService(centralUpdates, phaseClock(), this::handleLifecycleNotice, timings);
         bossIdentity = new BukkitBossIdentity(this);
         phaseNine = new PortalEncounterService(centralUpdates, runPreparation,
                 EncounterFactoryRegistry.withBasic(),
                 new BukkitBossGateway(getServer(), this::generationWorld, mythicMobs, bossIdentity),
                 new BukkitPortalParticipantGateway(getServer(), this::generationWorld, generationWorldName,
-                        runPreparation, lifecycle, teleportPermits, phaseClock()),
-                phaseClock(), getLogger()::warning, this::finalizeRewards);
+                        runPreparation, lifecycle, teleportPermits, phaseClock(), timings.teleportPermit()),
+                phaseClock(), getLogger()::warning, this::finalizeRewards, timings);
         rewards = new RewardEntitlementService(phaseClock(), new CaveItemsAdapter()::isConfigured,
-                durableRepository);
+                durableRepository, timings);
         claims = new RewardClaimService(phaseClock(), durableRepository, rewards, new CaveItemsAdapter(),
                 () -> {
                     RegisteredServiceProvider<Economy> registration = getServer().getServicesManager()
@@ -339,6 +352,49 @@ public final class DungeonCrawlers extends JavaPlugin {
             return retention;
         } catch (NumberFormatException | ArithmeticException exception) {
             throw new IllegalStateException("config.yml backups.retention-count must be an integer in 1..1000");
+        }
+    }
+
+    private DungeonTimings configuredTimings() {
+        DungeonTimings defaults = DungeonTimings.defaults();
+        return new DungeonTimings(
+                configuredSeconds("timings.preparation-warning-seconds", defaults.preparationWarning()),
+                configuredSeconds("timings.preparation-timeout-seconds", defaults.preparationTimeout()),
+                configuredSeconds("timings.run-warning-seconds", defaults.runWarning()),
+                configuredSeconds("timings.run-timeout-seconds", defaults.runTimeout()),
+                configuredSeconds("timings.failed-reading-period-seconds", defaults.failedReadingPeriod()),
+                configuredSeconds("timings.completion-warning-seconds", defaults.completionWarning()),
+                configuredSeconds("timings.completion-timeout-seconds", defaults.completionTimeout()),
+                configuredSeconds("timings.completion-final-countdown-seconds", defaults.completionFinalCountdown()),
+                configuredSeconds("timings.revive-seconds", defaults.reviveDuration()),
+                configuredSeconds("timings.admin-revive-seconds", defaults.adminReviveDuration()),
+                configuredSeconds("timings.portal-countdown-seconds", defaults.portalCountdown()),
+                configuredSeconds("timings.boss-spawn-delay-seconds", defaults.bossSpawnDelay()),
+                configuredSeconds("timings.live-reward-window-seconds", defaults.liveRewardWindow()),
+                configuredSeconds("timings.recovered-reward-window-seconds", defaults.recoveredRewardWindow()),
+                configuredSeconds("timings.recovered-reward-session-seconds",
+                        defaults.recoveredRewardSessionWindow()),
+                configuredSeconds("timings.score-free-time-seconds", defaults.scoreFreeTime()),
+                configuredSeconds("timings.score-penalty-interval-seconds", defaults.scorePenaltyInterval()),
+                configuredSeconds("timings.generation-cleanup-deadline-seconds",
+                        defaults.generationCleanupDeadline()),
+                configuredSeconds("timings.teleport-permit-seconds", defaults.teleportPermit()),
+                configuredSeconds("timings.action-bar-cooldown-seconds", defaults.actionBarCooldown()),
+                configuredSeconds("timings.persistence-shutdown-grace-seconds",
+                        defaults.persistenceShutdownGrace()),
+                configuredSeconds("timings.pending-recovery-max-age-seconds", defaults.pendingRecoveryMaxAge()));
+    }
+
+    private Duration configuredSeconds(String route, Duration defaultValue) {
+        if (!mainConfig.contains(route, true)) return defaultValue;
+        Object value = mainConfig.get(route);
+        try {
+            long seconds = value instanceof Number number ? new BigDecimal(number.toString()).longValueExact() : -1;
+            if (seconds < 1 || seconds > Duration.ofDays(365).toSeconds()) throw new ArithmeticException();
+            return Duration.ofSeconds(seconds);
+        } catch (NumberFormatException | ArithmeticException exception) {
+            throw new IllegalStateException("config.yml " + route
+                    + " must be an integer number of seconds in 1..31536000");
         }
     }
 
@@ -432,23 +488,33 @@ public final class DungeonCrawlers extends JavaPlugin {
             return new RewardIdSuggestionProvider<BukkitCommandActor>(() -> configRegistry.snapshot().floors().values()
                     .stream().flatMap(floor -> floor.rewards().keySet().stream()).toList());
         });
+        var dungeonActionBar = new ThrottledDungeonActionBar(
+                new BukkitDungeonActionBar(new CaveActionBarAdapter()), phaseClock(), timings.actionBarCooldown());
         phaseFiveCommand = new DungeonPhaseFiveCommand(configRegistry, PartyProviders.forServer(getServer()),
                 generation, runPreparation, playerSnapshots, teleportPermits, getServer(), this, phaseClock(),
                 generationWorldName,
-                new ThrottledDungeonActionBar(new BukkitDungeonActionBar(new CaveActionBarAdapter()), phaseClock()),
-                new DungeonPhaseFiveCommand.PhaseServices(combat, progressBars, phaseSeven, lifecycle, phaseNine));
+                dungeonActionBar,
+                new DungeonPhaseFiveCommand.PhaseServices(combat, progressBars, phaseSeven, lifecycle, phaseNine),
+                timings);
+        classMenuService = new DungeonClassMenuService(configRegistry, runPreparation,
+                phaseFiveCommand::renderDoor, dungeonActionBar);
+        phaseFiveCommand.setClassMenuService(classMenuService);
+        classSelectorNpcs = createClassSelectorNpcService();
+        phaseFiveCommand.setClassSelectorNpcService(classSelectorNpcs);
+        roomMarkerItems = new RoomMarkerItemFactory(this);
         Lamp<BukkitCommandActor> commandHandler = commandHandlerBuilder.build();
         commandHandler.register(new DungeonCrawlersCommand(this,
                 new CompatibilityService(this, mainConfig, configRegistry), mainConfig, configRegistry,
                 reservations, durableRepository, generation, phaseFiveCommand::cancelFromAdmin,
-                this::hasCompletionPending, debugSettings::enabled, debugSettings::setEnabled));
+                this::hasCompletionPending, debugSettings::enabled, debugSettings::setEnabled, scoreService));
         commandHandler.register(new DungeonAuthoringCommand(this, mainConfig, configRegistry, reservations, authoring,
                 generation::activeTemplateIds, progressBars));
         commandHandler.register(new DungeonGenerationCommand(configRegistry,
                 PartyProviders.forServer(getServer()), generation, getServer(),
                 generationWorldName,
                 teleportPermits, phaseClock(), phaseFiveCommand::cancelFromAdmin, runPreparation,
-                debugSettings::enabled, lifecycle, phaseSeven, latestScores::get, combat, phaseNine));
+                debugSettings::enabled, lifecycle, phaseSeven, latestScores::get, combat, phaseNine,
+                timings.teleportPermit()));
         commandHandler.register(phaseFiveCommand);
         commandHandler.register(new DungeonPhaseSixCommand(combat, runPreparation, debugSettings::enabled));
         commandHandler.register(new DungeonPhaseSevenCommand(phaseSeven, runPreparation, debugSettings::enabled));
@@ -457,13 +523,13 @@ public final class DungeonCrawlers extends JavaPlugin {
         commandHandler.register(new DungeonPhaseNineCommand(phaseNine, runPreparation,
                 phaseFiveCommand::cancelFromAdmin));
         phaseElevenCommand = new DungeonPhaseElevenCommand(rewards, generation, runPreparation, configRegistry,
-                lifecycle, claims, debugSettings::enabled);
+                lifecycle, claims, debugSettings::enabled, scoreService);
         commandHandler.register(phaseElevenCommand);
         commandHandler.register(new DungeonPhaseFourCommand(centralUpdates, doors, protectionPolicy,
                 teleportPermits, playerSnapshots, getServer(), this, phaseClock(),
                 generationWorldName,
                 () -> generation.protectionRegions().stream().map(WorldProtectionService.InstanceRegion::from).toList(),
-                runPreparation, debugSettings::enabled));
+                runPreparation, debugSettings::enabled, timings.teleportPermit()));
     }
 
     private void registerEvents() {
@@ -480,6 +546,9 @@ public final class DungeonCrawlers extends JavaPlugin {
         registerEvent(new BukkitRewardChestListener(phaseNine, generationWorldName, phaseElevenCommand::openRewards));
         registerEvent(rewardMailboxListener);
         registerEvent(new BukkitReloadProtectionListener(this::hasCompletionPending));
+        registerEvent(classMenuService);
+        registerEvent(new JigsawMarkerPlacementListener(roomMarkerItems));
+        if (classSelectorNpcs instanceof Listener listener) registerEvent(listener);
         // PlugMan-style reloads do not emit PlayerJoinEvent; repair any durable snapshots for players
         // who stayed online while the plugin was restarted.
         Bukkit.getOnlinePlayers().forEach(phaseFiveCommand::recoverOnJoin);
@@ -509,7 +578,8 @@ public final class DungeonCrawlers extends JavaPlugin {
         participants.stream().map(RewardEntitlementService.Participant::playerId)
                 .map(getServer()::getPlayer)
                 .filter(java.util.Objects::nonNull)
-                .forEach(player -> DungeonMessages.send(player, ScoreResultRenderer.render(score)));
+                .forEach(player -> DungeonMessages.send(player, ScoreResultRenderer.render(score,
+                        scoreService.freeTime(), scoreService.penaltyInterval())));
         return true;
     }
 
@@ -524,7 +594,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         }
         Instant failedAt = run.failedDeadline() == null
                 ? phaseClock().instant()
-                : run.failedDeadline().minus(RunPreparationService.FAILED_READING_PERIOD);
+                : run.failedDeadline().minus(timings.failedReadingPeriod());
         try {
             ScoreService.ScoreReport score = calculateScore(run, lifecycleSnapshot, false, failedAt);
             latestScores.put(instanceId, score.finalSnapshot());
@@ -532,7 +602,8 @@ public final class DungeonCrawlers extends JavaPlugin {
             rewards.register(new RewardEntitlementService.Completion(instanceId, context.seed(), failedAt,
                     score.finalSnapshot(), participants, context.floor().rewards()));
             run.participants().stream().map(getServer()::getPlayer).filter(java.util.Objects::nonNull)
-                    .forEach(player -> DungeonMessages.send(player, ScoreResultRenderer.render(score)));
+                    .forEach(player -> DungeonMessages.send(player, ScoreResultRenderer.render(score,
+                            scoreService.freeTime(), scoreService.penaltyInterval())));
         } catch (RuntimeException exception) {
             getLogger().warning("instance=" + instanceId + " failed result persistence failed: "
                     + exception.getClass().getSimpleName() + ": " + exception.getMessage());
@@ -565,7 +636,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         Duration elapsed = run.startedAt() == null ? Duration.ZERO
                 : Duration.between(run.startedAt(), endedAt);
         if (elapsed.isNegative()) elapsed = Duration.ZERO;
-        return new ScoreService().calculateReport(
+        return scoreService.calculateReport(
                 new ScoreService.ScoreInput(successful, deaths, elapsed, foundSecrets, totalSecrets), List.of());
     }
 
@@ -587,16 +658,20 @@ public final class DungeonCrawlers extends JavaPlugin {
                 .filter(java.util.Objects::nonNull).toList();
         switch (notice.event()) {
             case PREPARATION_WARNING -> notifyDeadline(players,
-                    "<yellow>Class selection closes in <white>1 minute</white>.</yellow>");
+                    "<yellow>Class selection closes in <white>" + formatSeconds(notice.secondsRemaining())
+                            + "</white>.</yellow>");
             case RUN_WARNING -> notifyDeadline(players,
-                    "<yellow>Dungeon time limit expires in <white>1 minute</white>.</yellow>");
+                    "<yellow>Dungeon time limit expires in <white>" + formatSeconds(notice.secondsRemaining())
+                            + "</white>.</yellow>");
             case RUN_FAILED -> {
                 notifyDeadline(players, "<red>" + runFailureMessage(notice.detail()) + "</red>");
                 players.forEach(player -> showLifecycleTitle(player, "<red>Dungeon Failed</red>",
-                        "<yellow>Reading period: 10 seconds</yellow>", 5, 40, 10));
+                        "<yellow>Reading period: " + formatSeconds(timings.failedReadingPeriod().toSeconds())
+                                + "</yellow>", 5, 40, 10));
             }
             case COMPLETION_WARNING -> notifyDeadline(players,
-                    "<yellow>Reward chest closes in <white>1 minute</white>.</yellow>");
+                    "<yellow>Reward chest closes in <white>" + formatSeconds(notice.secondsRemaining())
+                            + "</white>.</yellow>");
             case COMPLETION_COUNTDOWN -> players.forEach(player -> showLifecycleTitle(player,
                     "<red>Reward chest closing</red>", "<yellow>In <white>" + notice.secondsRemaining()
                             + "</white> seconds</yellow>", 0, 25, 5));
@@ -606,6 +681,17 @@ public final class DungeonCrawlers extends JavaPlugin {
 
     private static void notifyDeadline(List<Player> players, String message) {
         players.forEach(player -> DungeonMessages.send(player, message));
+    }
+
+    private static String formatSeconds(long seconds) {
+        long safeSeconds = Math.max(0, seconds);
+        long minutes = safeSeconds / 60;
+        long remainder = safeSeconds % 60;
+        if (minutes > 0 && remainder == 0) {
+            return minutes + (minutes == 1 ? " minute" : " minutes");
+        }
+        if (minutes > 0) return minutes + "m " + remainder + "s";
+        return safeSeconds + (safeSeconds == 1 ? " second" : " seconds");
     }
 
     private static String runFailureMessage(String detail) {
@@ -638,7 +724,8 @@ public final class DungeonCrawlers extends JavaPlugin {
                 BukkitGhostState.enter(player, remainingGhostDuration(notice.reviveAt()));
                 showLifecycleTitle(player, "", "<yellow>" + notice.detail() + "</yellow>", 0, 30, 5);
                 DungeonMessages.send(player,
-                        "<gray>You are a ghost. You will revive in 60 seconds if the run remains active.</gray>");
+                        "<gray>You are a ghost. " + notice.detail()
+                                + " if the run remains active.</gray>");
             }
             case GHOST_COUNTDOWN, RECONNECTED -> {
                 if (player == null || notice.reviveAt() == null) return;
@@ -754,6 +841,7 @@ public final class DungeonCrawlers extends JavaPlugin {
     @Override
     public void onDisable() {
         disabling = true;
+        if (classSelectorNpcs != null) classSelectorNpcs.shutdown();
         if (placeholderExpansion != null) placeholderExpansion.unregister();
         if (reservations != null) reservations.pauseAdmission();
         if (generation != null) generation.freezeForDisable();
@@ -763,6 +851,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         getLogger().info("Shutdown: callbacks frozen and admission paused");
 
         if (progressBars != null) progressBars.cancelAll();
+        if (classMenuService != null) classMenuService.closeAll();
         closeAllGuis();
         if (lifecycle != null) {
             lifecycle.instances().stream()
@@ -817,6 +906,28 @@ public final class DungeonCrawlers extends JavaPlugin {
                 player.closeInventory();
             }
         });
+    }
+
+    private ClassSelectorNpcService createClassSelectorNpcService() {
+        if (!getServer().getPluginManager().isPluginEnabled("Citizens")) {
+            getLogger().info("Class Selector NPC: No (Citizens is unavailable; class menu remains enabled)");
+            return new NoOpClassSelectorNpcService();
+        }
+        try {
+            ClassSelectorNpcService service = new me.lidan.dungeonCrawlers.integration.citizens.CitizensClassSelectorNpcService(
+                    this, classMenuService::open, configuredClassSelectorSkin());
+            getLogger().info("Class Selector NPC: Yes");
+            return service;
+        } catch (Throwable failure) {
+            getLogger().warning("Class Selector NPC: No (Citizens integration unavailable: "
+                    + failure.getClass().getSimpleName() + ")");
+            return new NoOpClassSelectorNpcService();
+        }
+    }
+
+    private String configuredClassSelectorSkin() {
+        String skin = mainConfig.getString("class-selector.npc.skin", "");
+        return skin == null ? "" : skin.trim();
     }
 
     /**

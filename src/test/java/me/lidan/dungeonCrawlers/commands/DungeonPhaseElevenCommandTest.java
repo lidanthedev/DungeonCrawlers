@@ -153,10 +153,20 @@ class DungeonPhaseElevenCommandTest {
         RewardEntitlementService.RewardOffer free = new RewardEntitlementService.RewardOffer(
                 UUID.randomUUID(), "wooden", 0, false, List.of());
 
-        assertEquals("<dark_purple>Reward Preview: <white>wooden</white> <gray>|</gray> <gold>1,234</gold></dark_purple>",
+        assertEquals("<dark_purple>Reward Preview <gray>|</gray> <gold>1,234</gold></dark_purple>",
                 DungeonPhaseElevenCommand.previewTitle(priced));
-        assertEquals("<dark_purple>Reward Preview: <white>wooden</white> <gray>|</gray> <gold>FREE</gold></dark_purple>",
+        assertEquals("<dark_purple>Reward Preview <gray>|</gray> <gold>FREE</gold></dark_purple>",
                 DungeonPhaseElevenCommand.previewTitle(free));
+    }
+
+    @Test
+    void rewardAvailabilityShowsMoneyLockWithoutAnInternalId() {
+        assertEquals("<green>Available: click to preview.</green>",
+                DungeonPhaseElevenCommand.rewardAvailabilityLabel(false, false));
+        assertEquals("<red>Locked: not enough money.</red>",
+                DungeonPhaseElevenCommand.rewardAvailabilityLabel(false, true));
+        assertEquals("<red>Locked: score requirement not met.</red>",
+                DungeonPhaseElevenCommand.rewardAvailabilityLabel(true, false));
     }
 
     @Test

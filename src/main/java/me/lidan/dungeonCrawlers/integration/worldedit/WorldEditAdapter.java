@@ -26,7 +26,9 @@ import me.lidan.dungeonCrawlers.core.template.TemplateModels.Bounds;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Selection;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Rotation;
+import me.lidan.dungeonCrawlers.core.template.RoomMarker;
 import org.enginehub.linbus.tree.LinStringTag;
+import org.enginehub.linbus.tree.LinCompoundTag;
 import org.enginehub.linbus.tree.LinTagType;
 
 import java.io.ByteArrayInputStream;
@@ -282,12 +284,29 @@ public final class WorldEditAdapter implements WorldEditGateway {
     }
 
     private static boolean isAuthoringMarker(String type) {
-        return switch (type) {
-            case "minecraft:jigsaw", "minecraft:gray_concrete_powder", "minecraft:yellow_concrete_powder",
-                    "minecraft:emerald_block", "minecraft:red_concrete_powder", "minecraft:lime_concrete_powder",
-                    "minecraft:chest", "minecraft:trapped_chest", "minecraft:nether_portal" -> true;
-            default -> false;
-        };
+        return RoomMarker.isAuthoringMarker(type);
+    }
+
+    /** Writes the native Jigsaw block-entity fields required by the room validator. */
+    public static boolean configureJigsaw(org.bukkit.block.Block block, String name) {
+        Objects.requireNonNull(block, "block");
+        Objects.requireNonNull(name, "name");
+        try {
+            var state = BukkitAdapter.adapt(block.getBlockData());
+            LinCompoundTag nbt = LinCompoundTag.builder()
+                    .putString("name", name)
+                    .putString("target", "dungeoncrawlers:connector")
+                    .putString("pool", "minecraft:empty")
+                    .putString("final_state", "minecraft:air")
+                    .build();
+            try (EditSession editSession = WorldEdit.getInstance()
+                    .newEditSession(BukkitAdapter.adapt(block.getWorld()))) {
+                return editSession.setBlock(BlockVector3.at(block.getX(), block.getY(), block.getZ()),
+                        state.toBaseBlock(nbt));
+            }
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private static final class CapturingClipboardExtent extends AbstractDelegateExtent {

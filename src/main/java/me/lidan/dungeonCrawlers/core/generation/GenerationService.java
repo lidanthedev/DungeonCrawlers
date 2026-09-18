@@ -1,5 +1,6 @@
 package me.lidan.dungeonCrawlers.core.generation;
 
+import me.lidan.dungeonCrawlers.config.DungeonTimings;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.ConfigSnapshot;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.FloorDefinition;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.EncounterCapability;
@@ -41,7 +42,7 @@ import java.util.function.Consumer;
 
 public final class GenerationService {
     public static final String JOURNAL_NAMESPACE = "generation";
-    public static final Duration CLEANUP_DEADLINE = Duration.ofSeconds(30);
+    public static final Duration CLEANUP_DEADLINE = DungeonTimings.defaults().generationCleanupDeadline();
     private final PlayerReservationService reservations;
     private final SlotAllocator slots;
     private final DurableRepository repository;
@@ -54,6 +55,7 @@ public final class GenerationService {
     private final Consumer<PlanningProgress> progressListener;
     private final Clock clock;
     private final String worldName;
+    private final Duration cleanupDeadline;
     private final GenerationJournalCodec journalCodec = new GenerationJournalCodec();
     private final Object admissionLock = new Object();
     private final Map<UUID, MutableInstance> instances = new LinkedHashMap<>();
@@ -82,6 +84,15 @@ public final class GenerationService {
                              GenerationWorldGateway world, PreparationProvider preparation, Executor planningExecutor,
                              Executor runtimeExecutor, BooleanSupplier primaryThread, Consumer<String> diagnostics,
                              Clock clock, String worldName, Consumer<PlanningProgress> progressListener) {
+        this(reservations, slots, repository, world, preparation, planningExecutor, runtimeExecutor, primaryThread,
+                diagnostics, clock, worldName, progressListener, CLEANUP_DEADLINE);
+    }
+
+    public GenerationService(PlayerReservationService reservations, SlotAllocator slots, DurableRepository repository,
+                             GenerationWorldGateway world, PreparationProvider preparation, Executor planningExecutor,
+                             Executor runtimeExecutor, BooleanSupplier primaryThread, Consumer<String> diagnostics,
+                             Clock clock, String worldName, Consumer<PlanningProgress> progressListener,
+                             Duration cleanupDeadline) {
         this.reservations = Objects.requireNonNull(reservations);
         this.slots = Objects.requireNonNull(slots);
         this.repository = Objects.requireNonNull(repository);
@@ -94,6 +105,10 @@ public final class GenerationService {
         this.progressListener = Objects.requireNonNull(progressListener);
         this.clock = Objects.requireNonNull(clock);
         this.worldName = Objects.requireNonNull(worldName);
+        this.cleanupDeadline = Objects.requireNonNull(cleanupDeadline);
+        if (cleanupDeadline.isZero() || cleanupDeadline.isNegative()) {
+            throw new IllegalArgumentException("cleanup deadline must be positive");
+        }
     }
 
     public StartResult start(StartRequest request) {
@@ -178,10 +193,23 @@ public final class GenerationService {
             return Optional.empty();
         }
         return instance.prepared.plan().placements().stream()
-                .filter(placement -> placement.index() == 0)
+                .filter(placement -> placement.index() == 0 && placement.type() == RoomType.START)
                 .findFirst()
                 .flatMap(placement -> placement.exit())
                 .map(exit -> new StartDoor(exit.point(), exit.outward()));
+    }
+
+    /** Returns the transformed START-room class selector marker, when authored. */
+    public Optional<Point> classSelectorLocation(UUID instanceId) {
+        requirePrimaryThread();
+        MutableInstance instance = instances.get(Objects.requireNonNull(instanceId, "instanceId"));
+        if (instance == null || instance.state != InstanceStatus.GENERATED || instance.prepared == null) {
+            return Optional.empty();
+        }
+        return instance.prepared.plan().placements().stream()
+                .filter(placement -> placement.type() == RoomType.START)
+                .findFirst()
+                .flatMap(Placement::classSelectorNpc);
     }
 
     /** Returns the immutable generated combat layout used by Phase 6 reconciliation. */
@@ -292,7 +320,7 @@ public final class GenerationService {
         for (MutableInstance instance : instances.values()) {
             if (instance.state != InstanceStatus.CLEARING || instance.cleanupStartedAt == null
                     || instance.cleanupDeadlineAlerted
-                    || now.isBefore(instance.cleanupStartedAt.plus(CLEANUP_DEADLINE))) continue;
+                    || now.isBefore(instance.cleanupStartedAt.plus(cleanupDeadline))) continue;
             instance.cleanupDeadlineAlerted = true;
             long elapsed = Math.max(0, Duration.between(instance.cleanupStartedAt, now).toSeconds());
             CleanupDeadlineAlert alert = new CleanupDeadlineAlert(instance.instanceId, elapsed);

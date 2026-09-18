@@ -21,12 +21,15 @@ class PluginMetadataTest {
 
         assertEquals(List.of("CaveCrawlers", "FastAsyncWorldEdit", "MythicMobs", "Vault", "ProtocolLib"),
                 yaml.getStringList("depend"));
-        assertEquals(List.of("Parties", "Essentials", "PlaceholderAPI"), yaml.getStringList("softdepend"));
+        assertEquals(List.of("Parties", "Essentials", "PlaceholderAPI", "Citizens"),
+                yaml.getStringList("softdepend"));
         assertTrue(yaml.isConfigurationSection("permissions.dungeoncrawlers.admin.config"));
         assertTrue(yaml.isConfigurationSection("permissions.dungeoncrawlers.admin.reload"));
         assertTrue(yaml.isConfigurationSection("permissions.dungeoncrawlers.admin.simulate"));
         assertTrue(yaml.isConfigurationSection("permissions.dungeoncrawlers.admin.diagnostics"));
         assertTrue(yaml.isConfigurationSection("permissions.dungeoncrawlers.admin.debug"));
+        assertTrue(yaml.isConfigurationSection("permissions.dungeoncrawlers.admin.room"));
+        assertTrue(yaml.isConfigurationSection("permissions.dungeoncrawlers.command.class"));
         assertEquals("1.21", yaml.getString("api-version"));
         assertFalse(yaml.getStringList("libraries").stream().anyMatch(value -> value.contains("CaveCrawlers")));
     }

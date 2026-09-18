@@ -19,6 +19,7 @@ repositories {
     }
     maven("https://mvn.lumine.io/repository/maven-public/")
     maven("https://maven.enginehub.org/repo/")
+    maven("https://maven.citizensnpcs.co/repo")
     maven("https://repo.essentialsx.net/releases/")
     maven("https://repo.alessiodp.com/releases/")
     maven("https://jitpack.io")
@@ -34,6 +35,7 @@ dependencies {
     compileOnly(libs.vault.api)
     compileOnly(libs.essentials)
     compileOnly(libs.parties.api)
+    compileOnly(libs.citizens.api)
     compileOnly(libs.gson)
     compileOnly("me.clip:placeholderapi:2.11.6")
 
@@ -117,6 +119,7 @@ val verifyNoExternalPluginShading by tasks.registering {
             "net/ess3/",
             "net/essentialsx/",
             "com/alessiodp/parties/",
+            "net/citizensnpcs/",
             "com/google/gson/"
         )
         zipTree(tasks.shadowJar.get().archiveFile).matching {

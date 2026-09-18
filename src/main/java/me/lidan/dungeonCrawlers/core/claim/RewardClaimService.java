@@ -116,6 +116,24 @@ public final class RewardClaimService {
     }
 
     /**
+     * Provides the non-mutating affordability state used by the reward GUI.
+     * Unknown providers remain available for preview and are checked again at purchase time.
+     */
+    public Affordability affordability(OfflinePlayer account, long price) {
+        Objects.requireNonNull(account, "account");
+        if (price <= 0) return Affordability.AFFORDABLE;
+        EconomyGateway provider = safeEconomy();
+        if (provider == null) return Affordability.UNKNOWN;
+        try {
+            Optional<Boolean> result = provider.hasFunds(account, (double) price);
+            if (result.isEmpty()) return Affordability.UNKNOWN;
+            return result.get() ? Affordability.AFFORDABLE : Affordability.INSUFFICIENT_FUNDS;
+        } catch (RuntimeException exception) {
+            return Affordability.UNKNOWN;
+        }
+    }
+
+    /**
      * Enables the development-server pause used to place a durable OWNED claim before restart.
      * This flag is intentionally process-local and resets when the plugin is recreated.
      */
@@ -277,6 +295,12 @@ public final class RewardClaimService {
 
     public static Optional<UUID> ownerId(ItemStack item) {
         return readUuid(item, OWNER_KEY);
+    }
+
+    public enum Affordability {
+        AFFORDABLE,
+        INSUFFICIENT_FUNDS,
+        UNKNOWN
     }
 
     public static ItemStack markPending(ItemStack source, UUID claimId, UUID ownerId, UUID itemId) {
@@ -994,7 +1018,7 @@ public final class RewardClaimService {
         for (RewardEntitlementService.RewardOffer reward : entitlement.offers().values()) {
             offers.put(reward.offerId(), new OfferSnapshot(reward.offerId(), entitlement.mode(), OfferState.AVAILABLE,
                     null, run.completedAt(), entitlement.mode() == OfferMode.RECOVERED ? run.completedAt() : null,
-                    entitlement.mode() == OfferMode.RECOVERED ? entitlement.outerDeadline() : null,
+                    entitlement.outerDeadline(),
                     entitlement.sessionStartedAt(), entitlement.sessionExpiresAt(),
                     highWater(run.completedAt()), null, provider, playerId, reward.price(), List.of()));
         }

@@ -1,5 +1,6 @@
 package me.lidan.dungeonCrawlers.integration;
 
+import me.lidan.dungeonCrawlers.config.DungeonTimings;
 import net.kyori.adventure.text.Component;
 import org.bukkit.entity.Player;
 
@@ -19,7 +20,7 @@ public final class ThrottledDungeonActionBar implements DungeonActionBar {
     private final Map<UUID, Instant> nextAllowed = new HashMap<>();
 
     public ThrottledDungeonActionBar(DungeonActionBar delegate, Clock clock) {
-        this(delegate, clock, Duration.ofSeconds(1));
+        this(delegate, clock, DungeonTimings.defaults().actionBarCooldown());
     }
 
     public ThrottledDungeonActionBar(DungeonActionBar delegate, Clock clock, Duration cooldown) {

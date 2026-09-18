@@ -1,5 +1,7 @@
 package me.lidan.dungeonCrawlers.persistence;
 
+import me.lidan.dungeonCrawlers.config.DungeonTimings;
+
 import java.io.IOException;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -34,7 +36,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class FileDurableRepository implements DurableRepository {
     private static final int FILE_MAGIC = 0x44435231;
-    private static final Duration DEFAULT_SHUTDOWN_GRACE = Duration.ofSeconds(5);
+    private static final Duration DEFAULT_SHUTDOWN_GRACE = DungeonTimings.defaults().persistenceShutdownGrace();
     private final Path root;
     private final int normalCapacity;
     private final Semaphore normalPermits;
@@ -53,6 +55,12 @@ public final class FileDurableRepository implements DurableRepository {
 
     public FileDurableRepository(Path root, int normalCapacity, Executor runtimeExecutor) {
         this(root, normalCapacity, runtimeExecutor, Clock.systemUTC(), FailureInjector.none());
+    }
+
+    public FileDurableRepository(Path root, int normalCapacity, Executor runtimeExecutor,
+                                 Duration shutdownGrace) {
+        this(root, normalCapacity, runtimeExecutor, Clock.systemUTC(), FailureInjector.none(),
+                defaultDirectorySyncPolicy(root), shutdownGrace);
     }
 
     FileDurableRepository(Path root, int normalCapacity, Executor runtimeExecutor, Clock clock,

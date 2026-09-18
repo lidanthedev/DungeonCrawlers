@@ -250,6 +250,7 @@ public final class LayoutPlanner {
                 entrance, exit, solids, Set.copyOf(reserved), transformList(template.normalMobs(), rotation, origin),
                 transformList(template.minibossMobs(), rotation, origin),
                 transformList(template.playerSpawns(), rotation, origin),
+                template.classSelectorNpc().map(point -> rotation.apply(point).add(origin)),
                 template.bossSpawn().map(point -> rotation.apply(point).add(origin)),
                 template.rewardChest().map(point -> rotation.apply(point).add(origin)),
                 transform(template.portalBlocks(), rotation, origin), secrets);
@@ -399,14 +400,27 @@ public final class LayoutPlanner {
                             Rotation rotation, Point origin, Bounds bounds, Optional<Connector> entrance,
                             Optional<Connector> exit, Set<Point> solidBlocks, Set<Point> reservedConnectorCells,
                             List<Point> normalMobs, List<Point> minibossMobs, List<Point> playerSpawns,
-                            Optional<Point> bossSpawn, Optional<Point> rewardChest, Set<Point> portalBlocks,
+                            Optional<Point> classSelectorNpc, Optional<Point> bossSpawn, Optional<Point> rewardChest,
+                            Set<Point> portalBlocks,
                             List<PlacedSecret> secrets) {
+        public Placement(int index, String templateId, RoomType type, EncounterCapability encounter,
+                         Rotation rotation, Point origin, Bounds bounds, Optional<Connector> entrance,
+                         Optional<Connector> exit, Set<Point> solidBlocks, Set<Point> reservedConnectorCells,
+                         List<Point> normalMobs, List<Point> minibossMobs, List<Point> playerSpawns,
+                         Optional<Point> bossSpawn, Optional<Point> rewardChest, Set<Point> portalBlocks,
+                         List<PlacedSecret> secrets) {
+            this(index, templateId, type, encounter, rotation, origin, bounds, entrance, exit, solidBlocks,
+                    reservedConnectorCells, normalMobs, minibossMobs, playerSpawns, Optional.empty(), bossSpawn,
+                    rewardChest, portalBlocks, secrets);
+        }
+
         public Placement {
             Objects.requireNonNull(templateId); Objects.requireNonNull(type); Objects.requireNonNull(rotation);
             Objects.requireNonNull(origin); Objects.requireNonNull(bounds); Objects.requireNonNull(entrance);
             Objects.requireNonNull(exit); solidBlocks = Set.copyOf(solidBlocks);
             reservedConnectorCells = Set.copyOf(reservedConnectorCells); normalMobs = List.copyOf(normalMobs);
             minibossMobs = List.copyOf(minibossMobs); playerSpawns = List.copyOf(playerSpawns);
+            Objects.requireNonNull(classSelectorNpc);
             Objects.requireNonNull(bossSpawn); Objects.requireNonNull(rewardChest);
             portalBlocks = Set.copyOf(portalBlocks); secrets = List.copyOf(secrets);
         }
@@ -419,6 +433,7 @@ public final class LayoutPlanner {
             result.addAll(normalMobs);
             result.addAll(minibossMobs);
             result.addAll(playerSpawns);
+            classSelectorNpc.ifPresent(result::add);
             bossSpawn.ifPresent(result::add);
             rewardChest.ifPresent(result::add);
             return Set.copyOf(result);

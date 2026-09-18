@@ -3,6 +3,7 @@ package me.lidan.dungeonCrawlers.commands;
 import me.lidan.cavecrawlers.utils.BoostedCustomConfig;
 import me.lidan.dungeonCrawlers.authoring.TemplateAuthoringService;
 import me.lidan.dungeonCrawlers.authoring.TemplateCatalogLoader;
+import me.lidan.dungeonCrawlers.authoring.RoomMarkerItemFactory;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.EncounterCapability;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.RoomType;
 import me.lidan.dungeonCrawlers.config.registry.ConfigRegistryService;
@@ -14,12 +15,14 @@ import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Rotation;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Template;
 import me.lidan.dungeonCrawlers.core.template.TemplateValidator;
+import me.lidan.dungeonCrawlers.core.template.RoomMarker;
 import me.lidan.dungeonCrawlers.integration.WorldEditGateway;
 import me.lidan.dungeonCrawlers.integration.DungeonMessages;
 import me.lidan.dungeonCrawlers.integration.ProgressBarService;
 import me.lidan.dungeonCrawlers.integration.worldedit.WorldEditAdapter;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
 import revxrsal.commands.annotation.Command;
 import revxrsal.commands.annotation.Subcommand;
@@ -55,6 +58,7 @@ public final class DungeonAuthoringCommand {
     private final Supplier<Set<String>> activeTemplates;
     private final Plugin plugin;
     private final ProgressBarService progressBars;
+    private final RoomMarkerItemFactory markerItems;
 
     public DungeonAuthoringCommand(BoostedCustomConfig mainConfig, ConfigRegistryService configRegistry,
                                    PlayerReservationService reservations, TemplateAuthoringService authoring) {
@@ -80,6 +84,7 @@ public final class DungeonAuthoringCommand {
                                    Supplier<Set<String>> activeTemplates, ProgressBarService progressBars) {
         this.plugin = plugin;
         this.progressBars = progressBars;
+        this.markerItems = new RoomMarkerItemFactory(plugin);
         this.worldEdit = new WorldEditAdapter(plugin == null
                 ? Logger.getLogger(WorldEditAdapter.class.getName()) : plugin.getLogger());
         this.configRegistry = configRegistry;
@@ -94,6 +99,10 @@ public final class DungeonAuthoringCommand {
     @CommandPermission("dungeoncrawlers.admin.authoring")
     public void selectionValidate(Player player, String roomType, String encounters) {
         sendMarkerLegend(player);
+        if (!citizensAvailable()) {
+            DungeonMessages.send(player, DungeonMessages.warning(
+                    "Citizens is unavailable; Class Selector NPC: No. The class command remains available."));
+        }
         RoomType type;
         Set<EncounterCapability> capabilities;
         try {
@@ -117,7 +126,8 @@ public final class DungeonAuthoringCommand {
             DungeonMessages.send(player, DungeonMessages.success(selectionSummary(scan.detail())
                     + ". Content hash: <white>" + template.contentHash() + "</white>; secrets: <white>"
                     + template.secrets().size() + "</white>; portal blocks: <white>"
-                    + template.portalBlocks().size() + "</white>."));
+                    + template.portalBlocks().size() + "</white>; markers: <white>"
+                    + markerCount(template) + "</white>; " + markerSummary(template) + "."));
         }
     }
 
@@ -148,11 +158,12 @@ public final class DungeonAuthoringCommand {
     static List<String> markerLegend() {
         return List.of(
                 "DungeonCrawlers marker blocks:",
-                "- Entrance: JIGSAW named dungeoncrawlers:entrance",
+                "- Entrance: JIGSAW named dungeoncrawlers:entrance (NORMAL/MINIBOSS/PORTAL)",
                 "- Exit/door: JIGSAW named dungeoncrawlers:exit",
                 "- Normal mob: GRAY_CONCRETE_POWDER",
                 "- Miniboss mob: YELLOW_CONCRETE_POWDER",
                 "- Player spawn/teleport: EMERALD_BLOCK",
+                "- Class Selector NPC: ORANGE_CONCRETE_POWDER (START only; maximum 1)",
                 "- Boss spawn: RED_CONCRETE_POWDER",
                 "- Reward chest: LIME_CONCRETE_POWDER",
                 "- Secret/blessing: CHEST; standard secret: TRAPPED_CHEST",
@@ -164,6 +175,27 @@ public final class DungeonAuthoringCommand {
 
     private static void sendMarkerLegend(Player player) {
         markerLegend().forEach(line -> DungeonMessages.send(player, "<gray>" + line + "</gray>"));
+    }
+
+    @Subcommand("room setup")
+    @CommandPermission("dungeoncrawlers.admin.room")
+    public void roomSetup(Player player) {
+        markerItems.removeSetupItems(player.getInventory());
+        List<ItemStack> kit = markerItems.createKit();
+        int added = 0;
+        int dropped = 0;
+        for (ItemStack marker : kit) {
+            int requested = marker.getAmount();
+            Map<Integer, ItemStack> leftovers = player.getInventory().addItem(marker);
+            int overflow = leftovers.values().stream().mapToInt(ItemStack::getAmount).sum();
+            dropped += overflow;
+            added += Math.max(0, requested - overflow);
+            leftovers.values().forEach(item -> player.getWorld().dropItemNaturally(player.getLocation(), item));
+        }
+        String overflow = dropped == 0 ? "Unrelated inventory items were preserved."
+                : "<yellow>" + dropped + " marker item(s) were dropped nearby because the inventory was full.</yellow>";
+        DungeonMessages.send(player, DungeonMessages.success("Room marker kit refreshed: <white>" + added + "/"
+                + kit.size() + "</white> canonical markers delivered. " + overflow));
     }
 
     @Subcommand("room create")
@@ -496,9 +528,33 @@ public final class DungeonAuthoringCommand {
     }
 
     private static boolean isMarker(String type) {
-        return Set.of("minecraft:jigsaw", "minecraft:gray_concrete_powder", "minecraft:yellow_concrete_powder",
-                "minecraft:emerald_block", "minecraft:red_concrete_powder", "minecraft:lime_concrete_powder",
-                "minecraft:chest", "minecraft:trapped_chest", "minecraft:nether_portal").contains(type);
+        return RoomMarker.isAuthoringMarker(type);
+    }
+
+    private boolean citizensAvailable() {
+        return plugin != null && plugin.getServer() != null
+                && plugin.getServer().getPluginManager().isPluginEnabled("Citizens");
+    }
+
+    private static int markerCount(Template template) {
+        return (template.entrance().isPresent() ? 1 : 0) + (template.exit().isPresent() ? 1 : 0)
+                + template.normalMobs().size() + template.minibossMobs().size() + template.playerSpawns().size()
+                + (template.classSelectorNpc().isPresent() ? 1 : 0) + (template.bossSpawn().isPresent() ? 1 : 0)
+                + (template.rewardChest().isPresent() ? 1 : 0) + template.secrets().size()
+                + template.portalBlocks().size();
+    }
+
+    private static String markerSummary(Template template) {
+        return "Entrance connectors: <white>" + (template.entrance().isPresent() ? 1 : 0)
+                + "</white>; Exit connectors: <white>" + (template.exit().isPresent() ? 1 : 0)
+                + "</white>; Player spawns: <white>" + template.playerSpawns().size()
+                + "</white>; Normal mobs: <white>" + template.normalMobs().size()
+                + "</white>; Minibosses: <white>" + template.minibossMobs().size()
+                + "</white>; Class Selector NPC: <white>" + (template.classSelectorNpc().isPresent() ? "Yes (1)" : "No (0)")
+                + "</white>; Boss spawns: <white>" + (template.bossSpawn().isPresent() ? 1 : 0)
+                + "</white>; Reward chests: <white>" + (template.rewardChest().isPresent() ? 1 : 0)
+                + "</white>; Secrets: <white>" + template.secrets().size()
+                + "</white>; Portal blocks: <white>" + template.portalBlocks().size() + "</white>";
     }
 
     private static String point(Point point) {

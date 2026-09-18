@@ -199,14 +199,24 @@ public final class TemplateModels {
 
     public record Template(String id, RoomType type, Set<EncounterCapability> capabilities, Bounds bounds,
                            Optional<Connector> entrance, Optional<Connector> exit, List<Point> normalMobs,
-                           List<Point> minibossMobs, List<Point> playerSpawns, Optional<Point> bossSpawn,
-                           Optional<Point> rewardChest, List<Secret> secrets, Set<Point> portalBlocks,
+                           List<Point> minibossMobs, List<Point> playerSpawns, Optional<Point> classSelectorNpc,
+                           Optional<Point> bossSpawn, Optional<Point> rewardChest, List<Secret> secrets, Set<Point> portalBlocks,
                            Set<Point> solidBlocks, String contentHash) {
+        public Template(String id, RoomType type, Set<EncounterCapability> capabilities, Bounds bounds,
+                        Optional<Connector> entrance, Optional<Connector> exit, List<Point> normalMobs,
+                        List<Point> minibossMobs, List<Point> playerSpawns, Optional<Point> bossSpawn,
+                        Optional<Point> rewardChest, List<Secret> secrets, Set<Point> portalBlocks,
+                        Set<Point> solidBlocks, String contentHash) {
+            this(id, type, capabilities, bounds, entrance, exit, normalMobs, minibossMobs, playerSpawns,
+                    Optional.empty(), bossSpawn, rewardChest, secrets, portalBlocks, solidBlocks, contentHash);
+        }
+
         public Template {
             Objects.requireNonNull(id); Objects.requireNonNull(type); Objects.requireNonNull(bounds);
             capabilities = Set.copyOf(capabilities);
             Objects.requireNonNull(entrance); Objects.requireNonNull(exit);
             normalMobs = sorted(normalMobs); minibossMobs = sorted(minibossMobs); playerSpawns = sorted(playerSpawns);
+            Objects.requireNonNull(classSelectorNpc);
             Objects.requireNonNull(bossSpawn); Objects.requireNonNull(rewardChest);
             secrets = List.copyOf(secrets.stream().sorted(Comparator.comparing(Secret::point)).toList());
             portalBlocks = Set.copyOf(new LinkedHashSet<>(portalBlocks.stream().sorted().toList()));
@@ -217,7 +227,7 @@ public final class TemplateModels {
         /** Runtime planning only needs marker offsets and bounds; schematic blocks are pasted separately. */
         public Template withoutSolidBlocks() {
             return new Template(id, type, capabilities, bounds, entrance, exit, normalMobs, minibossMobs,
-                    playerSpawns, bossSpawn, rewardChest, secrets, portalBlocks, Set.of(), contentHash);
+                    playerSpawns, classSelectorNpc, bossSpawn, rewardChest, secrets, portalBlocks, Set.of(), contentHash);
         }
 
         private static List<Point> sorted(List<Point> points) {

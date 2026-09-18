@@ -1,6 +1,7 @@
 package me.lidan.dungeonCrawlers.core.score;
 
 import me.lidan.cavecrawlers.utils.MiniMessageUtils;
+import me.lidan.dungeonCrawlers.config.DungeonTimings;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.HoverEvent;
 
@@ -9,21 +10,34 @@ import java.util.Objects;
 
 /** Builds the multiline player-facing score result with category hovers. */
 public final class ScoreResultRenderer {
-    private static final Duration FREE_TIME = Duration.ofMinutes(8);
+    private static final Duration DEFAULT_FREE_TIME = DungeonTimings.defaults().scoreFreeTime();
+    private static final Duration DEFAULT_PENALTY_INTERVAL = DungeonTimings.defaults().scorePenaltyInterval();
 
     private ScoreResultRenderer() { }
 
     public static Component render(ScoreService.ScoreReport report) {
         Objects.requireNonNull(report, "report");
-        return render(report.result(), report.snapshot());
+        return render(report, DEFAULT_FREE_TIME, DEFAULT_PENALTY_INTERVAL);
+    }
+
+    public static Component render(ScoreService.ScoreReport report, Duration freeTime,
+                                   Duration penaltyInterval) {
+        Objects.requireNonNull(report, "report");
+        return render(report.result(), report.snapshot(), requirePositive("free time", freeTime),
+                requirePositive("penalty interval", penaltyInterval));
+    }
+
+    public static Component render(ScoreService.ScoreReport report, Duration freeTime) {
+        return render(report, freeTime, DEFAULT_PENALTY_INTERVAL);
     }
 
     public static Component render(ScoreService.ScoreResult result) {
         Objects.requireNonNull(result, "result");
-        return render(result, null);
+        return render(result, null, DEFAULT_FREE_TIME, DEFAULT_PENALTY_INTERVAL);
     }
 
-    private static Component render(ScoreService.ScoreResult result, ScoreService.FinalScoreSnapshot snapshot) {
+    private static Component render(ScoreService.ScoreResult result, ScoreService.FinalScoreSnapshot snapshot,
+                                    Duration freeTime, Duration penaltyInterval) {
         boolean successful = snapshot == null || snapshot.successful();
         Component rendered = MiniMessageUtils.miniMessage(successful
                 ? "<green><bold>Dungeon Complete!</bold></green>"
@@ -34,7 +48,7 @@ public final class ScoreResultRenderer {
         rendered = rendered.append(Component.newline()).append(category("Skill", result.skill(),
                 skillDetails(result, snapshot)));
         rendered = rendered.append(Component.newline()).append(category("Time", result.time(),
-                timeDetails(result, snapshot)));
+                timeDetails(result, snapshot, freeTime, penaltyInterval)));
         rendered = rendered.append(Component.newline()).append(category("Exploration", result.exploration(),
                 explorationDetails(result, snapshot)));
         rendered = rendered.append(Component.newline()).append(category("Bonus", result.bonus(),
@@ -64,16 +78,18 @@ public final class ScoreResultRenderer {
     }
 
     private static Component timeDetails(ScoreService.ScoreResult result,
-                                         ScoreService.FinalScoreSnapshot snapshot) {
+                                         ScoreService.FinalScoreSnapshot snapshot, Duration freeTime,
+                                         Duration penaltyInterval) {
         Component details = MiniMessageUtils.miniMessage("<yellow><bold>Time Score</bold></yellow>");
         if (snapshot != null) {
             Duration elapsed = snapshot.elapsed();
-            long overtimeMillis = Math.max(0, elapsed.minus(FREE_TIME).toMillis());
-            long overtimeMinutes = (overtimeMillis + Duration.ofMinutes(1).toMillis() - 1)
-                    / Duration.ofMinutes(1).toMillis();
+            long overtimeMillis = Math.max(0, elapsed.minus(freeTime).toMillis());
+            long penaltyIntervals = (overtimeMillis + penaltyInterval.toMillis() - 1)
+                    / penaltyInterval.toMillis();
             details = line(details, "<gray>Time taken: <white>" + formatDuration(elapsed) + "</white></gray>");
-            details = line(details, "<gray>Free time: <white>" + formatDuration(FREE_TIME) + "</white></gray>");
-            details = line(details, "<gray>Penalty minutes: <white>" + overtimeMinutes + "</white></gray>");
+            details = line(details, "<gray>Free time: <white>" + formatDuration(freeTime) + "</white></gray>");
+            details = line(details, "<gray>Penalty intervals: <white>" + penaltyIntervals
+                    + "</white> (" + formatDuration(penaltyInterval) + ")</gray>");
         }
         return line(details, "<gray>Final: <white>" + result.time() + "</white></gray>");
     }
@@ -130,5 +146,13 @@ public final class ScoreResultRenderer {
 
     private static String escape(String value) {
         return value.replace("<", "\\<").replace(">", "\\>");
+    }
+
+    private static Duration requirePositive(String name, Duration duration) {
+        Objects.requireNonNull(duration, name);
+        if (duration.isZero() || duration.isNegative()) {
+            throw new IllegalArgumentException(name + " must be positive");
+        }
+        return duration;
     }
 }

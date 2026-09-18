@@ -18,6 +18,10 @@ snapshots only, so it does not start work, perform I/O, or change a run.
 | `%dungeoncrawlers_player_instance%` | `d05c...` | Current instance UUID. `player_instance_id` and `instance_id` are aliases. |
 | `%dungeoncrawlers_player_floor%` | `floor_1` | Current floor id. `player_floor_id` and `floor_id` are aliases. |
 | `%dungeoncrawlers_player_floor_name%` | `The Crypt` | Current floor display name. |
+| `%dungeoncrawlers_player_has_class%` | `true` | Whether the player has selected a class in the current run. |
+| `%dungeoncrawlers_player_class%` | `Berserker` | Selected class display name, with MiniMessage formatting removed. |
+| `%dungeoncrawlers_player_class_id%` | `berserker` | Selected configured class id. |
+| `%dungeoncrawlers_player_class_locked%` | `false` | Whether class selection is locked because the run has progressed beyond `PREPARING`. |
 | `%dungeoncrawlers_player_state%` | `ghost` | Player lifecycle state. |
 | `%dungeoncrawlers_player_alive%` | `true` | Whether the player is alive. |
 | `%dungeoncrawlers_player_ghost%` | `false` | Whether the player is a ghost. |

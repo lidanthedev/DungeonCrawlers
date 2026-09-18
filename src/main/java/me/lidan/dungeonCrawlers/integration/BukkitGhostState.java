@@ -1,5 +1,6 @@
 package me.lidan.dungeonCrawlers.integration;
 
+import me.lidan.dungeonCrawlers.config.DungeonTimings;
 import org.bukkit.GameMode;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
@@ -15,7 +16,7 @@ public final class BukkitGhostState {
     private BukkitGhostState() { }
 
     public static void enter(Player player) {
-        enter(player, Duration.ofSeconds(60));
+        enter(player, DungeonTimings.defaults().reviveDuration());
     }
 
     public static void enter(Player player, Duration duration) {
@@ -24,7 +25,7 @@ public final class BukkitGhostState {
     }
 
     public static void refresh(Player player) {
-        refresh(player, Duration.ofSeconds(60));
+        refresh(player, DungeonTimings.defaults().reviveDuration());
     }
 
     public static void refresh(Player player, Duration duration) {

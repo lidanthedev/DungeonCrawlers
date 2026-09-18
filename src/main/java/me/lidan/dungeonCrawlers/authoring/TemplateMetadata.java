@@ -32,10 +32,20 @@ import java.util.Set;
 public record TemplateMetadata(long schematicSize, long schematicModifiedMillis, Bounds bounds,
                                Optional<Connector> entrance, Optional<Connector> exit,
                                List<Point> normalMobs, List<Point> minibossMobs, List<Point> playerSpawns,
-                               Optional<Point> bossSpawn, Optional<Point> rewardChest, List<Secret> secrets,
+                               Optional<Point> classSelectorNpc, Optional<Point> bossSpawn, Optional<Point> rewardChest,
+                               List<Secret> secrets,
                                Set<Point> portalBlocks, String contentHash) {
-    /** Version 2 records the updated CHEST blessing / TRAPPED_CHEST standard semantics. */
-    public static final int SCHEMA_VERSION = 2;
+    /** Version 3 adds the optional START-room class selector marker. */
+    public static final int SCHEMA_VERSION = 3;
+
+    public TemplateMetadata(long schematicSize, long schematicModifiedMillis, Bounds bounds,
+                            Optional<Connector> entrance, Optional<Connector> exit,
+                            List<Point> normalMobs, List<Point> minibossMobs, List<Point> playerSpawns,
+                            Optional<Point> bossSpawn, Optional<Point> rewardChest, List<Secret> secrets,
+                            Set<Point> portalBlocks, String contentHash) {
+        this(schematicSize, schematicModifiedMillis, bounds, entrance, exit, normalMobs, minibossMobs,
+                playerSpawns, Optional.empty(), bossSpawn, rewardChest, secrets, portalBlocks, contentHash);
+    }
 
     public TemplateMetadata {
         if (schematicSize < 0 || schematicModifiedMillis < 0) {
@@ -47,6 +57,7 @@ public record TemplateMetadata(long schematicSize, long schematicModifiedMillis,
         normalMobs = List.copyOf(normalMobs);
         minibossMobs = List.copyOf(minibossMobs);
         playerSpawns = List.copyOf(playerSpawns);
+        Objects.requireNonNull(classSelectorNpc);
         Objects.requireNonNull(bossSpawn);
         Objects.requireNonNull(rewardChest);
         secrets = List.copyOf(secrets);
@@ -59,7 +70,8 @@ public record TemplateMetadata(long schematicSize, long schematicModifiedMillis,
         Objects.requireNonNull(schematic);
         return new TemplateMetadata(Files.size(schematic), Files.getLastModifiedTime(schematic).toMillis(),
                 template.bounds(), template.entrance(), template.exit(), template.normalMobs(),
-                template.minibossMobs(), template.playerSpawns(), template.bossSpawn(), template.rewardChest(),
+                template.minibossMobs(), template.playerSpawns(), template.classSelectorNpc(), template.bossSpawn(),
+                template.rewardChest(),
                 template.secrets(), template.portalBlocks(), template.contentHash());
     }
 
@@ -67,7 +79,7 @@ public record TemplateMetadata(long schematicSize, long schematicModifiedMillis,
         Objects.requireNonNull(id);
         Objects.requireNonNull(definition);
         return new Template(id, definition.type(), definition.capabilities(), bounds, entrance, exit,
-                normalMobs, minibossMobs, playerSpawns, bossSpawn, rewardChest, secrets, portalBlocks,
+                normalMobs, minibossMobs, playerSpawns, classSelectorNpc, bossSpawn, rewardChest, secrets, portalBlocks,
                 Set.of(), contentHash);
     }
 
@@ -81,6 +93,7 @@ public record TemplateMetadata(long schematicSize, long schematicModifiedMillis,
         values.put("normal-mobs", points(normalMobs));
         values.put("miniboss-mobs", points(minibossMobs));
         values.put("player-spawns", points(playerSpawns));
+        classSelectorNpc.ifPresent(value -> values.put("class-selector", point(value)));
         bossSpawn.ifPresent(value -> values.put("boss-spawn", point(value)));
         rewardChest.ifPresent(value -> values.put("reward-chest", point(value)));
         values.put("secrets", secrets.stream().map(secret -> Map.of(
@@ -113,7 +126,9 @@ public record TemplateMetadata(long schematicSize, long schematicModifiedMillis,
         try {
             Map<String, Object> root = BoostedConfigFactory.toPlainValues(factory.open(path));
             int schema = exactInt(root.get("schema-version"));
-            if (schema != SCHEMA_VERSION) throw new IOException("unsupported template metadata schema " + schema);
+            if (schema != 2 && schema != SCHEMA_VERSION) {
+                throw new IOException("unsupported template metadata schema " + schema);
+            }
             Map<String, Object> template = map(root.get("template"), "template");
             Map<String, Object> bounds = map(template.get("bounds"), "template.bounds");
             return new TemplateMetadata(exactLong(template.get("schematic-size")),
@@ -121,7 +136,8 @@ public record TemplateMetadata(long schematicSize, long schematicModifiedMillis,
                     new Bounds(point(bounds.get("minimum")), point(bounds.get("maximum"))),
                     optionalConnector(template.get("entrance")), optionalConnector(template.get("exit")),
                     points(template.get("normal-mobs")), points(template.get("miniboss-mobs")),
-                    points(template.get("player-spawns")), optionalPoint(template.get("boss-spawn")),
+                    points(template.get("player-spawns")), schema >= 3 ? optionalPoint(template.get("class-selector"))
+                            : Optional.empty(), optionalPoint(template.get("boss-spawn")),
                     optionalPoint(template.get("reward-chest")), secrets(template.get("secrets")),
                     Set.copyOf(points(template.get("portal-blocks"))), string(template.get("content-hash"),
                             "template.content-hash"));

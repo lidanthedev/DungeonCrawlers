@@ -1,6 +1,8 @@
 package me.lidan.dungeonCrawlers.integration;
 
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
+import me.lidan.cavecrawlers.utils.MiniMessageUtils;
+import me.lidan.dungeonCrawlers.config.registry.ConfigModels.ClassDefinition;
 import me.lidan.dungeonCrawlers.core.combat.CombatRoomService;
 import me.lidan.dungeonCrawlers.core.generation.GenerationService;
 import me.lidan.dungeonCrawlers.core.lifecycle.PlayerLifecycleService;
@@ -15,7 +17,9 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 
@@ -175,8 +179,12 @@ public final class DungeonPlaceholderExpansion extends PlaceholderExpansion {
                 : combat.info(run.instanceId()).orElse(null);
         ScoreService.FinalScoreSnapshot score = safeScore(run.instanceId());
         Integer legacyScore = safeLegacyScore(run.instanceId());
+        Map<UUID, String> selectedClasses = run.selectedClasses() == null ? Map.of() : run.selectedClasses();
+        String selectedClassId = playerId == null ? "" : selectedClasses.getOrDefault(playerId, "");
+        Optional<ClassDefinition> selectedClassValue = playerId == null ? Optional.empty() : runs.selectedClass(playerId);
+        ClassDefinition selectedClass = selectedClassValue == null ? null : selectedClassValue.orElse(null);
         return new Context(run, lifecycleSnapshot, participant, secretSnapshot, generationSnapshot, layout,
-                combatSnapshot, score, legacyScore);
+                combatSnapshot, score, legacyScore, selectedClassId, selectedClass);
     }
 
     private GenerationService.InstanceSnapshot safeGenerationInfo(UUID instanceId) {
@@ -300,6 +308,13 @@ public final class DungeonPlaceholderExpansion extends PlaceholderExpansion {
             case "current_room_id", "player_current_room_id" -> currentRoom(context, true);
             case "player_current_room_secrets", "player_current_room_secrets_found",
                  "player_current_room_secrets_total" -> "0";
+            case "player_has_class" -> Boolean.toString(!context.selectedClassId().isBlank());
+            case "player_class_id" -> context.selectedClassId();
+            case "player_class" -> context.selectedClass() == null ? ""
+                    : MiniMessageUtils.componentToString(MiniMessageUtils.miniMessage(
+                            context.selectedClass().displayName()));
+            case "player_class_locked" -> Boolean.toString(
+                    !RunPreparationService.classSelectionOpen(context.run().state()));
             default -> "";
         };
     }
@@ -414,7 +429,8 @@ public final class DungeonPlaceholderExpansion extends PlaceholderExpansion {
 
     private static String playerFallback(String key) {
         return switch (key) {
-            case "in_dungeon", "player_in_dungeon", "player_alive", "player_ghost" -> "false";
+            case "in_dungeon", "player_in_dungeon", "player_alive", "player_ghost",
+                 "player_has_class", "player_class_locked" -> "false";
             case "ghost_seconds", "player_respawn_seconds", "players", "alive", "ghosts", "deaths",
                  "player_deaths", "secrets_found", "player_secrets_found", "secrets_total",
                  "player_secrets_total", "player_current_room_secrets", "player_current_room_secrets_found",
@@ -451,5 +467,7 @@ public final class DungeonPlaceholderExpansion extends PlaceholderExpansion {
                            GenerationService.LayoutContext layout,
                            CombatRoomService.InstanceSnapshot combat,
                            ScoreService.FinalScoreSnapshot score,
-                           Integer legacyScore) { }
+                           Integer legacyScore,
+                           String selectedClassId,
+                           ClassDefinition selectedClass) { }
 }

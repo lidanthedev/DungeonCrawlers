@@ -7,6 +7,7 @@ mythic-mobs = "5.11.2"
 vault = "1.7.1"
 essentials = "2.21.2"
 parties-api = "3.2.16"
+citizens = "2.0.40-SNAPSHOT"
 lamp = "4.0.0-rc.17"
 triumph-gui = "3.1.14"
 xseries = "13.7.0"
@@ -24,6 +25,7 @@ mythic-mobs = { module = "io.lumine:Mythic-Dist", version.ref = "mythic-mobs" }
 vault-api = { module = "com.github.MilkBowl:VaultAPI", version.ref = "vault" }
 essentials = { module = "net.essentialsx:EssentialsX", version.ref = "essentials" }
 parties-api = { module = "com.alessiodp.parties:parties-api", version.ref = "parties-api" }
+citizens-api = { module = "net.citizensnpcs:citizensapi", version.ref = "citizens" }
 lamp-common = { module = "io.github.revxrsal:lamp.common", version.ref = "lamp" }
 lamp-bukkit = { module = "io.github.revxrsal:lamp.bukkit", version.ref = "lamp" }
 lamp-brigadier = { module = "io.github.revxrsal:lamp.brigadier", version.ref = "lamp" }

@@ -6,6 +6,7 @@ import net.milkbowl.vault.economy.EconomyResponse;
 import org.bukkit.OfflinePlayer;
 
 import java.util.Objects;
+import java.util.Optional;
 
 public final class VaultEconomyAdapter implements EconomyGateway {
     private final Economy economy;
@@ -17,6 +18,11 @@ public final class VaultEconomyAdapter implements EconomyGateway {
     @Override
     public String providerIdentity() {
         return economy.getName();
+    }
+
+    @Override
+    public Optional<Boolean> hasFunds(OfflinePlayer player, double amount) {
+        return Optional.of(economy.has(player, amount));
     }
 
     @Override
@@ -36,4 +42,3 @@ public final class VaultEconomyAdapter implements EconomyGateway {
         );
     }
 }
-
