@@ -403,6 +403,7 @@ public final class DungeonPhaseFiveCommand {
 
     /** Called by the interaction listener when a player clicks a preparation door. */
     public void openDoorAt(Player player, Point point) {
+        if (!canOpenDungeonDoor(player.getUniqueId())) return;
         var door = runs.doorAt(point);
         if (door.isEmpty()) return;
         var result = runs.openDoor(door.orElseThrow().instanceId(), player.getUniqueId());
@@ -429,6 +430,12 @@ public final class DungeonPhaseFiveCommand {
             if (result.rollbackRequired()) abort(door.orElseThrow().instanceId(), result.detail());
             DungeonMessages.send(player, DungeonMessages.error(playerError(result.detail())));
         }
+    }
+
+    public boolean canOpenDungeonDoor(UUID playerId) {
+        UUID instance = runs.instanceFor(playerId).orElse(null);
+        return instance != null && (lifecycle == null || lifecycle.player(instance, playerId)
+                .map(player -> player.state() == PlayerLifecycleService.PlayerState.ALIVE).orElse(false));
     }
 
     public java.util.Optional<ClassDefinition> selectedClass(UUID playerId) {

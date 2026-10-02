@@ -564,7 +564,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         registerEvent(new BukkitDungeonLifecycleListener(lifecycle, runPreparation, this, phaseClock(),
                 generationWorldName, phaseFiveCommand::recoverOnJoin, phaseFiveCommand::leaveFromDungeon));
         registerEvent(new BukkitCombatListener(combat, entityIdentity, generationWorldName, () -> disabling,
-                bossIdentity, phaseNine));
+                bossIdentity, phaseNine, phaseFiveCommand::canOpenDungeonDoor));
         registerEvent(new BukkitPortalBossListener(this, phaseNine, runPreparation, generationWorldName));
         registerEvent(new BukkitRewardChestListener(phaseNine, generationWorldName, phaseElevenCommand::openRewards));
         registerEvent(rewardMailboxListener);
@@ -594,6 +594,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         if (lifecycleSnapshot.players().stream().anyMatch(player -> player.online()
                 && player.state() == PlayerLifecycleService.PlayerState.GHOST
                 && player.reviveKind() == PlayerLifecycleService.ReviveKind.RUNIC)) return false;
+        if (!lifecycle.complete(snapshot.instanceId()).successful()) return false;
         List<RewardEntitlementService.Participant> participants = rewardParticipants(run, lifecycleSnapshot);
         ScoreService.ScoreReport score = calculateScore(run, lifecycleSnapshot, true, phaseClock().instant());
         latestScores.put(snapshot.instanceId(), score.finalSnapshot());

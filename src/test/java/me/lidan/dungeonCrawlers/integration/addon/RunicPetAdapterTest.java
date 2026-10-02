@@ -5,6 +5,7 @@ import me.lidan.caveCrawlAddon.pets.ActivePet;
 import me.lidan.caveCrawlAddon.pets.BasePet;
 import me.lidan.caveCrawlAddon.pets.PetsManager;
 import me.lidan.cavecrawlers.items.Rarity;
+import me.lidan.cavecrawlers.stats.StatType;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.junit.jupiter.api.Test;
@@ -34,9 +35,26 @@ class RunicPetAdapterTest {
             var plain = PlainTextComponentSerializer.plainText();
             assertEquals("Pet Ability: Runic Power", plain.serialize(lore.get(1)));
             assertEquals(NamedTextColor.GOLD, lore.get(1).color());
-            assertEquals("Gain +100 ❤ Health,", plain.serialize(lore.get(2)));
-            assertEquals("+50 ❈ Defense and +10 ✯ Magic Find in dungeons.", plain.serialize(lore.get(3)));
+            assertEquals("Gain +50% ❤ Health", plain.serialize(lore.get(2)));
+            assertEquals("while in dungeons.", plain.serialize(lore.get(3)));
             assertEquals("Pet Ability: Second Chance", plain.serialize(lore.get(5)));
+            when(pet.getLevel()).thenReturn(1);
+            assertEquals("Gain +0.5% ❤ Health", plain.serialize(PetsManager.getInstance()
+                    .getPet(RunicPetAdapter.ID).petAbilitiesToLore(pet).get(2)));
+        }
+    }
+
+    @Test void nativePetStatsScaleWithLevelWithoutDungeonCondition() {
+        try (var adapter = new RunicPetAdapter()) {
+            var definition = PetsManager.getInstance().getPet(RunicPetAdapter.ID);
+            var stats = definition.getStatsAtLevel(100);
+            assertEquals(100, stats.get(StatType.HEALTH).getValue());
+            assertEquals(50, stats.get(StatType.DEFENSE).getValue());
+            assertEquals(10, stats.get(StatType.MAGIC_FIND).getValue());
+            var firstLevel = definition.getStatsAtLevel(1);
+            assertEquals(1, firstLevel.get(StatType.HEALTH).getValue());
+            assertEquals(.5, firstLevel.get(StatType.DEFENSE).getValue());
+            assertEquals(.1, firstLevel.get(StatType.MAGIC_FIND).getValue());
         }
     }
 

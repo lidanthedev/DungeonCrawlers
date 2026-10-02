@@ -117,9 +117,7 @@ public final class BukkitDifficultyService implements Listener, AutoCloseable {
         if (context == null) return;
         int petLevel = pet == null ? 0 : pet.activeLevel(player);
         var stats = event.getStats();
-        stats.set(StatType.HEALTH, stats.get(StatType.HEALTH).getValue() + petLevel);
-        stats.set(StatType.DEFENSE, stats.get(StatType.DEFENSE).getValue() + petLevel * .5);
-        stats.set(StatType.MAGIC_FIND, stats.get(StatType.MAGIC_FIND).getValue() + petLevel * .1);
+        stats.get(StatType.HEALTH).multiply(1 + petLevel / 200D);
         var skill = SkillsManager.getInstance().getSkillInfo("dungeon");
         var level = skill == null ? null : PlayerDataManager.getInstance().getSkills(event.getPlayer()).get(skill);
         double multiplier = 1 + (level == null ? 0 : Math.clamp(level.getLevel(), 0, 60)) / 100D;

@@ -77,6 +77,7 @@ public final class PlayerLifecycleService {
     public synchronized TransitionResult start(UUID instanceId) {
         MutableInstance state = instance(instanceId);
         if (state == null) return TransitionResult.failure("unknown lifecycle instance");
+        if (state.completed) return TransitionResult.failure("lifecycle is already completed");
         if (state.running) return TransitionResult.success(Event.STARTED, "lifecycle already running", snapshot(state));
         if (state.wiped) return TransitionResult.failure("lifecycle is already wiped");
         state.running = true;
@@ -133,6 +134,7 @@ public final class PlayerLifecycleService {
         if (state.wiped) return TransitionResult.failure("instance is wiped");
         if (player.state == PlayerState.REMOVED) return TransitionResult.failure("player was removed from instance");
         player.online = true;
+        if (state.completed && player.state == PlayerState.GHOST) return reviveAfterCompletion(state, player);
         Instant now = clock.instant();
         if (player.state == PlayerState.GHOST && player.reviveAt != null && !now.isBefore(player.reviveAt)) {
             TransitionResult revived = revive(state, player, now, "revive timer elapsed while offline");
@@ -169,6 +171,42 @@ public final class PlayerLifecycleService {
         if (state == null) return TransitionResult.failure("unknown lifecycle instance");
         if (player == null) return TransitionResult.failure("player is not a participant");
         return revive(state, player, clock.instant(), "player revived");
+    }
+
+    /** Ends combat and restores ghosts for reward access, retaining their scoring deaths. */
+    public synchronized TransitionResult complete(UUID instanceId) {
+        MutableInstance state = instance(instanceId);
+        if (state == null) return TransitionResult.failure("unknown lifecycle instance");
+        if (state.wiped) return TransitionResult.failure("instance is wiped");
+        state.completed = true;
+        state.running = false;
+        for (MutablePlayer player : state.players.values()) {
+            if (player.state != PlayerState.GHOST) continue;
+            player.reviveAt = null;
+            player.reviveKind = ReviveKind.NONE;
+            if (player.online) {
+                TransitionResult result = reviveAfterCompletion(state, player);
+                if (!result.successful()) return result;
+            }
+        }
+        return TransitionResult.success(Event.COMPLETED, "all online ghosts revived for rewards", snapshot(state));
+    }
+
+    private TransitionResult reviveAfterCompletion(MutableInstance state, MutablePlayer player) {
+        Notice notice = new Notice(state.instanceId, player.id, Event.REVIVED,
+                "Dungeon completed; revived for rewards", clock.instant(), null);
+        try {
+            if (!revivalEffect.test(notice)) return TransitionResult.failure("completion revival could not be applied");
+        } catch (RuntimeException failure) {
+            return TransitionResult.failure("completion revival failed");
+        }
+        player.state = PlayerState.ALIVE;
+        player.reviveAt = null;
+        player.reviveKind = ReviveKind.NONE;
+        player.lastTarget = null;
+        player.lastCountdownSeconds = -1;
+        emit(notice);
+        return TransitionResult.success(Event.REVIVED, notice.detail(), snapshot(state), player.id);
     }
 
     /** Schedules an administrative revive without bypassing the normal ghost countdown. */
@@ -359,6 +397,7 @@ public final class PlayerLifecycleService {
         private Consumer<Instant> tick;
         private boolean ordinaryRevival = true;
         private boolean running;
+        private boolean completed;
         private boolean wiped;
         private String detail = "lifecycle registered";
 
@@ -387,7 +426,7 @@ public final class PlayerLifecycleService {
     public enum ReviveKind { NONE, STANDARD, RUNIC, ADMIN }
 
     public enum Event {
-        STARTED, GHOSTED, GHOST_COUNTDOWN, DISCONNECTED, RECONNECTED, REVIVED, REMOVED, WIPED
+        STARTED, GHOSTED, GHOST_COUNTDOWN, DISCONNECTED, RECONNECTED, REVIVED, REMOVED, WIPED, COMPLETED
     }
 
     public record PlayerSnapshot(UUID playerId, PlayerState state, boolean online,

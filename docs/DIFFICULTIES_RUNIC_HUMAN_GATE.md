@@ -74,3 +74,16 @@ Both players were online, but `party list` at 03:38:20 showed no party. These ch
 - `cc reload all` at 15:48:45 UTC enabled the addon; recovery reported zero blockers and `startsEnabled=true` at 15:49:00.
 - Reload emitted transient Essentials command-send exceptions and a ten-second watchdog dump; the server resumed and DungeonCrawlers remained enabled.
 - `sudo LidanTheGamer dungeon start floor_1` ran at 15:49:27 with no command exception. Configuration validation passed at 15:49:32. Client appearance and client tab completion still await player confirmation.
+
+## Runic stats, completion revival and door clicks
+
+2026-10-02: Runic now uses native global pet stats of +1 Health, +0.5 Defense and +0.1 Magic Find per level. Runic Power adds dungeon-only health of 0.5% per level, reaching +50% at level 100, and stacks multiplicatively with the Dungeon skill. The live item description was edited and read back through Pterodactyl.
+
+Successful finalization revives all online ghosts at their current positions before publishing the reward chest. Offline ghosts revive when reconnecting during the reward period. This clears timers and ghost restrictions without forgiving ordinary deaths. Pending Runic revivals still settle before scoring so their existing forgiveness remains valid.
+
+Preparation and combat doors accept main-hand left/right block clicks even when an item ability cancelled the event. Both use the shared participant/alive gate; ghosts and off-hand duplicates cannot activate doors.
+
+- Java 21 build passed all 284 tests with no failures, errors or skips. Regressions cover native pet stat scaling, percentage health inside/outside dungeons, completion/reconnect/retry/death counts, reward interaction after ghost cleanup, and actual event dispatch for cancelled/uncancelled clicks, both door types, ghosts and off-hand clicks.
+- Uploaded final JAR SHA-256 `22472c4c7b69d7a58baf0cad6c21d6e3e52cd6fcb458e246d0301e71b812b907`. No active dungeons remained before deployment.
+- `cc reload all` at 16:14:33 UTC enabled the addon; recovery reported zero blockers and `startsEnabled=true` at 16:14:46. A transient ten-second reload watchdog dump occurred; the server resumed.
+- Configuration validation passed at 16:15:07. `/pets` opened for LidanTheGamer at 16:15:16 without a command exception. Real-player confirmation of the new percentage buff, completion chest access and ability-item door clicks remains pending.

@@ -1,6 +1,11 @@
 package me.lidan.dungeonCrawlers.integration;
 
 import me.lidan.cavecrawlers.damage.DamageCalculationEvent;
+import me.lidan.cavecrawlers.skills.SkillsManager;
+import me.lidan.cavecrawlers.stats.StatType;
+import me.lidan.cavecrawlers.stats.Stats;
+import me.lidan.cavecrawlers.stats.StatsCalculateEvent;
+import me.lidan.dungeonCrawlers.integration.addon.RunicPetAdapter;
 import me.lidan.dungeonCrawlers.core.difficulty.Difficulty;
 import me.lidan.dungeonCrawlers.core.claim.RewardClaimService;
 import me.lidan.dungeonCrawlers.core.generation.GenerationService;
@@ -29,6 +34,7 @@ class BukkitDifficultyServiceTest {
     private BukkitDifficultyService service;
     private PlayerMock player, teammate;
     private PlayerLifecycleService lifecycle;
+    private RunPreparationService runs;
     private GenerationService.LayoutContext context;
     private RewardClaimService claims;
     private final UUID instance = UUID.randomUUID();
@@ -45,7 +51,7 @@ class BukkitDifficultyServiceTest {
         when(context.progressionEnabled()).thenReturn(true);
         when(context.difficulty()).thenReturn(Difficulty.HELLISH.defaults());
         when(generation.layoutContext(instance)).thenReturn(Optional.of(context));
-        var runs = mock(RunPreparationService.class);
+        runs = mock(RunPreparationService.class);
         when(runs.instanceFor(player.getUniqueId())).thenReturn(Optional.of(instance));
         var run = mock(RunPreparationService.RunSnapshot.class);
         when(run.startedAt()).thenReturn(java.time.Instant.EPOCH);
@@ -112,6 +118,39 @@ class BukkitDifficultyServiceTest {
         var event = new DamageCalculationEvent(player, enemy, null, 100, false);
         service.outgoing(event);
         assertTrue(event.isCancelled());
+    }
+    @Test void runicPowerScalesDungeonHealthWithoutDuplicatingNativeStatsOrApplyingOutside() throws Exception {
+        var pet = mock(RunicPetAdapter.class);
+        var field = BukkitDifficultyService.class.getDeclaredField("pet");
+        field.setAccessible(true);
+        field.set(service, pet);
+        try (var plugins = mockStatic(org.bukkit.plugin.java.JavaPlugin.class)) {
+            plugins.when(() -> org.bukkit.plugin.java.JavaPlugin.getProvidingPlugin(
+                    me.lidan.cavecrawlers.objects.ConfigLoader.class)).thenReturn(mock(org.bukkit.plugin.java.JavaPlugin.class));
+            Class.forName("me.lidan.cavecrawlers.objects.ConfigLoader");
+        }
+        try (var skills = mockStatic(SkillsManager.class)) {
+            skills.when(SkillsManager::getInstance).thenReturn(mock(SkillsManager.class));
+            for (int level : new int[]{0, 1, 50, 100}) {
+                when(pet.activeLevel(player.getUniqueId())).thenReturn(level);
+                // The native pet listener has already added its global stats.
+                var stats = new Stats();
+                stats.set(StatType.HEALTH, 1100);
+                stats.set(StatType.DEFENSE, 550);
+                stats.set(StatType.MAGIC_FIND, 110);
+                service.stats(new StatsCalculateEvent(player, stats));
+                assertEquals(1100 * (1 + level / 200D), stats.get(StatType.HEALTH).getValue(), 1E-9);
+                assertEquals(550, stats.get(StatType.DEFENSE).getValue());
+                assertEquals(137.5, stats.get(StatType.MAGIC_FIND).getValue());
+            }
+            when(runs.instanceFor(player.getUniqueId())).thenReturn(Optional.empty());
+            var outside = new Stats();
+            outside.set(StatType.HEALTH, 1100);
+            outside.set(StatType.MAGIC_FIND, 110);
+            service.stats(new StatsCalculateEvent(player, outside));
+            assertEquals(1100, outside.get(StatType.HEALTH).getValue());
+            assertEquals(110, outside.get(StatType.MAGIC_FIND).getValue());
+        }
     }
     @Test void runicBossGivesExactlyFourOnceToKillerAndDebugRunGivesNone() throws Exception {
         when(enemy.getKiller()).thenReturn(player);
