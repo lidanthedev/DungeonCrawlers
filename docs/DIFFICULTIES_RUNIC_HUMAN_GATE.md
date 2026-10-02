@@ -64,3 +64,13 @@ Both test players' prior combat/mining XP were restored from the captured save v
 - [ ] Reopening completion rewards preserves the frozen offers.
 
 Both players were online, but `party list` at 03:38:20 showed no party. These checks are not claimed as passed. Automated regressions cover damage boundaries, boss exclusions, ghost protection, fixed four-fragment killer ownership, duplicate death events, debug loot suppression, durable inventory overflow, progression recovery and frozen reward weighting.
+
+## Difficulty menu follow-up
+
+2026-10-02: Difficulty IDs autocomplete for normal starts and debug generation. The menu uses distinct colored icons and grouped lore, leaves all four corners empty, and centers Void, Hardcore and Impossible beneath the first seven tiers.
+
+- Java 21 build passed all 278 tests with no failures, errors or skips. Regression checks exercise actual Lamp prefix completion and the opened inventory's slot layout, names and distinct icons.
+- Uploaded `build/libs/DungeonCrawlers-1.0.jar`, SHA-256 `ec97da8cac22fca0e35d71b17d15c5a70f09ba847370d7494cb5af714ad4b180`.
+- `cc reload all` at 15:48:45 UTC enabled the addon; recovery reported zero blockers and `startsEnabled=true` at 15:49:00.
+- Reload emitted transient Essentials command-send exceptions and a ten-second watchdog dump; the server resumed and DungeonCrawlers remained enabled.
+- `sudo LidanTheGamer dungeon start floor_1` ran at 15:49:27 with no command exception. Configuration validation passed at 15:49:32. Client appearance and client tab completion still await player confirmation.

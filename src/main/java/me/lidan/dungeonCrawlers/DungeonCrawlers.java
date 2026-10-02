@@ -10,6 +10,7 @@ import me.lidan.dungeonCrawlers.commands.DungeonPhaseFiveCommand;
 import me.lidan.dungeonCrawlers.commands.DungeonClassMenuService;
 import me.lidan.dungeonCrawlers.commands.DungeonPhaseSixCommand;
 import me.lidan.dungeonCrawlers.commands.ClassIdSuggestionProvider;
+import me.lidan.dungeonCrawlers.commands.DifficultyIdSuggestionProvider;
 import me.lidan.dungeonCrawlers.commands.FloorIdSuggestionProvider;
 import me.lidan.dungeonCrawlers.commands.InstanceIdSuggestionProvider;
 import me.lidan.dungeonCrawlers.commands.OfflinePlayerSuggestionProvider;
@@ -468,6 +469,10 @@ public final class DungeonCrawlers extends JavaPlugin {
 
     private void registerCommands() {
         // Register commands
+        commandHandlerBuilder.suggestionProviders().addProviderForAnnotation(SuggestWith.class, annotation -> {
+            if (annotation.value() != DifficultyIdSuggestionProvider.class) return null;
+            return new DifficultyIdSuggestionProvider<BukkitCommandActor>();
+        });
         commandHandlerBuilder.suggestionProviders().addProviderForAnnotation(SuggestWith.class, annotation -> {
             if (annotation.value() != InstanceIdSuggestionProvider.class) return null;
             return new InstanceIdSuggestionProvider<BukkitCommandActor>(() -> generation.instances().stream()

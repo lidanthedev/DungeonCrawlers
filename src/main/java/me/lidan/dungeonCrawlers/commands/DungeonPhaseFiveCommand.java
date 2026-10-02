@@ -204,7 +204,7 @@ public final class DungeonPhaseFiveCommand {
     @Subcommand("start")
     @CommandPermission("dungeoncrawlers.use")
     public void start(Player player, @SuggestWith(FloorIdSuggestionProvider.class) String floorId,
-                      @Optional String difficultyId) {
+                      @Optional @SuggestWith(DifficultyIdSuggestionProvider.class) String difficultyId) {
         start(player, floorId, difficultyId, ThreadLocalRandom.current().nextLong(), true);
     }
 

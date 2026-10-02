@@ -7,6 +7,7 @@ import org.bukkit.entity.Player;
 import revxrsal.commands.annotation.Command;
 import revxrsal.commands.annotation.Subcommand;
 import revxrsal.commands.annotation.Optional;
+import revxrsal.commands.annotation.SuggestWith;
 import revxrsal.commands.bukkit.annotation.CommandPermission;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
@@ -38,7 +39,8 @@ public final class DungeonDifficultyDebugCommand {
         else DungeonMessages.send(sender, "<red>Debug mode is disabled.</red>");
     }
     @Subcommand("instance generate-difficulty-debug")
-    public void generate(Player player, String floorId, String tier, long seed) {
+    public void generate(Player player, String floorId,
+                         @SuggestWith(DifficultyIdSuggestionProvider.class) String tier, long seed) {
         if (debug.getAsBoolean()) preparation.startDebug(player, floorId, tier, seed);
         else DungeonMessages.send(player, "<red>Debug mode is disabled.</red>");
     }
