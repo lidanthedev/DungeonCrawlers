@@ -37,11 +37,18 @@ particles. Ordinary/miniboss fragment chances use MAGIC_FIND and award one fragm
 the killer. Runic bosses award exactly four. Inventory overflow uses the durable mailbox.
 
 With CaveCrawlAddon enabled, the Legendary Runic pet uses normal pet leveling to 100 and
-prefers Dungeon XP. Per pet level, its dungeon-only bonuses are +1 HEALTH, +0.5 DEFENSE and
-+0.1 MAGIC_FIND. Active at death, it latches a five-second revival once per player per run.
+prefers Dungeon XP. Per pet level, its global bonuses are +1 HEALTH, +0.5 DEFENSE and
++0.1 MAGIC_FIND. Runic Power additionally boosts HEALTH by 0.5% per pet level inside
+dungeons, reaching +50% at level 100 and multiplying with the Dungeon skill bonus.
+Active at death, it latches a five-second revival once per player per run.
 Switching pets during the ghost countdown preserves that revival. It restores the player's
 current ghost position and forgives that death only after revival succeeds. Shop acquisition
 is configured separately by the server owner.
+
+Successful completion revives remaining online ghosts for reward access, retaining their
+death penalties. Offline ghosts revive on reconnect during the reward period. Dungeon doors
+accept main-hand left/right clicks even when an item ability cancels the click; ghosts cannot
+open doors.
 
 ## Class selection
 
