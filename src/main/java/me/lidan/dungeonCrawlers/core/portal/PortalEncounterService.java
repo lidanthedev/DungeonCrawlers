@@ -390,7 +390,7 @@ public final class PortalEncounterService {
         } catch (RuntimeException exception) {
             return finalizationFailure(state, exception.getClass().getSimpleName() + ": " + exception.getMessage());
         }
-        if (!finalized) return finalizationFailure(state, "completion finalizer returned false");
+        if (!finalized) return DeathResult.accepted("completion is awaiting finalization", snapshot(state));
         RunPreparationService.PhaseResult transition = runs.enterCompletionPending(state.instanceId);
         if (!transition.successful()) {
             return finalizationFailure(state, "run completion transition failed: " + transition.detail());

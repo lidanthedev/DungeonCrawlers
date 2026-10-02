@@ -173,7 +173,7 @@ class PortalEncounterServiceTest {
     }
 
     @Test
-    void failedFinalizationKeepsBossIncompleteAndRetriesBeforeExposingRewardChest() {
+    void deferredFinalizationKeepsBossIncompleteAndRetriesBeforeExposingRewardChest() {
         UUID instance = UUID.randomUUID();
         UUID player = UUID.randomUUID();
         Clock clock = Clock.fixed(START, ZoneOffset.UTC);
@@ -190,9 +190,9 @@ class PortalEncounterServiceTest {
         updates.tick(START.plusSeconds(1));
         UUID boss = service.info(instance).orElseThrow().bossEntity();
 
-        var failed = service.onBossDeath(instance, boss);
+        var deferred = service.onBossDeath(instance, boss);
 
-        assertFalse(failed.accepted());
+        assertTrue(deferred.accepted());
         assertEquals(PortalEncounterService.Status.BOSS, service.info(instance).orElseThrow().status());
         assertEquals(RunPreparationService.RunState.BOSS, runs.info(instance).orElseThrow().state());
         assertTrue(service.rewardAt(service.info(instance).orElseThrow().rewardChest()).isEmpty());

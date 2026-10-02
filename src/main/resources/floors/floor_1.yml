@@ -1,4 +1,4 @@
-schema-version: 1
+schema-version: 2
 id: floor_1
 number: 1
 display-name: "<gold>Floor I"
@@ -33,7 +33,10 @@ rewards:
     unique: false
     items:
       - { item: UNDEAD_ESSENCE, weight: 70, amount: "3-8" }
-      - { item: CRYPT_FRAGMENT, weight: 30 }
+      - { item: CRYPT_FRAGMENT, weight: 30, magic-find-sensitive: true }
+dungeon-xp:
+  completion: 100
+  failure-factor: 0.10
 limits:
   max-party-size: 5
   max-template-dimension: 512

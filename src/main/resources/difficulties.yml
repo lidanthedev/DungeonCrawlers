@@ -1,0 +1,113 @@
+schema-version: 1
+# Chances and reductions are fractions, e.g. 0.001 = 0.1%.
+difficulties:
+  normal:
+    health-multiplier: 1
+    duplicate-class-reduction: 0
+    incoming-multiplier: 1
+    isolation-multiplier: 1
+    xp-multiplier: 1
+    magic-find-multiplier: 1
+    ordinary-revival: true
+    runic-chance: 0
+    fragment-chance: 0
+    runic-boss-chance: 0
+  hard:
+    health-multiplier: 1
+    duplicate-class-reduction: 0.05
+    incoming-multiplier: 1
+    isolation-multiplier: 1
+    xp-multiplier: 1.25
+    magic-find-multiplier: 1.05
+    ordinary-revival: true
+    runic-chance: 0
+    fragment-chance: 0
+    runic-boss-chance: 0
+  insane:
+    health-multiplier: 1.5
+    duplicate-class-reduction: 0.1
+    incoming-multiplier: 1
+    isolation-multiplier: 1
+    xp-multiplier: 1.5
+    magic-find-multiplier: 1.1
+    ordinary-revival: true
+    runic-chance: 0
+    fragment-chance: 0
+    runic-boss-chance: 0
+  extreme:
+    health-multiplier: 1.5
+    duplicate-class-reduction: 0.15
+    incoming-multiplier: 1
+    isolation-multiplier: 1
+    xp-multiplier: 1.75
+    magic-find-multiplier: 1.15
+    ordinary-revival: true
+    runic-chance: 0
+    fragment-chance: 0
+    runic-boss-chance: 0
+  demonic:
+    health-multiplier: 2
+    duplicate-class-reduction: 0.2
+    incoming-multiplier: 1
+    isolation-multiplier: 1
+    xp-multiplier: 2
+    magic-find-multiplier: 1.2
+    ordinary-revival: true
+    runic-chance: 0.001
+    fragment-chance: 0.1
+    runic-boss-chance: 0
+  hellish:
+    health-multiplier: 2.5
+    duplicate-class-reduction: 0.25
+    incoming-multiplier: 1.2
+    isolation-multiplier: 1.25
+    xp-multiplier: 2.5
+    magic-find-multiplier: 1.25
+    ordinary-revival: false
+    runic-chance: 0.002
+    fragment-chance: 0.2
+    runic-boss-chance: 0
+  death:
+    health-multiplier: 2.5
+    duplicate-class-reduction: 0.3
+    incoming-multiplier: 1.5
+    isolation-multiplier: 1.5
+    xp-multiplier: 3
+    magic-find-multiplier: 1.3
+    ordinary-revival: false
+    runic-chance: 0.003
+    fragment-chance: 0.3
+    runic-boss-chance: 0
+  void:
+    health-multiplier: 3
+    duplicate-class-reduction: 0.4
+    incoming-multiplier: 1.8
+    isolation-multiplier: 2
+    xp-multiplier: 3.5
+    magic-find-multiplier: 1.35
+    ordinary-revival: false
+    runic-chance: 0.004
+    fragment-chance: 0.4
+    runic-boss-chance: 0.01
+  hardcore:
+    health-multiplier: 4
+    duplicate-class-reduction: 0.5
+    incoming-multiplier: 2.4
+    isolation-multiplier: 2.5
+    xp-multiplier: 4
+    magic-find-multiplier: 1.4
+    ordinary-revival: false
+    runic-chance: 0.005
+    fragment-chance: 0.5
+    runic-boss-chance: 0.02
+  impossible:
+    health-multiplier: 5
+    duplicate-class-reduction: 0.6
+    incoming-multiplier: 3
+    isolation-multiplier: 3
+    xp-multiplier: 5
+    magic-find-multiplier: 1.5
+    ordinary-revival: false
+    runic-chance: 0.006
+    fragment-chance: 0.6
+    runic-boss-chance: 0.03

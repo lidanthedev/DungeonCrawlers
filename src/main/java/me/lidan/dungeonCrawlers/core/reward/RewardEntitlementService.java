@@ -207,7 +207,9 @@ public final class RewardEntitlementService {
                     .getBytes(StandardCharsets.UTF_8));
             boolean locked = completion.score().total() < definition.minScore();
             List<RewardRoller.RolledReward> rolls = locked ? List.of() : roller.roll(definition,
-                    new NamedRandomFactory(completion.seed()).stream(rewardStreamKey(playerId, rewardId)));
+                    new NamedRandomFactory(completion.seed()).stream(rewardStreamKey(playerId, rewardId)),
+                    completion.participants().stream().filter(value -> value.playerId().equals(playerId))
+                            .mapToDouble(Participant::magicFind).findFirst().orElse(0));
             offers.put(rewardId, new RewardOffer(offerId, rewardId, definition.price(), definition.minScore(),
                     locked, rolls));
         });
@@ -329,9 +331,13 @@ public final class RewardEntitlementService {
         }
     }
 
-    public record Participant(UUID playerId, boolean activeAtCompletion, boolean onlineAtCompletion) {
+    public record Participant(UUID playerId, boolean activeAtCompletion, boolean onlineAtCompletion, double magicFind) {
+        public Participant(UUID playerId, boolean activeAtCompletion, boolean onlineAtCompletion) {
+            this(playerId, activeAtCompletion, onlineAtCompletion, 0);
+        }
         public Participant {
             Objects.requireNonNull(playerId, "playerId");
+            if (!Double.isFinite(magicFind) || magicFind < 0) throw new IllegalArgumentException("invalid magic find");
         }
     }
 
