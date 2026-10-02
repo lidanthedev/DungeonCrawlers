@@ -38,13 +38,7 @@ public final class DungeonDifficultyMenuService {
         Gui gui = Gui.gui().rows(6).title(MiniMessageUtils.miniMessage("<dark_red><bold>Choose difficulty</bold></dark_red>"))
                 .disableAllInteractions().create();
         GuiItem glass = item(Material.GRAY_STAINED_GLASS_PANE, " ", List.of(), event -> event.setCancelled(true));
-        for (int slot = 0; slot < 54; slot++) {
-            int row = slot / 9;
-            int column = slot % 9;
-            boolean edgeRow = row == 0 || row == 5;
-            boolean edgeColumn = column == 0 || column == 8;
-            if (edgeRow != edgeColumn) gui.setItem(slot, glass);
-        }
+        gui.getFiller().fill(glass);
         gui.setItem(49, item(Material.BARRIER, "<red>Close</red>", List.of(), event -> {
             event.setCancelled(true);
             player.closeInventory();

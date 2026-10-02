@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class DungeonDifficultyMenuServiceTest {
-    @Test void framesSixRowsWithEmptyCornersAndClosesWithoutStarting() {
+    @Test void fillsUnusedSlotsWithGlassAndClosesWithoutStarting() {
         var server = MockBukkit.mock();
         try {
             dev.triumphteam.gui.TriumphGui.init(MockBukkit.createMockPlugin());
@@ -35,11 +35,14 @@ class DungeonDifficultyMenuServiceTest {
                     .open(player, "floor_1");
             var inventory = player.getOpenInventory().getTopInventory();
             assertEquals(54, inventory.getSize());
-            for (int corner : new int[]{0, 8, 45, 53}) assertNull(inventory.getItem(corner));
-            for (int border : new int[]{1, 2, 3, 4, 5, 6, 7, 9, 17, 18, 26, 27, 35, 36, 44, 46, 47, 48, 50, 51, 52}) {
-                assertEquals(Material.GRAY_STAINED_GLASS_PANE, inventory.getItem(border).getType());
-            }
             int[] slots = {19, 20, 21, 22, 23, 24, 25, 30, 31, 32};
+            var controls = Set.of(13, 19, 20, 21, 22, 23, 24, 25, 30, 31, 32, 49);
+            for (int slot = 0; slot < inventory.getSize(); slot++) {
+                assertNotNull(inventory.getItem(slot));
+                if (!controls.contains(slot)) {
+                    assertEquals(Material.GRAY_STAINED_GLASS_PANE, inventory.getItem(slot).getType());
+                }
+            }
             var plain = PlainTextComponentSerializer.plainText();
             for (Difficulty tier : Difficulty.values()) {
                 var item = inventory.getItem(slots[tier.ordinal()]);

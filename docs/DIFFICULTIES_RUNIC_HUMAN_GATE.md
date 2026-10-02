@@ -108,3 +108,12 @@ Preparation and combat doors accept main-hand left/right block clicks even when 
 - Uploaded JAR SHA-256 `d4a9c280087efddbde9f9a4de4f071423e7de3ab5d4c886a10e56cb0299499d8`. No active instances remained before deployment at 19:40:56 UTC.
 - `cc reload all` ran at 19:41:54 UTC. The addon enabled at 19:41:59 and recovery reported zero blockers with `startsEnabled=true` at 19:42:05.
 - Configuration validation passed at 19:42:18. `sudo LidanTheGamer dungeon start floor_1` ran at 19:42:23 without a command exception. Client appearance still awaits player confirmation.
+
+## Full glass background
+
+2026-10-02: The latest layout replaces the empty-corner border with gray glass in every unused slot, including all four corners. Tier, information and Close controls keep their positions.
+
+- Java 21 build passed all 285 tests with zero failures, errors or skips. The inventory regression checks every slot is occupied and all unused slots contain gray glass.
+- Uploaded JAR SHA-256 `de22541656711d598ee8897772832ed3099672dc09e5c88eb7ef8bb9298479fd`. No active instances remained at 19:46:27 UTC.
+- `cc reload all` ran at 19:47:14 UTC; recovery reported zero blockers and `startsEnabled=true` at 19:47:24. Configuration validation passed at 19:47:36.
+- Reopened the menu for LidanTheGamer at 19:47:39 without a command exception. Client appearance remains subject to player confirmation.
