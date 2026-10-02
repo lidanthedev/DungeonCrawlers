@@ -17,7 +17,7 @@ The class menu and selector NPC recheck run membership, snapshot readiness, allo
 
 Difficulty diagnostics require `dungeoncrawlers.admin.debug`:
 
-- `/dungeon difficulty info [player]` reports effective MAGIC_FIND, actual/forgiven deaths and the pet charge.
+- `/dungeon difficulty info [player]` reports effective MAGIC_FIND, deaths and the pet charge.
 - `/dungeon instance generate-difficulty-debug <floor> <tier> <seed>` uses normal preparation with unlock checks bypassed. It awards no Dungeon XP, unlocks or Runic fragments.
 - `/dungeon runic force <entity-uuid>` upgrades an enemy only in a debug instance.
 - `/dungeon door interact` exercises the same class/snapshot gate and lifecycle as a start-door click.

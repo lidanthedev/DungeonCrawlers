@@ -172,8 +172,8 @@ public final class BukkitDifficultyService implements Listener, AutoCloseable {
         var context = generation.layoutContext(instance).orElseThrow();
         var state = lifecycle.player(instance, player.getUniqueId()).orElseThrow();
         DungeonMessages.send(sender, "<yellow>" + context.difficulty().tier().displayName() + " <gray>MF: "
-                + magicFind(instance, player.getUniqueId()) + ", deaths: " + state.deaths() + ", forgiven: "
-                + state.forgivenDeaths() + ", Runic pet: " + activeRunicPet(player.getUniqueId())
+                + magicFind(instance, player.getUniqueId()) + ", deaths: " + state.deaths()
+                + ", Runic pet: " + activeRunicPet(player.getUniqueId())
                 + ", charge used: " + state.runicChargeUsed() + ", progression: " + context.progressionEnabled());
     }
 

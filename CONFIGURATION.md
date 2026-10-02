@@ -42,8 +42,10 @@ prefers Dungeon XP. Per pet level, its global bonuses are +1 HEALTH, +0.5 DEFENS
 dungeons, reaching +50% at level 100 and multiplying with the Dungeon skill bonus.
 Active at death, it latches a five-second revival once per player per run.
 Switching pets during the ghost countdown preserves that revival. It restores the player's
-current ghost position and forgives that death only after revival succeeds. Shop acquisition
-is configured separately by the server owner.
+current ghost position. If a remaining participant has Runic active when the final score is
+calculated, the run gains +2 points in the Bonus category, with or without a revival. This
+bonus applies once per run and does not erase deaths. Shop acquisition is configured
+separately by the server owner.
 
 Successful completion revives remaining online ghosts for reward access, retaining their
 death penalties. Offline ghosts revive on reconnect during the reward period. Dungeon doors

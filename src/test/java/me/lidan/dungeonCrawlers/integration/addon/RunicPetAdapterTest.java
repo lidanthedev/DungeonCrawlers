@@ -38,6 +38,7 @@ class RunicPetAdapterTest {
             assertEquals("Gain +50% ❤ Health", plain.serialize(lore.get(2)));
             assertEquals("while in dungeons.", plain.serialize(lore.get(3)));
             assertEquals("Pet Ability: Second Chance", plain.serialize(lore.get(5)));
+            assertEquals("Gain +2 Bonus score while active.", plain.serialize(lore.get(7)));
             when(pet.getLevel()).thenReturn(1);
             assertEquals("Gain +0.5% ❤ Health", plain.serialize(PetsManager.getInstance()
                     .getPet(RunicPetAdapter.ID).petAbilitiesToLore(pet).get(2)));

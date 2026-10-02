@@ -75,6 +75,23 @@ class ScoreServiceTest {
                 () -> registry.register(provider("first", 1, List.of())));
     }
 
+    @Test
+    void activeRunicPetAddsTwoBonusPointsWithoutRevivalOrChangingDeathPenalties() {
+        for (boolean successful : new boolean[]{true, false}) {
+            for (int deaths : new int[]{0, 1, 2}) {
+                var input = new ScoreService.ScoreInput(successful, deaths, Duration.ofMinutes(8), 0, 0);
+                var bonus = new ScoreService.RunicPetBonus(true);
+                var report = service.calculateReport(input, List.of(bonus, bonus));
+                assertEquals(2, report.result().bonus());
+                assertEquals(successful ? 100 - 2 * deaths : 0, report.result().skill());
+                assertEquals(deaths, report.finalSnapshot().deaths());
+                assertEquals(List.of(new ScoreService.BonusFact("runic_pet", 2, "Active Runic pet")),
+                        report.finalSnapshot().bonusFacts());
+                assertEquals(0, service.calculate(input, List.of(new ScoreService.RunicPetBonus(false))).bonus());
+            }
+        }
+    }
+
     private ScoreService.ScoreResult score(boolean success, int deaths, long minutes, int found, int total) {
         return service.calculate(new ScoreService.ScoreInput(success, deaths, Duration.ofMinutes(minutes), found, total),
                 List.of());

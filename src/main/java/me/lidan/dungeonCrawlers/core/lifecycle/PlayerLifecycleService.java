@@ -308,7 +308,7 @@ public final class PlayerLifecycleService {
         } catch (RuntimeException failure) {
             return TransitionResult.failure("revival effect failed");
         }
-        if (runic) { player.runicChargeUsed = true; player.forgivenDeaths++; }
+        if (runic) player.runicChargeUsed = true;
         player.reviveKind = ReviveKind.NONE;
         player.state = PlayerState.ALIVE;
         player.reviveAt = null;
@@ -388,7 +388,7 @@ public final class PlayerLifecycleService {
 
     private static PlayerSnapshot snapshot(MutablePlayer player) {
         return new PlayerSnapshot(player.id, player.state, player.online, player.reviveAt, player.lastTarget,
-                player.deaths, player.forgivenDeaths, player.runicChargeUsed, player.reviveKind);
+                player.deaths, player.runicChargeUsed, player.reviveKind);
     }
 
     private static final class MutableInstance {
@@ -414,7 +414,6 @@ public final class PlayerLifecycleService {
         private Instant reviveAt;
         private UUID lastTarget;
         private int deaths;
-        private int forgivenDeaths;
         private boolean runicChargeUsed;
         private ReviveKind reviveKind = ReviveKind.NONE;
         private long lastCountdownSeconds = -1;
@@ -430,15 +429,14 @@ public final class PlayerLifecycleService {
     }
 
     public record PlayerSnapshot(UUID playerId, PlayerState state, boolean online,
-                                 Instant reviveAt, UUID reviveTarget, int deaths, int forgivenDeaths,
+                                 Instant reviveAt, UUID reviveTarget, int deaths,
                                  boolean runicChargeUsed, ReviveKind reviveKind) {
         public PlayerSnapshot(UUID playerId, PlayerState state, boolean online, Instant reviveAt, UUID reviveTarget, int deaths) {
-            this(playerId, state, online, reviveAt, reviveTarget, deaths, 0, false, ReviveKind.NONE);
+            this(playerId, state, online, reviveAt, reviveTarget, deaths, false, ReviveKind.NONE);
         }
-        public int scoringDeaths() { return Math.max(0, deaths - forgivenDeaths); }
         public PlayerSnapshot {
             Objects.requireNonNull(playerId); Objects.requireNonNull(state);
-            if (deaths < 0 || forgivenDeaths < 0 || forgivenDeaths > deaths) throw new IllegalArgumentException("invalid death counts");
+            if (deaths < 0) throw new IllegalArgumentException("invalid death count");
         }
     }
 

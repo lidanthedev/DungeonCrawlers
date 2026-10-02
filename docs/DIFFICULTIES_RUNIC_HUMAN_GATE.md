@@ -29,6 +29,8 @@ The live CaveCrawlers files were created through Pterodactyl and read back:
 
 ## Recorded solo evidence
 
+These checks record the earlier build. Its death-forgiveness results are historical; the current Runic scoring rule is described below under Runic Bonus score.
+
 | Check | Evidence | Result |
 | --- | --- | --- |
 | Preparation gives no XP | Preparation-only runs timed out/cancelled; later native save still showed Dungeon total XP 0 | Passed |
@@ -58,7 +60,7 @@ Both test players' prior combat/mining XP were restored from the captured save v
 - [ ] Ghost participant receives full successful completion XP and the next tier.
 - [ ] Offline participant receives completion XP once after reconnect and retains the unlock.
 - [ ] Pet swapping during the five-second ghost window preserves the latched revival.
-- [ ] Party pet revival and boss completion during a pending pet timer yield the forgiven score.
+- [ ] Party Runic bonus appears in the Bonus category without erasing deaths, including runs without a revival.
 - [ ] Visual confirmation of the updated pet lore and Runic purple glow/particles.
 - [ ] Natural ordinary/miniboss fragment delivery and a Runic boss's four fragments.
 - [ ] Reopening completion rewards preserves the frozen offers.
@@ -79,7 +81,7 @@ Both players were online, but `party list` at 03:38:20 showed no party. These ch
 
 2026-10-02: Runic now uses native global pet stats of +1 Health, +0.5 Defense and +0.1 Magic Find per level. Runic Power adds dungeon-only health of 0.5% per level, reaching +50% at level 100, and stacks multiplicatively with the Dungeon skill. The live item description was edited and read back through Pterodactyl.
 
-Successful finalization revives all online ghosts at their current positions before publishing the reward chest. Offline ghosts revive when reconnecting during the reward period. This clears timers and ghost restrictions without forgiving ordinary deaths. Pending Runic revivals still settle before scoring so their existing forgiveness remains valid.
+Successful finalization revives all online ghosts at their current positions before publishing the reward chest. Offline ghosts revive when reconnecting during the reward period. This clears timers and ghost restrictions while retaining all deaths. Completion also revives pending Runic ghosts immediately.
 
 Preparation and combat doors accept main-hand left/right block clicks even when an item ability cancelled the event. Both use the shared participant/alive gate; ghosts and off-hand duplicates cannot activate doors.
 
@@ -87,3 +89,13 @@ Preparation and combat doors accept main-hand left/right block clicks even when 
 - Uploaded final JAR SHA-256 `22472c4c7b69d7a58baf0cad6c21d6e3e52cd6fcb458e246d0301e71b812b907`. No active dungeons remained before deployment.
 - `cc reload all` at 16:14:33 UTC enabled the addon; recovery reported zero blockers and `startsEnabled=true` at 16:14:46. A transient ten-second reload watchdog dump occurred; the server resumed.
 - Configuration validation passed at 16:15:07. `/pets` opened for LidanTheGamer at 16:15:16 without a command exception. Real-player confirmation of the new percentage buff, completion chest access and ability-item door clicks remains pending.
+
+## Runic Bonus score
+
+2026-10-02: Runic no longer removes a death. If any remaining participant has Runic active at final scoring, the run gains +2 in the Bonus category, once per run, regardless of deaths or revival. The bonus also appears on failed-run results. The existing score facts freeze the bonus for rendering, chest eligibility, persistence and placeholders.
+
+- Removed the transient forgiven-death counter. Successful pet revival still consumes its one charge, retaining the actual death count. Completion no longer waits for the five-second pet timer before restoring ghosts for rewards.
+- Java 21 clean build passed all 285 tests with zero failures, errors or skips. Regressions cover active/inactive bonus, zero/one/two deaths, success/failure, duplicate bonus deduplication, preserved pet-revival death counts and the revised lore.
+- Updated the live pet item description through Pterodactyl and read it back.
+- Final uploaded JAR SHA-256 `a33b591451d19d715739dc38265dfaf8cec3287214f201b37be4eda299c9b4d3`.
+- No active dungeons remained at 18:25:05 UTC. `cc reload all` ran at 18:25:11; recovery reported zero blockers and `startsEnabled=true` at 18:25:26. Configuration validation passed at 18:26:00. Client Bonus-category display still awaits player confirmation.

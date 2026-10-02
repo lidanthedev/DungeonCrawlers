@@ -590,10 +590,6 @@ public final class DungeonCrawlers extends JavaPlugin {
         var lifecycleSnapshot = lifecycle.info(snapshot.instanceId()).orElse(null);
         org.bukkit.World world = getServer().getWorld(generationWorldName);
         if (context == null || run == null || lifecycleSnapshot == null || world == null) return false;
-        // Wait for a latched pet revival before freezing its forgiven death into the final score.
-        if (lifecycleSnapshot.players().stream().anyMatch(player -> player.online()
-                && player.state() == PlayerLifecycleService.PlayerState.GHOST
-                && player.reviveKind() == PlayerLifecycleService.ReviveKind.RUNIC)) return false;
         if (!lifecycle.complete(snapshot.instanceId()).successful()) return false;
         List<RewardEntitlementService.Participant> participants = rewardParticipants(run, lifecycleSnapshot);
         ScoreService.ScoreReport score = calculateScore(run, lifecycleSnapshot, true, phaseClock().instant());
@@ -663,12 +659,17 @@ public final class DungeonCrawlers extends JavaPlugin {
         int foundSecrets = phaseSeven.info(run.instanceId()).map(value -> (int) value.secrets().stream()
                 .filter(SecretDiscoveryService.SecretSnapshot::discovered).count()).orElse(0);
         int deaths = run.participants().stream().map(lifecyclePlayers::get).filter(java.util.Objects::nonNull)
-                .mapToInt(PlayerLifecycleService.PlayerSnapshot::scoringDeaths).sum();
+                .mapToInt(PlayerLifecycleService.PlayerSnapshot::deaths).sum();
+        boolean runicPet = run.participants().stream().map(lifecyclePlayers::get)
+                .filter(java.util.Objects::nonNull)
+                .filter(player -> player.state() != PlayerLifecycleService.PlayerState.REMOVED)
+                .anyMatch(player -> difficultyService.activeRunicPet(player.playerId()));
         Duration elapsed = run.startedAt() == null ? Duration.ZERO
                 : Duration.between(run.startedAt(), endedAt);
         if (elapsed.isNegative()) elapsed = Duration.ZERO;
         return scoreService.calculateReport(
-                new ScoreService.ScoreInput(successful, deaths, elapsed, foundSecrets, totalSecrets), List.of());
+                new ScoreService.ScoreInput(successful, deaths, elapsed, foundSecrets, totalSecrets),
+                List.of(new ScoreService.RunicPetBonus(runicPet)));
     }
 
     private boolean hasActiveCompletionGroup(UUID instanceId) {

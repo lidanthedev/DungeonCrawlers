@@ -27,7 +27,7 @@ public final class RunicPetAdapter implements AutoCloseable {
                     Component.empty(),
                     MiniMessageUtils.miniMessage("<gold>Pet Ability: Second Chance"),
                     MiniMessageUtils.miniMessage("<gray>Revive after <green>5 seconds<gray>, once per run."),
-                    MiniMessageUtils.miniMessage("<gray>Removes that death from your final score."),
+                    MiniMessageUtils.miniMessage("<gray>Gain <green>+2 Bonus score<gray> while active."),
                     MiniMessageUtils.miniMessage("<dark_gray>Works on every dungeon difficulty."));
         }
     };
