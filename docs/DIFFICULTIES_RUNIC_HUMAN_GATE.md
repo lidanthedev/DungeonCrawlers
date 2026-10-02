@@ -99,3 +99,12 @@ Preparation and combat doors accept main-hand left/right block clicks even when 
 - Updated the live pet item description through Pterodactyl and read it back.
 - Final uploaded JAR SHA-256 `a33b591451d19d715739dc38265dfaf8cec3287214f201b37be4eda299c9b4d3`.
 - No active dungeons remained at 18:25:05 UTC. `cc reload all` ran at 18:25:11; recovery reported zero blockers and `startsEnabled=true` at 18:25:26. Configuration validation passed at 18:26:00. Client Bonus-category display still awaits player confirmation.
+
+## Six-row difficulty menu
+
+2026-10-02: Expanded the selector to six rows. Gray glass frames the perimeter while all four corners remain empty. The first seven tiers occupy the third row; Void, Hardcore and Impossible are centered on the fourth. The information icon is centered above the tiers and a bottom-center Close button dismisses the menu without starting a run.
+
+- Java 21 clean build passed all 285 tests with zero failures, errors or skips. The inventory regression checks all border slots, empty corners, tier placement and names, and dispatches the Close click.
+- Uploaded JAR SHA-256 `d4a9c280087efddbde9f9a4de4f071423e7de3ab5d4c886a10e56cb0299499d8`. No active instances remained before deployment at 19:40:56 UTC.
+- `cc reload all` ran at 19:41:54 UTC. The addon enabled at 19:41:59 and recovery reported zero blockers with `startsEnabled=true` at 19:42:05.
+- Configuration validation passed at 19:42:18. `sudo LidanTheGamer dungeon start floor_1` ran at 19:42:23 without a command exception. Client appearance still awaits player confirmation.

@@ -19,7 +19,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 public final class DungeonDifficultyMenuService {
-    private static final int[] TIER_SLOTS = {10, 11, 12, 13, 14, 15, 16, 21, 22, 23};
+    private static final int[] TIER_SLOTS = {19, 20, 21, 22, 23, 24, 25, 30, 31, 32};
     private static final Material[] TIER_ICONS = {Material.LIME_DYE, Material.YELLOW_DYE, Material.ORANGE_DYE,
             Material.RED_DYE, Material.BLAZE_POWDER, Material.MAGMA_CREAM, Material.WITHER_SKELETON_SKULL,
             Material.ENDER_EYE, Material.CRYING_OBSIDIAN, Material.NETHER_STAR};
@@ -35,9 +35,21 @@ public final class DungeonDifficultyMenuService {
     }
 
     public void open(Player player, String floor) {
-        Gui gui = Gui.gui().rows(3).title(MiniMessageUtils.miniMessage("<dark_red><bold>Choose difficulty</bold></dark_red>"))
+        Gui gui = Gui.gui().rows(6).title(MiniMessageUtils.miniMessage("<dark_red><bold>Choose difficulty</bold></dark_red>"))
                 .disableAllInteractions().create();
-        gui.setItem(4, item(Material.MAP, "<gold>Dungeon difficulties</gold>",
+        GuiItem glass = item(Material.GRAY_STAINED_GLASS_PANE, " ", List.of(), event -> event.setCancelled(true));
+        for (int slot = 0; slot < 54; slot++) {
+            int row = slot / 9;
+            int column = slot % 9;
+            boolean edgeRow = row == 0 || row == 5;
+            boolean edgeColumn = column == 0 || column == 8;
+            if (edgeRow != edgeColumn) gui.setItem(slot, glass);
+        }
+        gui.setItem(49, item(Material.BARRIER, "<red>Close</red>", List.of(), event -> {
+            event.setCancelled(true);
+            player.closeInventory();
+        }));
+        gui.setItem(13, item(Material.MAP, "<gold>Dungeon difficulties</gold>",
                 List.of(MiniMessageUtils.miniMessage("<gray>Clear each tier to unlock the next.</gray>"),
                         MiniMessageUtils.miniMessage("<gray>Every party member must have it unlocked.</gray>")),
                 event -> event.setCancelled(true)));
