@@ -20,9 +20,11 @@ import java.util.function.Function;
 /** Durable run outcomes are also the source of per-floor unlocks and pending native skill grants. */
 public final class DungeonProgressionService {
     private static final String NAMESPACE = "dungeon-outcomes";
+    private static final String ADMIN_NAMESPACE = "dungeon-admin-completions";
     private final Gson gson = new Gson();
     private final DurableRepository repository;
     private final Map<UUID, Outcome> outcomes = new HashMap<>();
+    private final Map<UUID, AdminCompletions> adminCompletions = new HashMap<>();
     private final Map<UUID, Map<String, Integer>> unlocked = new HashMap<>();
     private final Set<UUID> delivering = new HashSet<>();
 
@@ -40,6 +42,14 @@ public final class DungeonProgressionService {
             outcomes.put(outcome.id(), outcome);
             unlock(outcome);
         }
+        for (var record : repository.list(ADMIN_NAMESPACE).join()) {
+            var completion = gson.fromJson(new String(record.payload(), StandardCharsets.UTF_8), AdminCompletions.class);
+            validate(completion);
+            UUID id = completionId(completion.player(), completion.floor(), completion.difficulty());
+            if (!record.recordId().equals(id.toString())) throw new IllegalStateException("admin completion identity mismatch");
+            adminCompletions.put(id, completion);
+            unlock(completion.player(), completion.floor(), completion.difficulty());
+        }
     }
 
     public boolean isUnlocked(UUID player, String floor, Difficulty tier) {
@@ -48,6 +58,32 @@ public final class DungeonProgressionService {
 
     public List<UUID> lockedMembers(List<UUID> members, String floor, Difficulty tier) {
         return members.stream().filter(player -> !isUnlocked(player, floor, tier)).toList();
+    }
+
+    public long completions(UUID player, String floor, Difficulty tier) {
+        var admin = adminCompletions.get(completionId(player, floor, tier));
+        long actual = outcomes.values().stream().filter(outcome -> outcome.successful()
+                && outcome.player().equals(player) && outcome.floor().equals(floor) && outcome.difficulty() == tier).count();
+        return Math.addExact(actual, admin == null ? 0 : admin.count());
+    }
+
+    /** Grants completion credit and unlocks only, without creating a run or XP grant. */
+    public long addCompletions(UUID player, String floor, Difficulty tier, int amount) {
+        if (amount <= 0) throw new IllegalArgumentException("Completion amount must be positive.");
+        UUID id = completionId(player, floor, tier);
+        var existing = adminCompletions.get(id);
+        var completion = new AdminCompletions(1, player, floor, tier,
+                Math.addExact(existing == null ? 0 : existing.count(), amount));
+        validate(completion);
+        long total = Math.addExact(completions(player, floor, tier), amount);
+        var write = new DurableWrite(UUID.randomUUID(), id, ADMIN_NAMESPACE, id.toString(),
+                id + ":" + completion.count(), completion.count(), gson.toJson(completion).getBytes(StandardCharsets.UTF_8));
+        var submission = repository.submit(write);
+        if (!submission.accepted()) throw new IllegalStateException(submission.detail());
+        submission.receipt().join();
+        adminCompletions.put(id, completion);
+        unlock(player, floor, tier);
+        return total;
     }
 
     public void begin(UUID instance, UUID player, FloorDefinition floor, DifficultyRules rules) {
@@ -93,8 +129,23 @@ public final class DungeonProgressionService {
     }
 
     private void unlock(Outcome outcome) {
-        if (outcome.successful()) unlocked.computeIfAbsent(outcome.player(), ignored -> new HashMap<>())
-                .merge(outcome.floor(), outcome.difficulty().next().ordinal(), Math::max);
+        if (outcome.successful()) unlock(outcome.player(), outcome.floor(), outcome.difficulty());
+    }
+
+    private void unlock(UUID player, String floor, Difficulty tier) {
+        unlocked.computeIfAbsent(player, ignored -> new HashMap<>()).merge(floor, tier.next().ordinal(), Math::max);
+    }
+
+    private static UUID completionId(UUID player, String floor, Difficulty tier) {
+        return UUID.nameUUIDFromBytes((player + ":" + floor + ":" + tier).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static void validate(AdminCompletions completion) {
+        if (completion == null || completion.schemaVersion() != 1 || completion.player() == null
+                || completion.floor() == null || !completion.floor().matches("[a-z0-9][a-z0-9_-]{0,63}")
+                || completion.difficulty() == null || completion.count() <= 0) {
+            throw new IllegalArgumentException("invalid admin completions");
+        }
     }
 
     private void save(Outcome outcome) {
@@ -119,4 +170,5 @@ public final class DungeonProgressionService {
 
     public record Outcome(int schemaVersion, UUID id, UUID instance, UUID player, String floor,
                           Difficulty difficulty, boolean successful, double xp, boolean delivered, boolean settled) { }
+    private record AdminCompletions(int schemaVersion, UUID player, String floor, Difficulty difficulty, long count) { }
 }

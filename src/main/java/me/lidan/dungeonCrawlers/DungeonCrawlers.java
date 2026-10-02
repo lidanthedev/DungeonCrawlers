@@ -536,6 +536,7 @@ public final class DungeonCrawlers extends JavaPlugin {
                 debugSettings::enabled, lifecycle, phaseSeven, latestScores::get, combat, phaseNine,
                 timings.teleportPermit()));
         commandHandler.register(phaseFiveCommand);
+        commandHandler.register(new me.lidan.dungeonCrawlers.commands.DungeonProgressionCommand(configRegistry, progression));
         commandHandler.register(new me.lidan.dungeonCrawlers.commands.DungeonDifficultyDebugCommand(
                 difficultyService, debugSettings::enabled, runPreparation, phaseFiveCommand));
         commandHandler.register(new DungeonPhaseSixCommand(combat, runPreparation, debugSettings::enabled));

@@ -159,6 +159,10 @@ public final class DungeonCrawlersCommand {
             DungeonGenerationCommand.suggest(sender, "<yellow>Get the room marker kit</yellow>",
                     "/dungeon room setup");
         }
+        if (sender.hasPermission("dungeoncrawlers.admin.progression")) {
+            DungeonGenerationCommand.suggest(sender, "<yellow>Grant floor difficulty completions</yellow>",
+                    "/dungeon completions add ");
+        }
         if (sender.hasPermission("dungeoncrawlers.admin.reload")) {
             DungeonGenerationCommand.suggest(sender, "<yellow>Validate and reload configuration</yellow>",
                     "/dungeon config validate");

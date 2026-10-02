@@ -117,3 +117,14 @@ Preparation and combat doors accept main-hand left/right block clicks even when 
 - Uploaded JAR SHA-256 `de22541656711d598ee8897772832ed3099672dc09e5c88eb7ef8bb9298479fd`. No active instances remained at 19:46:27 UTC.
 - `cc reload all` ran at 19:47:14 UTC; recovery reported zero blockers and `startsEnabled=true` at 19:47:24. Configuration validation passed at 19:47:36.
 - Reopened the menu for LidanTheGamer at 19:47:39 without a command exception. Client appearance remains subject to player confirmation.
+
+## Admin completion credits
+
+2026-10-02: Added `/dungeon completions add <player> <floor> <difficulty> [amount]`, with amount defaulting to one. `dungeoncrawlers.admin.progression` is OP by default and included under the parent admin permission. The command works independently of debug mode, accepts online/previously joined offline players, validates positive amounts and configured floors/tiers, and autocompletes arguments.
+
+Credits persist in schema-1 records under `dungeon-admin-completions`, keyed by player/floor/tier. They count alongside real successful outcomes and use the shared next-tier unlock rule. They produce no XP, rewards or fake run outcomes. Memory and unlocks update only after persistence acknowledges the write.
+
+- Java 21 clean build passed all 289 tests with zero failures, errors or skips. Regressions cover restart persistence, additive counts including real clears, floor/player isolation, retaining higher unlocks, no administrative XP, rejected/failed saves, actual permission checks/default parsing/prefix completion, invalid arguments, and offline/unknown players.
+- Uploaded JAR SHA-256 `488ed3b930230e6b831aa20e482040026b66ead1bd0eac449d08329a80c77f97`. No active instances remained at 20:00:38 UTC.
+- `cc reload all` ran at 20:01:41 UTC. Recovery reported zero blockers and `startsEnabled=true` at 20:01:50. Configuration validation passed at 20:02:16.
+- The console rejected amount zero at 20:02:05. Omitting amount at 20:02:12 granted LidanTheGamer one Hardcore credit on floor_1, reported total one, and confirmed access through Impossible without XP or loot.

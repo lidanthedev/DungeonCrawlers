@@ -27,6 +27,9 @@ permissions:
       dungeoncrawlers.admin.room: true
       dungeoncrawlers.admin.generation: true
       dungeoncrawlers.admin.debug: true
+      dungeoncrawlers.admin.progression: true
+  dungeoncrawlers.admin.progression:
+    default: op
   dungeoncrawlers.admin.debug:
     default: op
   dungeoncrawlers.admin.compatibility:

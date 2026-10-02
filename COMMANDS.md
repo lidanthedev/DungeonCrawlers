@@ -15,6 +15,10 @@ All commands use the `/dungeon` root. Player-facing messages use the plugin's Mi
 
 The class menu and selector NPC recheck run membership, snapshot readiness, allowed class ids, and the PREPARING state on every selection. Selection is locked after the start door opens, while the NPC may remain present as a locked signpost until cleanup.
 
+`/dungeon completions add <player> <floor> <difficulty> [amount]` requires `dungeoncrawlers.admin.progression` (operators by default). Amount defaults to 1 and must be positive. It adds persistent completion credit for the selected floor/tier and unlocks through the next tier, without XP, loot or a simulated run. It supports online players and previously joined offline players, and works with debug mode disabled. Each party member needs their own unlocks.
+
+Example: `/dungeon completions add LidanTheGamer floor_1 hardcore 1` unlocks Impossible and all lower tiers on floor_1. Grant the same credit to Eldan39 to test together.
+
 Difficulty diagnostics require `dungeoncrawlers.admin.debug`:
 
 - `/dungeon difficulty info [player]` reports effective MAGIC_FIND, deaths and the pet charge.
