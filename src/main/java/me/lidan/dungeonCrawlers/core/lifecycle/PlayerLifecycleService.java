@@ -30,6 +30,20 @@ public final class PlayerLifecycleService {
     private final DungeonTimings timings;
     private final Map<UUID, MutableInstance> instances = new LinkedHashMap<>();
     private boolean frozen;
+    private java.util.function.Predicate<UUID> runicPetActive = ignored -> false;
+    private java.util.function.Predicate<Notice> revivalEffect = ignored -> true;
+
+    public synchronized void configureRevival(java.util.function.Predicate<UUID> activePet,
+                                               java.util.function.Predicate<Notice> revivalEffect) {
+        this.runicPetActive = Objects.requireNonNull(activePet);
+        this.revivalEffect = Objects.requireNonNull(revivalEffect);
+    }
+
+    public synchronized void configureOrdinaryRevival(UUID instanceId, boolean allowed) {
+        MutableInstance state = instance(instanceId);
+        if (state == null || state.running) throw new IllegalStateException("revival policy requires a preparing instance");
+        state.ordinaryRevival = allowed;
+    }
 
     public PlayerLifecycleService(CentralUpdateService updates, Clock clock, Consumer<Notice> notices) {
         this(updates, clock, notices, DEFAULT_TIMINGS);
@@ -167,6 +181,7 @@ public final class PlayerLifecycleService {
         if (player.state != PlayerState.GHOST) return TransitionResult.failure("player is not a ghost");
 
         Instant now = clock.instant();
+        player.reviveKind = ReviveKind.ADMIN;
         player.reviveAt = now.plus(timings.adminReviveDuration());
         player.lastCountdownSeconds = -1;
         emitCountdown(state, player, now, Event.GHOST_COUNTDOWN);
@@ -236,17 +251,31 @@ public final class PlayerLifecycleService {
             return TransitionResult.failure("player is not a ghost");
         }
         if (state.wiped || !state.running) return TransitionResult.failure("instance is not running");
-        UUID target = state.players.values().stream()
+        boolean runic = player.reviveKind == ReviveKind.RUNIC;
+        if (!player.online) return TransitionResult.failure("player is offline");
+        if (player.reviveKind == ReviveKind.NONE) return TransitionResult.failure("ordinary revival is disabled");
+        if (runic && player.reviveAt != null && now.isBefore(player.reviveAt)) {
+            return TransitionResult.failure("Runic revival countdown has not elapsed");
+        }
+        UUID target = runic ? null : state.players.values().stream()
                 .filter(candidate -> candidate.state == PlayerState.ALIVE && candidate.online)
                 .map(candidate -> candidate.id).findFirst().orElse(null);
-        if (target == null) {
+        if (!runic && target == null) {
             return TransitionResult.failure("no online alive participant is available for revive");
         }
+        Notice notice = new Notice(state.instanceId, player.id, Event.REVIVED,
+                runic ? "Runic pet revived you" : detail, now, target);
+        try {
+            if (!revivalEffect.test(notice)) return TransitionResult.failure("revival effect could not be applied");
+        } catch (RuntimeException failure) {
+            return TransitionResult.failure("revival effect failed");
+        }
+        if (runic) { player.runicChargeUsed = true; player.forgivenDeaths++; }
+        player.reviveKind = ReviveKind.NONE;
         player.state = PlayerState.ALIVE;
         player.reviveAt = null;
         player.lastTarget = target;
         player.lastCountdownSeconds = -1;
-        Notice notice = new Notice(state.instanceId, player.id, Event.REVIVED, detail, now, target);
         emit(notice);
         return TransitionResult.success(Event.REVIVED, detail, snapshot(state), player.id, target);
     }
@@ -255,11 +284,15 @@ public final class PlayerLifecycleService {
                                                boolean notifyPlayer) {
         player.deaths++;
         player.state = PlayerState.GHOST;
-        player.reviveAt = now.plus(timings.reviveDuration());
+        boolean runic = notifyPlayer && !player.runicChargeUsed && runicPetActive.test(player.id);
+        player.reviveKind = runic ? ReviveKind.RUNIC : state.ordinaryRevival ? ReviveKind.STANDARD : ReviveKind.NONE;
+        Duration delay = runic ? Duration.ofSeconds(5) : timings.reviveDuration();
+        player.reviveAt = player.reviveKind == ReviveKind.NONE ? null : now.plus(delay);
         player.lastTarget = null;
-        player.lastCountdownSeconds = timings.reviveDuration().toSeconds();
+        player.lastCountdownSeconds = delay.toSeconds();
         Notice ghost = new Notice(state.instanceId, player.id, Event.GHOSTED,
-                "Reviving in " + timings.reviveDuration().toSeconds() + " seconds", player.reviveAt, null);
+                player.reviveAt == null ? "Ordinary revival is disabled on this difficulty"
+                        : "Reviving in " + delay.toSeconds() + " seconds", player.reviveAt, null);
         if (noOnlineAlive(state)) return wipe(state, "no online active alive player remains", ghost);
         if (notifyPlayer) emit(ghost);
         return TransitionResult.success(Event.GHOSTED, ghost.detail(), snapshot(state), player.id);
@@ -294,7 +327,8 @@ public final class PlayerLifecycleService {
 
     private boolean noOnlineAlive(MutableInstance state) {
         return state.players.values().stream().noneMatch(player ->
-                player.state == PlayerState.ALIVE && player.online);
+                player.online && (player.state == PlayerState.ALIVE
+                        || player.state == PlayerState.GHOST && player.reviveKind == ReviveKind.RUNIC));
     }
 
     private MutableInstance instance(UUID instanceId) {
@@ -316,13 +350,14 @@ public final class PlayerLifecycleService {
 
     private static PlayerSnapshot snapshot(MutablePlayer player) {
         return new PlayerSnapshot(player.id, player.state, player.online, player.reviveAt, player.lastTarget,
-                player.deaths);
+                player.deaths, player.forgivenDeaths, player.runicChargeUsed, player.reviveKind);
     }
 
     private static final class MutableInstance {
         private final UUID instanceId;
         private final Map<UUID, MutablePlayer> players = new LinkedHashMap<>();
         private Consumer<Instant> tick;
+        private boolean ordinaryRevival = true;
         private boolean running;
         private boolean wiped;
         private String detail = "lifecycle registered";
@@ -340,22 +375,31 @@ public final class PlayerLifecycleService {
         private Instant reviveAt;
         private UUID lastTarget;
         private int deaths;
+        private int forgivenDeaths;
+        private boolean runicChargeUsed;
+        private ReviveKind reviveKind = ReviveKind.NONE;
         private long lastCountdownSeconds = -1;
 
         private MutablePlayer(UUID id) { this.id = id; }
     }
 
     public enum PlayerState { ALIVE, GHOST, REMOVED }
+    public enum ReviveKind { NONE, STANDARD, RUNIC, ADMIN }
 
     public enum Event {
         STARTED, GHOSTED, GHOST_COUNTDOWN, DISCONNECTED, RECONNECTED, REVIVED, REMOVED, WIPED
     }
 
     public record PlayerSnapshot(UUID playerId, PlayerState state, boolean online,
-                                 Instant reviveAt, UUID reviveTarget, int deaths) {
+                                 Instant reviveAt, UUID reviveTarget, int deaths, int forgivenDeaths,
+                                 boolean runicChargeUsed, ReviveKind reviveKind) {
+        public PlayerSnapshot(UUID playerId, PlayerState state, boolean online, Instant reviveAt, UUID reviveTarget, int deaths) {
+            this(playerId, state, online, reviveAt, reviveTarget, deaths, 0, false, ReviveKind.NONE);
+        }
+        public int scoringDeaths() { return Math.max(0, deaths - forgivenDeaths); }
         public PlayerSnapshot {
             Objects.requireNonNull(playerId); Objects.requireNonNull(state);
-            if (deaths < 0) throw new IllegalArgumentException("deaths must not be negative");
+            if (deaths < 0 || forgivenDeaths < 0 || forgivenDeaths > deaths) throw new IllegalArgumentException("invalid death counts");
         }
     }
 

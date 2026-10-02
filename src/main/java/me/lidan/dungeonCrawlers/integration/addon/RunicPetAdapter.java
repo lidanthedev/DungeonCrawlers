@@ -1,0 +1,39 @@
+package me.lidan.dungeonCrawlers.integration.addon;
+
+import me.lidan.caveCrawlAddon.pets.ActivePet;
+import me.lidan.caveCrawlAddon.pets.BasePet;
+import me.lidan.caveCrawlAddon.pets.PetsManager;
+import me.lidan.cavecrawlers.stats.Stats;
+import me.lidan.cavecrawlers.utils.StringUtils;
+import me.lidan.cavecrawlers.utils.MiniMessageUtils;
+import net.kyori.adventure.text.Component;
+import java.util.List;
+import java.util.UUID;
+
+/** Loaded only when CaveCrawlAddon is enabled. Buffs are applied by dungeon stats. */
+public final class RunicPetAdapter implements AutoCloseable {
+    public static final String ID = "RUNIC_PET";
+    private final BasePet definition = new BasePet("Runic", new Stats(), 100, "dungeon") {
+        @Override public List<Component> petAbilitiesToLore(ActivePet pet) {
+            return List.of(
+                    Component.empty(),
+                    MiniMessageUtils.miniMessage("<gold>Pet Ability: Runic Power"),
+                    MiniMessageUtils.miniMessage("<gray>Gain <green>+" + StringUtils.getNumberFormat(pet.getLevel())
+                            + " <red>❤ Health<gray>,"),
+                    MiniMessageUtils.miniMessage("<green>+" + StringUtils.getNumberFormat(pet.getLevel() * .5)
+                            + " ❈ Defense <gray>and <green>+" + StringUtils.getNumberFormat(pet.getLevel() * .1)
+                            + " <aqua>✯ Magic Find<gray> in dungeons."),
+                    Component.empty(),
+                    MiniMessageUtils.miniMessage("<gold>Pet Ability: Second Chance"),
+                    MiniMessageUtils.miniMessage("<gray>Revive after <green>5 seconds<gray>, once per run."),
+                    MiniMessageUtils.miniMessage("<gray>Removes that death from your final score."),
+                    MiniMessageUtils.miniMessage("<dark_gray>Works on every dungeon difficulty."));
+        }
+    };
+    public RunicPetAdapter() { PetsManager.getInstance().registerPet(ID, definition); }
+    public int activeLevel(UUID player) {
+        ActivePet pet = PetsManager.getInstance().getActivePet(player);
+        return pet != null && ID.equals(pet.getPetId()) ? Math.clamp(pet.getLevel(), 1, 100) : 0;
+    }
+    @Override public void close() { PetsManager.getInstance().unregisterPet(ID, definition); }
+}

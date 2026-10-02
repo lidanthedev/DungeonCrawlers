@@ -149,6 +149,8 @@ public final class DungeonCrawlers extends JavaPlugin {
     private BukkitBossIdentity bossIdentity;
     private MythicMobsAdapter mythicMobs;
     private PlayerLifecycleService lifecycle;
+    private me.lidan.dungeonCrawlers.core.difficulty.DungeonProgressionService progression;
+    private me.lidan.dungeonCrawlers.integration.BukkitDifficultyService difficultyService;
     private DebugSettings debugSettings;
     private DungeonPlaceholderExpansion placeholderExpansion;
     private DungeonTimings timings;
@@ -279,9 +281,8 @@ public final class DungeonCrawlers extends JavaPlugin {
         mythicMobs = new MythicMobsAdapter();
         chunkTickets = new BukkitChunkTicketService(this, world,
                 new ChunkTicketBudget(maximumPerInstance, maximumTotal));
-        combat = new CombatRoomService(
-                new BukkitCombatMobGateway(getServer(), this::generationWorld,
-                        mythicMobs, entityIdentity),
+        var combatGateway = new BukkitCombatMobGateway(getServer(), this::generationWorld, mythicMobs, entityIdentity);
+        combat = new CombatRoomService(combatGateway,
                 chunkTickets, this::diagnosticWarning, this::notifyCombatRoom);
         runPreparation = new RunPreparationService(doors, centralUpdates, new StateTransitionService(), phaseClock(),
                 instanceId -> {
@@ -296,9 +297,10 @@ public final class DungeonCrawlers extends JavaPlugin {
         phaseSeven = new SecretDiscoveryService(configRegistry::snapshot);
         lifecycle = new PlayerLifecycleService(centralUpdates, phaseClock(), this::handleLifecycleNotice, timings);
         bossIdentity = new BukkitBossIdentity(this);
+        var bossGateway = new BukkitBossGateway(getServer(), this::generationWorld, mythicMobs, bossIdentity);
         phaseNine = new PortalEncounterService(centralUpdates, runPreparation,
                 EncounterFactoryRegistry.withBasic(),
-                new BukkitBossGateway(getServer(), this::generationWorld, mythicMobs, bossIdentity),
+                bossGateway,
                 new BukkitPortalParticipantGateway(getServer(), this::generationWorld, generationWorldName,
                         runPreparation, lifecycle, teleportPermits, phaseClock(), timings.teleportPermit()),
                 phaseClock(), getLogger()::warning, this::finalizeRewards, timings);
@@ -312,6 +314,17 @@ public final class DungeonCrawlers extends JavaPlugin {
                             registration.getProvider());
                 }, callback -> getServer().getScheduler().runTask(this, callback),
                 detail -> getLogger().warning(detail));
+        progression = new me.lidan.dungeonCrawlers.core.difficulty.DungeonProgressionService(durableRepository);
+        difficultyService = new me.lidan.dungeonCrawlers.integration.BukkitDifficultyService(
+                this, generation, runPreparation, lifecycle, claims);
+        combatGateway.configureDifficulty(difficultyService::spawn);
+        bossGateway.configureDifficulty(difficultyService::spawn);
+        lifecycle.configureRevival(difficultyService::activeRunicPet, this::applyRevival);
+        runPreparation.configureCombatStarted(instance -> {
+            var context = generation.layoutContext(instance).orElseThrow();
+            if (context.progressionEnabled()) runPreparation.info(instance).orElseThrow().participants().forEach(
+                    player -> progression.begin(instance, player, context.floor(), context.difficulty()));
+        });
         runPreparation.configureDeadlineHandlers(this::handleRunFailure, this::hasActiveCompletionGroup,
                 this::handleDeadlineNotice);
         registerPlaceholderExpansion();
@@ -426,6 +439,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         saveDefaultResourceIfMissing("classes.yml");
         saveDefaultResourceIfMissing("blessings.yml");
         saveDefaultResourceIfMissing("rooms.yml");
+        saveDefaultResourceIfMissing("difficulties.yml");
         saveDefaultResourceIfMissing("floors/floor_1.yml");
         saveDefaultResourceIfMissing("config.yml");
     }
@@ -499,6 +513,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         classMenuService = new DungeonClassMenuService(configRegistry, runPreparation,
                 phaseFiveCommand::renderDoor, dungeonActionBar);
         phaseFiveCommand.setClassMenuService(classMenuService);
+        phaseFiveCommand.configureDifficulties(progression, instance -> recordProgression(instance, false, null));
         classSelectorNpcs = createClassSelectorNpcService();
         phaseFiveCommand.setClassSelectorNpcService(classSelectorNpcs);
         roomMarkerItems = new RoomMarkerItemFactory(this);
@@ -516,6 +531,8 @@ public final class DungeonCrawlers extends JavaPlugin {
                 debugSettings::enabled, lifecycle, phaseSeven, latestScores::get, combat, phaseNine,
                 timings.teleportPermit()));
         commandHandler.register(phaseFiveCommand);
+        commandHandler.register(new me.lidan.dungeonCrawlers.commands.DungeonDifficultyDebugCommand(
+                difficultyService, debugSettings::enabled, runPreparation, phaseFiveCommand));
         commandHandler.register(new DungeonPhaseSixCommand(combat, runPreparation, debugSettings::enabled));
         commandHandler.register(new DungeonPhaseSevenCommand(phaseSeven, runPreparation, debugSettings::enabled));
         commandHandler.register(new DungeonPhaseEightCommand(lifecycle, runPreparation, phaseFiveCommand,
@@ -538,6 +555,7 @@ public final class DungeonCrawlers extends JavaPlugin {
                 () -> generation.protectionRegions().stream().map(WorldProtectionService.InstanceRegion::from).toList(),
                 teleportPermits, phaseClock()));
         registerEvent(new BukkitDungeonRunListener(phaseFiveCommand, runPreparation, generationWorldName, phaseSeven));
+        registerEvent(difficultyService);
         registerEvent(new BukkitDungeonLifecycleListener(lifecycle, runPreparation, this, phaseClock(),
                 generationWorldName, phaseFiveCommand::recoverOnJoin, phaseFiveCommand::leaveFromDungeon));
         registerEvent(new BukkitCombatListener(combat, entityIdentity, generationWorldName, () -> disabling,
@@ -567,12 +585,17 @@ public final class DungeonCrawlers extends JavaPlugin {
         var lifecycleSnapshot = lifecycle.info(snapshot.instanceId()).orElse(null);
         org.bukkit.World world = getServer().getWorld(generationWorldName);
         if (context == null || run == null || lifecycleSnapshot == null || world == null) return false;
+        // Wait for a latched pet revival before freezing its forgiven death into the final score.
+        if (lifecycleSnapshot.players().stream().anyMatch(player -> player.online()
+                && player.state() == PlayerLifecycleService.PlayerState.GHOST
+                && player.reviveKind() == PlayerLifecycleService.ReviveKind.RUNIC)) return false;
         List<RewardEntitlementService.Participant> participants = rewardParticipants(run, lifecycleSnapshot);
         ScoreService.ScoreReport score = calculateScore(run, lifecycleSnapshot, true, phaseClock().instant());
         latestScores.put(snapshot.instanceId(), score.finalSnapshot());
         rewards.register(new RewardEntitlementService.Completion(snapshot.instanceId(),
                 context.seed(), phaseClock().instant(), score.finalSnapshot(), participants,
                 context.floor().rewards()));
+        recordProgression(snapshot.instanceId(), true, null);
         var point = snapshot.rewardChest();
         world.getBlockAt(point.x(), point.y(), point.z()).setType(org.bukkit.Material.ENDER_CHEST, false);
         participants.stream().map(RewardEntitlementService.Participant::playerId)
@@ -584,6 +607,7 @@ public final class DungeonCrawlers extends JavaPlugin {
     }
 
     private void handleRunFailure(UUID instanceId) {
+        recordProgression(instanceId, false, null);
         if (phaseNine != null) phaseNine.cleanup(instanceId);
         var context = generation.layoutContext(instanceId).orElse(null);
         var run = runPreparation.info(instanceId).orElse(null);
@@ -619,7 +643,8 @@ public final class DungeonCrawlers extends JavaPlugin {
                 .filter(java.util.Objects::nonNull)
                 .filter(player -> player.state() != PlayerLifecycleService.PlayerState.REMOVED)
                 .map(player -> new RewardEntitlementService.Participant(player.playerId(), true,
-                        getServer().getPlayer(player.playerId()) != null))
+                        getServer().getPlayer(player.playerId()) != null,
+                        difficultyService.magicFind(run.instanceId(), player.playerId())))
                 .toList();
     }
 
@@ -632,7 +657,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         int foundSecrets = phaseSeven.info(run.instanceId()).map(value -> (int) value.secrets().stream()
                 .filter(SecretDiscoveryService.SecretSnapshot::discovered).count()).orElse(0);
         int deaths = run.participants().stream().map(lifecyclePlayers::get).filter(java.util.Objects::nonNull)
-                .mapToInt(PlayerLifecycleService.PlayerSnapshot::deaths).sum();
+                .mapToInt(PlayerLifecycleService.PlayerSnapshot::scoringDeaths).sum();
         Duration elapsed = run.startedAt() == null ? Duration.ZERO
                 : Duration.between(run.startedAt(), endedAt);
         if (elapsed.isNegative()) elapsed = Duration.ZERO;
@@ -642,7 +667,9 @@ public final class DungeonCrawlers extends JavaPlugin {
 
     private boolean hasActiveCompletionGroup(UUID instanceId) {
         return lifecycle != null && lifecycle.info(instanceId).map(snapshot -> snapshot.players().stream()
-                .anyMatch(player -> player.online() && player.state() == PlayerLifecycleService.PlayerState.ALIVE))
+                .anyMatch(player -> player.online() && (player.state() == PlayerLifecycleService.PlayerState.ALIVE
+                        || player.state() == PlayerLifecycleService.PlayerState.GHOST
+                        && player.reviveKind() == PlayerLifecycleService.ReviveKind.RUNIC)))
                 .orElse(false);
     }
 
@@ -721,7 +748,8 @@ public final class DungeonCrawlers extends JavaPlugin {
         switch (notice.event()) {
             case GHOSTED -> {
                 if (player == null) return;
-                BukkitGhostState.enter(player, remainingGhostDuration(notice.reviveAt()));
+                BukkitGhostState.enter(player, notice.reviveAt() == null ? Duration.ofMillis(Integer.MAX_VALUE * 50L)
+                        : remainingGhostDuration(notice.reviveAt()));
                 showLifecycleTitle(player, "", "<yellow>" + notice.detail() + "</yellow>", 0, 30, 5);
                 DungeonMessages.send(player,
                         "<gray>You are a ghost. " + notice.detail()
@@ -737,20 +765,11 @@ public final class DungeonCrawlers extends JavaPlugin {
                     getLogger().warning("REVIVED player is offline or unknown: " + notice.playerId());
                     return;
                 }
-                Player target = notice.reviveTarget() == null ? null : getServer().getPlayer(notice.reviveTarget());
-                if (target != null && !player.teleport(target.getLocation().clone().add(0, 1, 0))) {
-                    getLogger().warning("Unable to teleport revived player " + player.getName()
-                            + " near target " + target.getName());
-                    return;
-                }
-                healToFull(player);
-                BukkitGhostState.exit(player);
-                scheduleReviveHeal(notice.instanceId(), player, 1L);
-                scheduleReviveHeal(notice.instanceId(), player, 20L);
                 showLifecycleTitle(player, "<green>Revived</green>", "<white>Welcome back</white>", 5, 40, 10);
                 DungeonMessages.send(player, "<green>You have been revived.</green>");
             }
             case REMOVED -> {
+                recordProgression(notice.instanceId(), false, notice.playerId());
                 if (player != null) BukkitGhostState.exit(player);
                 if (phaseFiveCommand != null && notice.playerId() != null) {
                     if (shouldRestoreRemovedPlayer(player, generationWorldName)) {
@@ -831,16 +850,54 @@ public final class DungeonCrawlers extends JavaPlugin {
         }, delay);
     }
 
+    private boolean applyRevival(PlayerLifecycleService.Notice notice) {
+        Player player = getServer().getPlayer(notice.playerId());
+        if (player == null || !player.isOnline() || !player.getWorld().getName().equals(generationWorldName)) return false;
+        if (notice.reviveTarget() != null) {
+            Player target = getServer().getPlayer(notice.reviveTarget());
+            if (target == null || !player.teleport(target.getLocation().clone().add(0, 1, 0))) return false;
+        }
+        healToFull(player);
+        BukkitGhostState.exit(player);
+        scheduleReviveHeal(notice.instanceId(), player, 1L);
+        scheduleReviveHeal(notice.instanceId(), player, 20L);
+        return true;
+    }
+
+    private void recordProgression(UUID instance, boolean success, UUID onlyPlayer) {
+        var context = generation.layoutContext(instance).orElse(null);
+        var run = runPreparation.info(instance).orElse(null);
+        if (context == null || !context.progressionEnabled() || run == null || run.startedAt() == null) return;
+        for (UUID participant : onlyPlayer == null ? run.participants() : List.of(onlyPlayer)) {
+            if (onlyPlayer == null && lifecycle.player(instance, participant)
+                    .map(value -> value.state() == PlayerLifecycleService.PlayerState.REMOVED).orElse(true)) continue;
+            progression.record(instance, participant, context.floor(), context.difficulty(), success);
+        }
+    }
+
+    private void deliverDungeonXp() {
+        var nativeSkills = me.lidan.cavecrawlers.skills.SkillsManager.getInstance();
+        var skill = nativeSkills.getSkillInfo("dungeon");
+        if (skill == null) return;
+        for (Player player : getServer().getOnlinePlayers()) progression.deliver(player.getUniqueId(),
+                outcome -> nativeSkills.giveXpOnce(player, skill, outcome.xp(), outcome.id()),
+                callback -> getServer().getScheduler().runTask(this, callback), getLogger()::warning);
+    }
+
     private void startTasks() {
         getServer().getScheduler().runTaskTimer(this, (Runnable) () -> {
             centralUpdates.tick();
             generation.checkCleanupDeadlines();
         }, 1L, 1L);
+        getServer().getScheduler().runTaskTimer(this, () -> { difficultyService.tick(); deliverDungeonXp(); }, 20L, 20L);
     }
 
     @Override
     public void onDisable() {
         disabling = true;
+        if (progression != null && runPreparation != null) runPreparation.snapshots().forEach(
+                run -> recordProgression(run.instanceId(), false, null));
+        if (difficultyService != null) difficultyService.close();
         if (classSelectorNpcs != null) classSelectorNpcs.shutdown();
         if (placeholderExpansion != null) placeholderExpansion.unregister();
         if (reservations != null) reservations.pauseAdmission();

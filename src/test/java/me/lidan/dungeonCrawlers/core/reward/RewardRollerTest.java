@@ -34,4 +34,16 @@ class RewardRollerTest {
         });
         assertThrows(UnsupportedOperationException.class, () -> first.add(first.getFirst()));
     }
+    @Test void magicFindOnlyChangesMarkedEntryWeights() {
+        var definition = new RewardDefinition(true, 100, 0, 1, false, List.of(
+                new RewardItem("common", 1, 1, 1), new RewardItem("rare", 1, 1, 1, true)));
+        var roller = new RewardRoller();
+        long ordinary = 0, boosted = 0;
+        for (int seed = 0; seed < 1000; seed++) {
+            if (roller.roll(definition, new NamedRandomFactory(seed).stream("loot"), 0).getFirst().itemId().equals("rare")) ordinary++;
+            if (roller.roll(definition, new NamedRandomFactory(seed).stream("loot"), 900).getFirst().itemId().equals("rare")) boosted++;
+        }
+        assertTrue(boosted > ordinary + 300);
+    }
+
 }

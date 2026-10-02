@@ -111,6 +111,35 @@ public final class RewardClaimService {
         this(clock, null, entitlements, caveItems, () -> economy, Runnable::run, ignored -> { });
     }
 
+    /** Fixed enemy loot uses the existing durable, provenance-checked mailbox. */
+    public void grantLoot(UUID dropId, Player player, String itemId, int amount) {
+        whenRestored(() -> {
+            String key = recordKey(dropId, player.getUniqueId());
+            MutableRecord existing = records.get(key);
+            if (existing != null) {
+                if (!existing.pending) deliver(dropId, player.getUniqueId(), player, ignored -> { });
+                return;
+            }
+            ItemStack item = caveItems.build(itemId, amount).orElseThrow(
+                    () -> new IllegalStateException("Missing loot item " + itemId));
+            byte[] bytes = item.serializeAsBytes();
+            UUID payloadId = UUID.nameUUIDFromBytes((dropId + ":loot").getBytes(StandardCharsets.UTF_8));
+            List<ItemPayload> payloads = List.of(new ItemPayload(payloadId, itemId, amount, bytes, checksum(bytes)));
+            OfferSnapshot offer = new OfferSnapshot(dropId, OfferMode.LIVE, OfferState.OWNED, null,
+                    clock.instant(), null, null, null, null, clock.instant(), null, DEFAULT_PROVIDER,
+                    player.getUniqueId(), 0, payloads);
+            ClaimRecord before = new ClaimRecord(dropId, player.getUniqueId(), Map.of(), ClaimGroup.none(),
+                    Map.of(), List.of(), 0);
+            ClaimRecord target = new ClaimRecord(dropId, player.getUniqueId(), Map.of(dropId, offer),
+                    new ClaimGroup(ClaimGroup.State.CLAIMED, dropId, null), Map.of(dropId, payloads), List.of(), 1);
+            MutableRecord mutable = ensureMutable(null, before);
+            persistCandidate(mutable, before, target, true, saved -> {
+                if (saved && player.isOnline()) deliver(dropId, player.getUniqueId(), player, ignored -> { });
+                else if (!saved) auditSink.accept("Runic loot persistence failed: " + dropId);
+            });
+        }, () -> auditSink.accept("Runic loot mailbox unavailable: " + dropId));
+    }
+
     public CompletableFuture<Void> ready() {
         return restored;
     }

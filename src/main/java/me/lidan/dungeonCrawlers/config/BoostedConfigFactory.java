@@ -108,6 +108,19 @@ public class BoostedConfigFactory {
         return config;
     }
 
+    public void migrateFloor(Path path) throws IOException {
+        BoostedCustomConfig config = open(path);
+        if (schemaVersion(config) != 1) return;
+        Path backup = path.getParent().getParent().resolve("backups/floors-v1").resolve(path.getFileName());
+        Files.createDirectories(backup.getParent());
+        if (!Files.exists(backup)) Files.copy(path, backup, StandardCopyOption.COPY_ATTRIBUTES);
+        int number = config.getInt("number", 1);
+        if (!config.contains("dungeon-xp.completion", true)) config.set("dungeon-xp.completion", 100.0 * number * number);
+        if (!config.contains("dungeon-xp.failure-factor", true)) config.set("dungeon-xp.failure-factor", .10);
+        config.set(VERSION_ROUTE, 2);
+        if (!config.save()) throw new IOException("failed to migrate floor " + path.getFileName());
+    }
+
     public static int schemaVersion(Section config) {
         Object value = config.get(VERSION_ROUTE);
         if (value instanceof Number number) {

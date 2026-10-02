@@ -575,6 +575,21 @@ class RewardClaimServiceTest {
         };
     }
 
+
+    @Test void fixedLootSurvivesFullInventoryAndRepeatedDelivery() {
+        var player = MockBukkit.getMock().addPlayer();
+        for (int slot = 0; slot < player.getInventory().getStorageContents().length; slot++)
+            player.getInventory().setItem(slot, new ItemStack(Material.STONE, 64));
+        var claims = new RewardClaimService(clock(), entitlements(), items(), successfulEconomy());
+        UUID drop = UUID.randomUUID();
+        claims.grantLoot(drop, player, "RUNIC_FRAGMENT", 4);
+        assertTrue(claims.info(drop, player.getUniqueId()).isPresent());
+        player.getInventory().clear(); claims.deliverPending(player); claims.grantLoot(drop, player, "RUNIC_FRAGMENT", 4);
+        int amount = Arrays.stream(player.getInventory().getContents()).filter(java.util.Objects::nonNull)
+                .mapToInt(ItemStack::getAmount).sum();
+        assertEquals(4, amount);
+    }
+
     private static EconomyGateway successfulEconomy() {
         return new EconomyGateway() {
             @Override

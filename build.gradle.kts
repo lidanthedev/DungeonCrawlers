@@ -29,6 +29,7 @@ repositories {
 dependencies {
     compileOnly(libs.paper.api)
     compileOnly(libs.cave.crawlers)
+    compileOnly("me.lidan:CaveCrawlAddon:1.0")
     compileOnly(libs.worldedit.bukkit)
     compileOnly(libs.fawe.core)
     compileOnly(libs.mythic.mobs)
@@ -57,8 +58,10 @@ dependencies {
     }
     testImplementation("me.clip:placeholderapi:2.11.6")
     testImplementation(libs.lamp.common)
+    testImplementation(libs.lamp.bukkit)
     testImplementation(libs.paper.api)
     testImplementation(libs.cave.crawlers)
+    testImplementation("me.lidan:CaveCrawlAddon:1.0")
     testImplementation(libs.parties.api)
     testImplementation(libs.worldedit.bukkit)
     testImplementation(libs.gson)
@@ -113,6 +116,7 @@ val verifyNoExternalPluginShading by tasks.registering {
     doLast {
         val forbiddenPrefixes = listOf(
             "me/lidan/cavecrawlers/",
+            "me/lidan/caveCrawlAddon/",
             "io/lumine/mythic/",
             "com/sk89q/worldedit/",
             "net/milkbowl/vault/",

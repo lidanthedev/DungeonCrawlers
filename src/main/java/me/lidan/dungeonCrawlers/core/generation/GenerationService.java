@@ -21,6 +21,9 @@ import me.lidan.dungeonCrawlers.persistence.model.GenerationJournal;
 import me.lidan.dungeonCrawlers.persistence.model.GenerationJournal.PlannedBounds;
 import me.lidan.dungeonCrawlers.persistence.model.GenerationJournalCodec;
 
+import me.lidan.dungeonCrawlers.core.difficulty.Difficulty;
+import me.lidan.dungeonCrawlers.core.difficulty.DifficultyRules;
+
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -255,7 +258,7 @@ public final class GenerationService {
             return Optional.empty();
         }
         return Optional.of(new LayoutContext(instance.request.seed(), instance.request.floor(),
-                instance.prepared.plan()));
+                instance.prepared.plan(), instance.request.difficulty(), instance.request.progressionEnabled()));
     }
 
     /** Invokes a callback when generation completes or reaches a terminal cancellation state. */
@@ -782,8 +785,16 @@ public final class GenerationService {
     }
 
     public record StartRequest(ConfigSnapshot snapshot, FloorDefinition floor, PartySnapshot party, long seed,
-                               long debugDelayMillis) {
+                               long debugDelayMillis, DifficultyRules difficulty, boolean progressionEnabled) {
+        public StartRequest(ConfigSnapshot snapshot, FloorDefinition floor, PartySnapshot party, long seed, long delay) {
+            this(snapshot, floor, party, seed, delay, Difficulty.NORMAL.defaults(), false);
+        }
+        public StartRequest(ConfigSnapshot snapshot, FloorDefinition floor, PartySnapshot party, long seed, long delay,
+                            DifficultyRules difficulty) {
+            this(snapshot, floor, party, seed, delay, difficulty, true);
+        }
         public StartRequest {
+            Objects.requireNonNull(difficulty);
             Objects.requireNonNull(snapshot); Objects.requireNonNull(floor); Objects.requireNonNull(party);
         }
     }
@@ -816,7 +827,11 @@ public final class GenerationService {
         }
     }
 
-    public record LayoutContext(long seed, FloorDefinition floor, LayoutPlan plan) {
+    public record LayoutContext(long seed, FloorDefinition floor, LayoutPlan plan, DifficultyRules difficulty,
+                                boolean progressionEnabled) {
+        public LayoutContext(long seed, FloorDefinition floor, LayoutPlan plan) {
+            this(seed, floor, plan, Difficulty.NORMAL.defaults(), false);
+        }
         public LayoutContext {
             Objects.requireNonNull(floor, "floor");
             Objects.requireNonNull(plan, "plan");

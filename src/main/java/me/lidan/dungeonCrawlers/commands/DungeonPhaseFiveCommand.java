@@ -27,7 +27,9 @@ import me.lidan.dungeonCrawlers.integration.PartyProvider;
 import me.lidan.dungeonCrawlers.integration.ProgressBarService;
 import me.lidan.dungeonCrawlers.integration.SpawnProvider;
 import me.lidan.dungeonCrawlers.integration.spawn.BukkitSpawnProvider;
+import me.lidan.dungeonCrawlers.core.difficulty.DungeonProgressionService;
 import org.bukkit.Location;
+import revxrsal.commands.annotation.Optional;
 import org.bukkit.Server;
 import org.bukkit.World;
 import org.bukkit.command.CommandSender;
@@ -52,6 +54,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Consumer;
 
 /** Player-facing start, class selection, and preparation-door commands. */
 @Command("dungeon")
@@ -82,6 +85,16 @@ public final class DungeonPhaseFiveCommand {
     private final Map<UUID, me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot> snapshotCleanupPending
             = new ConcurrentHashMap<>();
     private DungeonClassMenuService classMenuService;
+    private DungeonProgressionService progression;
+    private DungeonDifficultyMenuService difficultyMenu;
+    private Consumer<UUID> beforeCancel = ignored -> { };
+
+    public void configureDifficulties(DungeonProgressionService progression, Consumer<UUID> beforeCancel) {
+        this.progression = progression;
+        this.beforeCancel = beforeCancel;
+        this.difficultyMenu = new DungeonDifficultyMenuService(configRegistry, progression,
+                (player, args) -> start(player, args[0], args[1]));
+    }
     private ClassSelectorNpcService classSelectorNpcs = new NoOpClassSelectorNpcService();
 
     public DungeonPhaseFiveCommand(ConfigRegistryService configRegistry, PartyProvider parties,
@@ -184,9 +197,22 @@ public final class DungeonPhaseFiveCommand {
                                 SecretDiscoveryService phaseSeven, PlayerLifecycleService lifecycle,
                                 PortalEncounterService phaseNine) { }
 
+    public void start(Player player, String floorId) {
+        start(player, floorId, null);
+    }
+
     @Subcommand("start")
     @CommandPermission("dungeoncrawlers.use")
-    public void start(Player player, @SuggestWith(FloorIdSuggestionProvider.class) String floorId) {
+    public void start(Player player, @SuggestWith(FloorIdSuggestionProvider.class) String floorId,
+                      @Optional String difficultyId) {
+        start(player, floorId, difficultyId, ThreadLocalRandom.current().nextLong(), true);
+    }
+
+    public void startDebug(Player player, String floorId, String difficultyId, long seed) {
+        start(player, floorId, difficultyId, seed, false);
+    }
+
+    private void start(Player player, String floorId, String difficultyId, long seed, boolean progressionEnabled) {
         ConfigSnapshot config = configRegistry.snapshot();
         FloorDefinition floor = config.floors().get(floorId);
         if (floor == null) {
@@ -207,8 +233,21 @@ public final class DungeonPhaseFiveCommand {
             }
             return;
         }
+        if (difficultyId == null && difficultyMenu != null) { difficultyMenu.open(player, floorId); return; }
+        String tierId = difficultyId == null ? "normal" : difficultyId.toLowerCase(java.util.Locale.ROOT);
+        var difficulty = config.difficulties().get(tierId);
+        if (difficulty == null) { DungeonMessages.send(player, DungeonMessages.error("Unknown dungeon difficulty.")); return; }
+        if (progressionEnabled && progression != null) {
+            var locked = progression.lockedMembers(party.snapshot().onlineMembers(), floorId, difficulty.tier());
+            if (!locked.isEmpty()) {
+                String names = locked.stream().map(id -> server.getOfflinePlayer(id).getName())
+                        .map(name -> name == null ? "Offline player" : name).collect(java.util.stream.Collectors.joining(", "));
+                DungeonMessages.send(player, DungeonMessages.error("Difficulty locked for: " + names + ". Clear the previous tier on this floor."));
+                return;
+            }
+        }
         GenerationService.StartResult result = generation.start(new GenerationService.StartRequest(
-                config, floor, party.snapshot(), ThreadLocalRandom.current().nextLong(), 0));
+                config, floor, party.snapshot(), seed, 0, difficulty, progressionEnabled));
         if (!result.accepted()) {
             DungeonMessages.send(player, DungeonMessages.error(playerError(result.detail())));
             return;
@@ -305,6 +344,7 @@ public final class DungeonPhaseFiveCommand {
 
     /** Called by the admin instance-cancel path before generation cleanup. */
     public void cancelFromAdmin(UUID instanceId) {
+        beforeCancel.accept(instanceId);
         RunPreparationService.RunSnapshot snapshot = runs.info(instanceId).orElse(null);
         if (snapshot != null) {
             switch (snapshot.state()) {
@@ -619,6 +659,7 @@ public final class DungeonPhaseFiveCommand {
             });
             if (lifecycle != null) {
                 var lifecycleRegistration = lifecycle.register(instanceId, party.onlineMembers());
+                lifecycle.configureOrdinaryRevival(instanceId, generation.layoutContext(instanceId).orElseThrow().difficulty().ordinaryRevival());
                 if (!lifecycleRegistration.successful()) {
                     abort(instanceId, lifecycleRegistration.detail());
                     return;

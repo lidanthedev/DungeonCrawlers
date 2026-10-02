@@ -6,7 +6,7 @@ All commands use the `/dungeon` root. Player-facing messages use the plugin's Mi
 
 | Command | Permission | Purpose |
 | --- | --- | --- |
-| `/dungeon start <floor>` | `dungeoncrawlers.use` | Start a solo or party run. |
+| `/dungeon start <floor> [difficulty]` | `dungeoncrawlers.use` | Leader selects the difficulty; omitted tier opens the menu. All members must unlock it on that floor. |
 | `/dungeon class menu` | `dungeoncrawlers.command.class` | Open the class GUI while the run is still preparing. |
 | `/dungeon class list` | `dungeoncrawlers.use` | List floor-allowed classes as clickable text. |
 | `/dungeon class select <id>` | `dungeoncrawlers.use` | Select a class by its configured id. |
@@ -14,6 +14,15 @@ All commands use the `/dungeon` root. Player-facing messages use the plugin's Mi
 | `/dungeon reward open` | `dungeoncrawlers.use` | Open completed rewards. |
 
 The class menu and selector NPC recheck run membership, snapshot readiness, allowed class ids, and the PREPARING state on every selection. Selection is locked after the start door opens, while the NPC may remain present as a locked signpost until cleanup.
+
+Difficulty diagnostics require `dungeoncrawlers.admin.debug`:
+
+- `/dungeon difficulty info [player]` reports effective MAGIC_FIND, actual/forgiven deaths and the pet charge.
+- `/dungeon instance generate-difficulty-debug <floor> <tier> <seed>` uses normal preparation with unlock checks bypassed. It awards no Dungeon XP, unlocks or Runic fragments.
+- `/dungeon runic force <entity-uuid>` upgrades an enemy only in a debug instance.
+- `/dungeon door interact` exercises the same class/snapshot gate and lifecycle as a start-door click.
+
+Generation, Runic forcing and door interaction require debug mode to be enabled.
 
 ## Room authoring
 

@@ -195,6 +195,7 @@ public final class RunPreparationService {
                 run.state = RunState.RUNNING;
                 run.startedAt = clock.instant();
                 run.runDeadline = run.startedAt.plus(timings.runTimeout());
+                combatStarted.accept(instanceId);
             });
         } catch (RuntimeException exception) {
             String detail = exception.getMessage() == null
@@ -276,6 +277,12 @@ public final class RunPreparationService {
     public synchronized Optional<DoorBlockLookup> doorAt(Point point) {
         return doors.lookup(Objects.requireNonNull(point, "point"))
                 .map(block -> new DoorBlockLookup(block.instanceId(), block.state()));
+    }
+
+    private java.util.function.Consumer<UUID> combatStarted = ignored -> { };
+
+    public synchronized void configureCombatStarted(java.util.function.Consumer<UUID> callback) {
+        combatStarted = Objects.requireNonNull(callback);
     }
 
     public synchronized Optional<UUID> instanceFor(UUID playerId) {
