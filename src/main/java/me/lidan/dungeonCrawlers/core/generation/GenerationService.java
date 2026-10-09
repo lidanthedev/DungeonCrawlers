@@ -115,6 +115,17 @@ public final class GenerationService {
     }
 
     public StartResult start(StartRequest request) {
+        return start(request, null);
+    }
+
+    public StartResult startPreview(StartRequest request, String roomId) {
+        Objects.requireNonNull(roomId, "roomId");
+        if (request.progressionEnabled()) return StartResult.failure("previews cannot award progression");
+        if (!request.snapshot().rooms().containsKey(roomId)) return StartResult.failure("unknown room " + roomId);
+        return start(request, roomId);
+    }
+
+    private StartResult start(StartRequest request, String previewRoomId) {
         requirePrimaryThread();
         Objects.requireNonNull(request, "request");
         if (request.debugDelayMillis() < 0 || request.debugDelayMillis() > 5_000) {
@@ -132,7 +143,7 @@ public final class GenerationService {
                 reservations.release(instanceId);
                 return StartResult.failure("generation capacity changed during admission");
             }
-            instance = new MutableInstance(instanceId, request, allocated.orElseThrow());
+            instance = new MutableInstance(instanceId, request, allocated.orElseThrow(), previewRoomId);
             instances.put(instanceId, instance);
             admittedCount++;
         }
@@ -381,6 +392,10 @@ public final class GenerationService {
     private PreparedGeneration prepare(MutableInstance instance) {
         try {
             emitProgress(instance, 0.05, "loading room templates", false, true);
+            if (instance.previewRoomId != null) {
+                return preparation.preparePreview(instance.instanceId, instance.request.snapshot(), instance.slot,
+                        instance.previewRoomId);
+            }
             double[] lastProgress = {0.05};
             return preparation.prepare(instance.instanceId, instance.request.seed(), instance.request.floor(),
                     instance.request.snapshot(), instance.slot,
@@ -725,6 +740,11 @@ public final class GenerationService {
         PreparedGeneration prepare(UUID instanceId, long seed, FloorDefinition floor, ConfigSnapshot snapshot,
                                    SlotLease slot) throws Exception;
 
+        default PreparedGeneration preparePreview(UUID instanceId, ConfigSnapshot snapshot, SlotLease slot,
+                                                  String roomId) throws Exception {
+            throw new UnsupportedOperationException("room previews are unavailable");
+        }
+
         default PreparedGeneration prepare(UUID instanceId, long seed, FloorDefinition floor, ConfigSnapshot snapshot,
                                            SlotLease slot, Consumer<PreparationProgress> progress) throws Exception {
             return prepare(instanceId, seed, floor, snapshot, slot);
@@ -899,6 +919,7 @@ public final class GenerationService {
         private final UUID instanceId;
         private final StartRequest request;
         private final SlotLease slot;
+        private final String previewRoomId;
         private long token = 1;
         private boolean cancelled;
         private boolean journalAccepted;
@@ -911,13 +932,15 @@ public final class GenerationService {
         private GenerationJournal journal;
         private CompletableFuture<Void> inFlight;
 
-        private MutableInstance(UUID instanceId, StartRequest request, SlotLease slot) {
+        private MutableInstance(UUID instanceId, StartRequest request, SlotLease slot, String previewRoomId) {
             this.instanceId = instanceId; this.request = request; this.slot = slot;
+            this.previewRoomId = previewRoomId;
         }
 
         private InstanceSnapshot snapshot() {
             return new InstanceSnapshot(instanceId, slot.id(), state, request.party().onlineMembers(),
-                    request.seed(), request.floor().displayName(), detail);
+                    request.seed(), previewRoomId == null ? request.floor().displayName()
+                    : "Room preview: " + previewRoomId, detail);
         }
     }
 }

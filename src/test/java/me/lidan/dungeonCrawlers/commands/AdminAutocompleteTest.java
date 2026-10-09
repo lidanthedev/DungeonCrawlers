@@ -27,6 +27,7 @@ class AdminAutocompleteTest {
     private PlayerMock admin;
     private CombatRoomService combat;
     private RunPreparationService runs;
+    private DungeonRoomPreviewCommand preview;
     private final List<String> items = new ArrayList<>();
     private final List<String> mobs = new ArrayList<>();
     private final List<UUID> enemies = new ArrayList<>();
@@ -53,10 +54,12 @@ class AdminAutocompleteTest {
         });
         var lamp = builder.build();
         for (Class<?> type : List.of(DungeonAuthoringCommand.class, DungeonCrawlersCommand.class,
-                DungeonGenerationCommand.class, DungeonDifficultyDebugCommand.class, DungeonPhaseFourCommand.class,
+                DungeonGenerationCommand.class, DungeonRoomPreviewCommand.class, DungeonDifficultyDebugCommand.class, DungeonPhaseFourCommand.class,
                 DungeonPhaseSixCommand.class, DungeonPhaseSevenCommand.class, DungeonPhaseEightCommand.class,
                 DungeonPhaseNineCommand.class, DungeonPhaseElevenCommand.class, DungeonProgressionCommand.class)) {
-            lamp.register(mock(type));
+            var command = mock(type);
+            if (type == DungeonRoomPreviewCommand.class) preview = (DungeonRoomPreviewCommand) command;
+            lamp.register(command);
         }
     }
 
@@ -88,6 +91,7 @@ class AdminAutocompleteTest {
                 Map.entry("instance generate-difficulty-debug floor_1 h", Set.of("hard", "hardcore", "hellish")),
                 Map.entry("completions add Admin ", Set.of("floor_1", "floor_2")),
                 Map.entry("room update ", Set.of("crypt")),
+                Map.entry("room preview c", Set.of("crypt")),
                 Map.entry("player revive this ", Set.of("Admin")),
                 Map.entry("boss start ", Set.of("this")),
                 Map.entry("blessing add this ", Set.of("life")),
@@ -95,6 +99,9 @@ class AdminAutocompleteTest {
             assertChoices("dungeon " + entry.getKey(), entry.getValue());
         }
         assertChoices("dungeon room create ", Set.of());
+        server.dispatchCommand(admin, "dungeon room preview stop");
+        verify(preview).stop(admin);
+        verify(preview, never()).preview(any(), eq("stop"));
     }
 
     @Test void scopesRoomsAndLiveEntitiesToTheSelectedInstanceAndRoom() {
@@ -135,7 +142,7 @@ class AdminAutocompleteTest {
             assertChoices("dungeon " + command + " ", Set.of());
         }
         var player = server.addPlayer("Regular");
-        for (String command : List.of("room create new_room", "compatibility item", "mob spawn this 1", "runic force")) {
+        for (String command : List.of("room create new_room", "room preview", "compatibility item", "mob spawn this 1", "runic force")) {
             assertEquals(List.of(), server.getCommandMap().tabComplete(player, "dungeon " + command + " "));
         }
     }

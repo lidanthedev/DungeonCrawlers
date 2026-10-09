@@ -160,6 +160,10 @@ public final class DungeonCrawlersCommand {
             DungeonGenerationCommand.suggest(sender, "<yellow>Get the room marker kit</yellow>",
                     "/dungeon room setup");
         }
+        if (sender.hasPermission("dungeoncrawlers.admin.authoring")) {
+            DungeonGenerationCommand.suggest(sender, "<yellow>Preview an authored room</yellow>",
+                    "/dungeon room preview ");
+        }
         if (sender.hasPermission("dungeoncrawlers.admin.progression")) {
             DungeonGenerationCommand.suggest(sender, "<yellow>Grant floor difficulty completions</yellow>",
                     "/dungeon completions add ");

@@ -40,6 +40,8 @@ Generation, Runic forcing and door interaction require debug mode to be enabled.
 | `/dungeon room update <id>` | `dungeoncrawlers.admin.authoring` | Replace an authored room while preserving its configured definition. |
 | `/dungeon room delete <id>` | `dungeoncrawlers.admin.authoring` | Delete an unused authored room. |
 | `/dungeon room paste <id> <rotation>` | `dungeoncrawlers.admin.authoring` | Paste an authored room for inspection. |
+| `/dungeon room preview <id>` | `dungeoncrawlers.admin.authoring` | Paste one room in an isolated instance slot and teleport only you there in spectator mode. No mobs, XP, or rewards. Room IDs autocomplete. |
+| `/dungeon room preview stop` | `dungeoncrawlers.admin.authoring` | Restore your saved location/game mode and clear the preview. Disconnect, reload, and admin instance cleanup also close it. |
 
 `<type>` is `normal`, `start`, `portal`, or `boss`. `<encounters>` is `none`, `normal`, `miniboss`, `normal,miniboss`, or `miniboss,normal`. The validator reports the total marker count and `Class Selector NPC: Yes/No`. It also warns when Citizens is unavailable.
 

@@ -67,6 +67,7 @@ public final class DungeonPhaseFiveCommand {
     private final PlayerSnapshotService snapshots;
     private final TeleportPermitService permits;
     private final Server server;
+    private final Plugin plugin;
     private final Clock clock;
     private final String generationWorldName;
     private final DungeonActionBar actionBar;
@@ -80,6 +81,7 @@ public final class DungeonPhaseFiveCommand {
     private final BukkitDoorBlockService doorBlocks = new BukkitDoorBlockService();
     private final Map<UUID, Map<UUID, me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot>> captured
             = new LinkedHashMap<>();
+    private final Set<UUID> previewRecoveries = new java.util.HashSet<>();
     private final Map<UUID, me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot> pendingRecovery
             = new LinkedHashMap<>();
     private final Map<UUID, me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot> snapshotCleanupPending
@@ -180,6 +182,7 @@ public final class DungeonPhaseFiveCommand {
         this.snapshots = Objects.requireNonNull(snapshots, "snapshots");
         this.permits = Objects.requireNonNull(permits, "permits");
         this.server = Objects.requireNonNull(server, "server");
+        this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.generationWorldName = Objects.requireNonNull(generationWorldName, "generationWorldName");
         this.actionBar = Objects.requireNonNull(actionBar, "actionBar");
@@ -346,7 +349,9 @@ public final class DungeonPhaseFiveCommand {
     public void cancelFromAdmin(UUID instanceId) {
         beforeCancel.accept(instanceId);
         RunPreparationService.RunSnapshot snapshot = runs.info(instanceId).orElse(null);
-        if (snapshot != null) {
+        if (snapshot == null && captured.containsKey(instanceId)) {
+            abort(instanceId, "room preview closed", "room preview closed");
+        } else if (snapshot != null) {
             switch (snapshot.state()) {
                 case FAILED -> abort(instanceId, "failed run reading period ended", "failed run closed");
                 case COMPLETED -> abort(instanceId, "completed reward period ended", "run closed");
@@ -361,6 +366,16 @@ public final class DungeonPhaseFiveCommand {
             if (phaseSeven != null) phaseSeven.cleanup(instanceId);
             if (combat != null) combat.cleanup(instanceId);
         }
+    }
+
+    /** Uses the normal durable player recovery path without registering a dungeon run. */
+    public CompletableFuture<Void> savePreviewRecovery(Player player, UUID instanceId) {
+        var snapshot = BukkitPlayerRecovery.capture(player, instanceId, clock);
+        var submission = snapshots.save(snapshot);
+        if (!submission.accepted()) return CompletableFuture.failedFuture(new IllegalStateException(submission.detail()));
+        captured.computeIfAbsent(instanceId, ignored -> new LinkedHashMap<>()).put(player.getUniqueId(), snapshot);
+        previewRecoveries.add(instanceId);
+        return submission.runtimeAck().thenApply(ignored -> null);
     }
 
     /** Closes a run after the central deadline service has finished its reading or reward period. */
@@ -459,7 +474,7 @@ public final class DungeonPhaseFiveCommand {
         var restored = BukkitPlayerRecovery.restore(player, snapshot, server, fallback);
         if (restored.successful()) {
             BukkitGhostState.exit(player);
-            deleteSnapshotAfterRestore(snapshot);
+            finishPlayerRestore(player, snapshot);
         } else {
             pendingRecovery.put(playerId, snapshot);
         }
@@ -558,8 +573,8 @@ public final class DungeonPhaseFiveCommand {
                 authorizeRestore(playerId, snapshot, fallback);
                 var result = BukkitPlayerRecovery.restore(player, snapshot, server, fallback);
                 if (result.successful()) {
-                    BukkitGhostState.exit(player);
-                    deleteSnapshotAfterRestore(snapshot);
+                    if (!previewRecoveries.contains(snapshot.instanceId())) BukkitGhostState.exit(player);
+                    finishPlayerRestore(player, snapshot);
                     restored++;
                 } else {
                     pendingRecovery.put(playerId, snapshot);
@@ -567,6 +582,7 @@ public final class DungeonPhaseFiveCommand {
             }
         }
         captured.clear();
+        previewRecoveries.clear();
         return restored;
     }
 
@@ -584,7 +600,7 @@ public final class DungeonPhaseFiveCommand {
         if (restored.successful()) {
             BukkitGhostState.exit(player);
             if (pending) pendingRecovery.remove(player.getUniqueId(), snapshot);
-            deleteSnapshotAfterRestore(snapshot);
+            finishPlayerRestore(player, snapshot);
         } else {
             pendingRecovery.put(player.getUniqueId(), snapshot);
         }
@@ -613,6 +629,25 @@ public final class DungeonPhaseFiveCommand {
         snapshots.deleteAfterRestore(snapshot).whenComplete((ignored, failure) -> {
             if (failure == null) snapshotCleanupPending.remove(snapshot.playerId(), snapshot);
         });
+    }
+
+    private void finishPlayerRestore(Player player,
+                                     me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot snapshot) {
+        if (!plugin.isEnabled()) return;
+        var destinationWorld = player.getWorld();
+        // Wait past the deferred world-change event and Multiverse's subsequent game mode enforcement.
+        server.getScheduler().runTaskLater(plugin, () -> {
+            if (!player.isOnline() || !player.getWorld().equals(destinationWorld)) return;
+            if (runs.instanceFor(player.getUniqueId()).isPresent()) return;
+            try {
+                var mode = org.bukkit.GameMode.valueOf(snapshot.gameMode());
+                player.setGameMode(mode);
+                if (player.getGameMode() == mode) deleteSnapshotAfterRestore(snapshot);
+                else pendingRecovery.put(player.getUniqueId(), snapshot);
+            } catch (RuntimeException exception) {
+                pendingRecovery.put(player.getUniqueId(), snapshot);
+            }
+        }, 3L);
     }
 
     private void preparePlayers(UUID instanceId, me.lidan.dungeonCrawlers.core.party.PartySnapshot party,
@@ -737,6 +772,7 @@ public final class DungeonPhaseFiveCommand {
     }
 
     private void abort(UUID instanceId, String reason, String outcome, boolean retainSnapshotsForReconnect) {
+        boolean preview = previewRecoveries.remove(instanceId);
         classSelectorNpcs.removeFor(instanceId);
         if (classMenuService != null) classMenuService.closeInstance(instanceId);
         if (phaseNine != null) phaseNine.cleanup(instanceId);
@@ -754,8 +790,8 @@ public final class DungeonPhaseFiveCommand {
                 authorizeRestore(playerId, snapshot, fallback);
                 var restored = BukkitPlayerRecovery.restore(player, snapshot, server, fallback);
                 if (restored.successful()) {
-                    BukkitGhostState.exit(player);
-                    deleteSnapshotAfterRestore(snapshot);
+                    if (!preview) BukkitGhostState.exit(player);
+                    finishPlayerRestore(player, snapshot);
                     DungeonMessages.send(player, DungeonMessages.warning(closedMessage(outcome)
                             + " Your previous player state was restored."));
                 } else {
@@ -775,6 +811,7 @@ public final class DungeonPhaseFiveCommand {
             case "failed run closed" -> "The failed dungeon has closed.";
             case "run closed" -> "The reward period has ended.";
             case "run wiped" -> "Your party was defeated.";
+            case "room preview closed" -> "Room preview closed.";
             default -> "Dungeon preparation was cancelled.";
         };
     }

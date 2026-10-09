@@ -39,6 +39,23 @@ class LayoutPlannerTest {
     private final LayoutPlanner planner = new LayoutPlanner();
 
     @Test
+    void previewsEachRoomTypeAloneAndRejectsBoundsOutsideSlot() {
+        Point origin = new Point(100, 64, 100);
+        for (var entry : catalog().values()) {
+            var template = entry.template();
+            var plan = planner.preview(INSTANCE, template, origin, SLOT, "config");
+            assertEquals(1, plan.placements().size());
+            assertTrue(plan.connections().isEmpty());
+            assertEquals(template.bounds().translate(origin), plan.placements().getFirst().bounds());
+            assertEquals(template.id(), plan.placements().getFirst().templateId());
+            assertEquals(template.type(), plan.placements().getFirst().type());
+        }
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> planner.preview(INSTANCE, catalog().values().iterator().next().template(),
+                        new Point(10_000, 64, 10_000), SLOT, "config"));
+    }
+
+    @Test
     void plansExactCompositionPhysicalPortalIsolatedBossAndTwoPlaneConnections() {
         PlanRequest request = request(77, floor(4, 2, true, new Vector3i(0, 0, 300)), catalog(), SLOT);
 

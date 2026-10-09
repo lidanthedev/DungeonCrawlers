@@ -227,6 +227,15 @@ public final class LayoutPlanner {
         return placement(instanceId, index, next, rotation, origin, encounter);
     }
 
+    public LayoutPlan preview(UUID instanceId, Template template, Point origin, Bounds slotBounds, String configHash) {
+        Placement placed = placement(instanceId, 0, template, Rotation.NONE, origin, null);
+        if (!slotBounds.contains(placed.bounds().minimum()) || !slotBounds.contains(placed.bounds().maximum())) {
+            throw new IllegalArgumentException("room does not fit inside an instance slot");
+        }
+        return new LayoutPlan("room-preview-v1", instanceId, 0, configHash, template.contentHash(),
+                List.of(placed), List.of(), List.of("room preview " + template.id()));
+    }
+
     private static Placement placement(UUID instanceId, int index, Template template, Rotation rotation,
                                        Point origin, EncounterCapability encounter) {
         Bounds bounds = template.bounds().rotate(rotation).translate(origin);

@@ -532,6 +532,11 @@ public final class DungeonCrawlers extends JavaPlugin {
                 this::hasCompletionPending, debugSettings::enabled, debugSettings::setEnabled, scoreService));
         commandHandler.register(new DungeonAuthoringCommand(this, mainConfig, configRegistry, reservations, authoring,
                 generation::activeTemplateIds, progressBars));
+        var roomPreview = new me.lidan.dungeonCrawlers.commands.DungeonRoomPreviewCommand(configRegistry,
+                generation, phaseFiveCommand, getServer(), generationWorldName, teleportPermits, phaseClock(),
+                timings.teleportPermit(), callback -> getServer().getScheduler().runTaskLater(this, callback, 3L), progressBars);
+        commandHandler.register(roomPreview);
+        registerEvent(roomPreview);
         commandHandler.register(new DungeonGenerationCommand(configRegistry,
                 PartyProviders.forServer(getServer()), generation, getServer(),
                 generationWorldName,
