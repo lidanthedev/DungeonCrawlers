@@ -99,6 +99,65 @@ class PortalEncounterServiceTest {
     }
 
     @Test
+    void closedDoorEntryRunsNormalCountdownThenKillsPartyWithoutBossTeleport() {
+        UUID instance = UUID.randomUUID();
+        UUID player = UUID.randomUUID();
+        Clock clock = Clock.fixed(START, ZoneOffset.UTC);
+        CentralUpdateService updates = new CentralUpdateService(clock, ignored -> { });
+        RunPreparationService runs = runningRun(instance, player, updates, clock);
+        FakeEntities entities = new FakeEntities();
+        FakeParticipants participants = new FakeParticipants(player);
+        participants.doorOpened = false;
+        PortalEncounterService service = service(updates, runs, clock, entities, participants,
+                EncounterFactoryRegistry.withBasic());
+        assertTrue(service.register(instance, floor("basic"), plan(instance)).successful());
+
+        assertTrue(service.enterPortal(instance, player).successful());
+        assertEquals(PortalEncounterService.Status.COUNTDOWN, service.info(instance).orElseThrow().status());
+        updates.tick(START.plusSeconds(4));
+        assertEquals(0, participants.kills);
+        assertTrue(participants.titles.getLast().contains("1</white> seconds"));
+        participants.doorOpened = true;
+        updates.tick(START.plusSeconds(5));
+
+        assertEquals(1, participants.kills);
+        assertEquals(PortalEncounterService.Status.FAILED, service.info(instance).orElseThrow().status());
+        assertEquals(RunPreparationService.RunState.FAILED, runs.info(instance).orElseThrow().state());
+        assertTrue(participants.teleports.isEmpty());
+        assertEquals(0, entities.spawnCount);
+        assertTrue(participants.titles.getLast().contains("Destination: the graveyard."));
+        assertTrue(participants.notices.getLast().contains("The boss skipped your survival."));
+        assertEquals(1, updates.callbackCount(instance));
+        updates.tick(START.plusSeconds(6));
+        assertEquals(1, participants.kills);
+    }
+
+    @Test
+    void abortedClosedDoorCountdownDoesNotPunishLaterLegalEntry() {
+        UUID instance = UUID.randomUUID();
+        UUID player = UUID.randomUUID();
+        Clock clock = Clock.fixed(START, ZoneOffset.UTC);
+        CentralUpdateService updates = new CentralUpdateService(clock, ignored -> { });
+        RunPreparationService runs = runningRun(instance, player, updates, clock);
+        FakeEntities entities = new FakeEntities();
+        FakeParticipants participants = new FakeParticipants(player);
+        participants.doorOpened = false;
+        PortalEncounterService service = service(updates, runs, clock, entities, participants,
+                EncounterFactoryRegistry.withBasic());
+        assertTrue(service.register(instance, floor("basic"), plan(instance)).successful());
+        assertTrue(service.enterPortal(instance, player).successful());
+        assertTrue(service.ownerLeftPortal(instance, player).successful());
+        updates.tick(START.plusSeconds(5));
+        assertEquals(0, participants.kills);
+        participants.doorOpened = true;
+        assertTrue(service.enterPortal(instance, player).successful());
+        updates.tick(START.plusSeconds(5));
+        assertEquals(PortalEncounterService.Status.BOSS, service.info(instance).orElseThrow().status());
+        assertEquals(1, participants.teleports.size());
+        assertEquals(0, participants.kills);
+    }
+
+    @Test
     void simultaneousPortalEntriesHaveOneCountdownOwner() throws Exception {
         UUID instance = UUID.randomUUID();
         UUID firstPlayer = UUID.randomUUID();
@@ -313,6 +372,9 @@ class PortalEncounterServiceTest {
         private final List<UUID> players;
         private final List<Point> teleports = new ArrayList<>();
         private final List<String> titles = new ArrayList<>();
+        private final List<String> notices = new ArrayList<>();
+        private boolean doorOpened = true;
+        private int kills;
 
         private FakeParticipants(UUID player) { this(List.of(player)); }
 
@@ -321,6 +383,10 @@ class PortalEncounterServiceTest {
         @Override
         public List<UUID> activePlayers(UUID instanceId) { return players; }
 
+        @Override public boolean portalDoorOpened(UUID instanceId) { return doorOpened; }
+
+        @Override public void killParty(UUID instanceId, String reason) { kills++; }
+
         @Override
         public boolean teleport(UUID playerId, Point target) {
             teleports.add(target);
@@ -328,7 +394,7 @@ class PortalEncounterServiceTest {
         }
 
         @Override
-        public void notice(UUID instanceId, String miniMessage) { }
+        public void notice(UUID instanceId, String miniMessage) { notices.add(miniMessage); }
 
         @Override
         public String displayName(UUID playerId) { return "LidanTheGamer"; }

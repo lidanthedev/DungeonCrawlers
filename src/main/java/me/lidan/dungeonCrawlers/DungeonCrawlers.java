@@ -303,7 +303,7 @@ public final class DungeonCrawlers extends JavaPlugin {
                 EncounterFactoryRegistry.withBasic(),
                 bossGateway,
                 new BukkitPortalParticipantGateway(getServer(), this::generationWorld, generationWorldName,
-                        runPreparation, lifecycle, teleportPermits, phaseClock(), timings.teleportPermit()),
+                        runPreparation, lifecycle, combat, teleportPermits, phaseClock(), timings.teleportPermit()),
                 phaseClock(), getLogger()::warning, this::finalizeRewards, timings);
         rewards = new RewardEntitlementService(phaseClock(), new CaveItemsAdapter()::isConfigured,
                 durableRepository, timings);

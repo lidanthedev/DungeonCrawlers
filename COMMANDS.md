@@ -19,6 +19,8 @@ The class menu and selector NPC recheck run membership, snapshot readiness, allo
 
 Example: `/dungeon completions add LidanTheGamer floor_1 hardcore 1` unlocks Impossible and all lower tiers on floor_1. Grant the same credit to Eldan39 to test together.
 
+Activating the boss portal before its entrance door was opened still runs the normal countdown, then wipes the whole party instead of teleporting to the boss. Clearing the preceding room only unlocks that door; it must be opened normally. Opening it during an already-started bypass countdown does not avoid the wipe.
+
 Difficulty diagnostics require `dungeoncrawlers.admin.debug`:
 
 - `/dungeon difficulty info [player]` reports effective MAGIC_FIND, deaths and the pet charge.

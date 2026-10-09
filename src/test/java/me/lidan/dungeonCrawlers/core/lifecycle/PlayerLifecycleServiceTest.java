@@ -164,6 +164,40 @@ class PlayerLifecycleServiceTest {
     }
 
     @Test
+    void forcedPartyDeathCountsAllRemainingPlayersBeforeWipeAndCancelsRunicRevival() {
+        UUID instance = UUID.randomUUID();
+        UUID alive = UUID.randomUUID(), ghost = UUID.randomUUID(), offline = UUID.randomUUID(), removed = UUID.randomUUID();
+        List<PlayerLifecycleService.Notice> notices = new ArrayList<>();
+        CentralUpdateService updates = new CentralUpdateService(Clock.fixed(START, ZoneOffset.UTC), ignored -> { });
+        PlayerLifecycleService service = new PlayerLifecycleService(updates, Clock.fixed(START, ZoneOffset.UTC),
+                notices::add);
+        service.configureRevival(ignored -> true, ignored -> true);
+        assertTrue(updates.register(instance, ignored -> { }));
+        assertTrue(service.register(instance, List.of(alive, ghost, offline, removed)).successful());
+        assertTrue(service.start(instance).successful());
+        assertTrue(service.lethal(instance, ghost).successful());
+        assertTrue(service.disconnect(instance, offline, false).successful());
+        assertTrue(service.escape(instance, removed).successful());
+
+        assertTrue(service.killParty(instance, "closed portal door").successful());
+        for (UUID id : List.of(alive, ghost, offline)) {
+            var player = service.player(instance, id).orElseThrow();
+            assertEquals(1, player.deaths());
+            assertEquals(PlayerLifecycleService.PlayerState.GHOST, player.state());
+            assertNull(player.reviveAt());
+            assertEquals(PlayerLifecycleService.ReviveKind.NONE, player.reviveKind());
+        }
+        assertEquals(0, service.player(instance, removed).orElseThrow().deaths());
+        assertEquals(PlayerLifecycleService.PlayerState.REMOVED, service.player(instance, removed).orElseThrow().state());
+        assertTrue(service.info(instance).orElseThrow().wiped());
+        assertTrue(service.killParty(instance, "repeated callback").successful());
+        assertEquals(1, notices.stream().filter(notice -> notice.event() == PlayerLifecycleService.Event.WIPED).count());
+        updates.tick(START.plusSeconds(60));
+        assertEquals(1, service.player(instance, alive).orElseThrow().deaths());
+        assertFalse(service.scheduleAdminRevive(instance, ghost).successful());
+    }
+
+    @Test
     void administrativeReviveUsesShortCountdownBeforeReviving() {
         UUID instance = UUID.randomUUID();
         UUID ghost = UUID.randomUUID();

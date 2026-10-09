@@ -238,6 +238,23 @@ public final class PlayerLifecycleService {
         return wipe(state, Objects.requireNonNull(reason, "reason"), null);
     }
 
+    /** Applies a terminal party death atomically, before failure scoring or revival can run. */
+    public synchronized TransitionResult killParty(UUID instanceId, String reason) {
+        Objects.requireNonNull(reason, "reason");
+        MutableInstance state = instance(instanceId);
+        if (state == null) return TransitionResult.failure("unknown lifecycle instance");
+        if (!state.running || state.completed) return TransitionResult.failure("lifecycle is not running");
+        if (state.wiped) return TransitionResult.success(Event.WIPED, state.detail, snapshot(state));
+        for (MutablePlayer player : state.players.values()) {
+            if (player.state == PlayerState.REMOVED) continue;
+            if (player.state == PlayerState.ALIVE) player.deaths++;
+            player.state = PlayerState.GHOST;
+            player.reviveAt = null;
+            player.reviveKind = ReviveKind.NONE;
+        }
+        return wipe(state, reason, null);
+    }
+
     public synchronized Optional<InstanceSnapshot> info(UUID instanceId) {
         MutableInstance state = instance(instanceId);
         return state == null ? Optional.empty() : Optional.of(snapshot(state));

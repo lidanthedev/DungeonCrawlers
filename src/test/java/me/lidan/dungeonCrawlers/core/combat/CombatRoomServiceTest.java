@@ -50,6 +50,9 @@ class CombatRoomServiceTest {
         FakeMobs mobs = new FakeMobs();
         CombatRoomService service = new CombatRoomService(mobs, new FakeChunks(), ignored -> { });
         assertTrue(service.register(plan(instance, 1)).successful());
+        assertFalse(service.portalDoorOpened(instance));
+        assertFalse(service.activateFromDoor(instance, new Point(7, 0, 0)).successful());
+        assertFalse(service.portalDoorOpened(instance));
 
         assertTrue(service.activateFirst(instance).successful());
         for (UUID entity : List.copyOf(mobs.entities)) {
@@ -59,11 +62,16 @@ class CombatRoomServiceTest {
         UUID finalEntity = service.info(instance).orElseThrow().rooms().get(1)
                 .requiredMobs().getFirst().entityId();
         assertTrue(service.onDeath(instance, 2, finalEntity).accepted());
+        assertFalse(service.portalDoorOpened(instance), "clearing mobs only unlocks the door");
 
         var portal = service.activateFromDoor(instance, new Point(7, 0, 0));
         assertTrue(portal.successful());
         assertEquals("portal room ready", portal.detail());
         assertEquals(Set.of(new Point(7, 0, 0)), portal.openedDoorBlocks());
+        assertTrue(service.portalDoorOpened(instance));
+        assertFalse(service.portalDoorOpened(UUID.randomUUID()));
+        service.cleanup(instance);
+        assertFalse(service.portalDoorOpened(instance));
     }
 
     @Test
