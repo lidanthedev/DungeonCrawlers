@@ -4,6 +4,8 @@ import java.util.Arrays;
 import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 
 public enum Difficulty {
     NORMAL(1, 0, 1, 1, 1, 1, 0, 0, 0),
@@ -29,6 +31,19 @@ public enum Difficulty {
     public String displayName() { return name().charAt(0) + id().substring(1); }
     public DifficultyRules defaults() { return defaults; }
     public Difficulty next() { return ordinal() + 1 < values().length ? values()[ordinal() + 1] : this; }
+
+    public int chestDiscountPercent() { return ordinal() * 5; }
+
+    public long chestPrice(long basePrice) {
+        return chestPrice(basePrice, false);
+    }
+
+    public long chestPrice(long basePrice, boolean runicBoss) {
+        if (basePrice < 0) throw new IllegalArgumentException("chest price must not be negative");
+        return BigDecimal.valueOf(basePrice).multiply(BigDecimal.valueOf(100 - chestDiscountPercent()))
+                .multiply(BigDecimal.valueOf(runicBoss ? 80 : 100))
+                .divide(BigDecimal.valueOf(10000), 0, RoundingMode.DOWN).longValueExact();
+    }
 
     public static Map<String, DifficultyRules> defaultRules() {
         return Arrays.stream(values()).collect(Collectors.toUnmodifiableMap(Difficulty::id, Difficulty::defaults));

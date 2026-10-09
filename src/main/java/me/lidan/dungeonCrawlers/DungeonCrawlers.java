@@ -605,7 +605,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         latestScores.put(snapshot.instanceId(), score.finalSnapshot());
         rewards.register(new RewardEntitlementService.Completion(snapshot.instanceId(),
                 context.seed(), phaseClock().instant(), score.finalSnapshot(), participants,
-                context.floor().rewards()));
+                context.floor().rewards(), context.difficulty().tier()));
         recordProgression(snapshot.instanceId(), true, null);
         var point = snapshot.rewardChest();
         world.getBlockAt(point.x(), point.y(), point.z()).setType(org.bukkit.Material.ENDER_CHEST, false);
@@ -635,7 +635,7 @@ public final class DungeonCrawlers extends JavaPlugin {
             latestScores.put(instanceId, score.finalSnapshot());
             List<RewardEntitlementService.Participant> participants = rewardParticipants(run, lifecycleSnapshot);
             rewards.register(new RewardEntitlementService.Completion(instanceId, context.seed(), failedAt,
-                    score.finalSnapshot(), participants, context.floor().rewards()));
+                    score.finalSnapshot(), participants, context.floor().rewards(), context.difficulty().tier()));
             run.participants().stream().map(getServer()::getPlayer).filter(java.util.Objects::nonNull)
                     .forEach(player -> DungeonMessages.send(player, ScoreResultRenderer.render(score,
                             scoreService.freeTime(), scoreService.penaltyInterval())));
@@ -678,7 +678,8 @@ public final class DungeonCrawlers extends JavaPlugin {
         if (elapsed.isNegative()) elapsed = Duration.ZERO;
         return scoreService.calculateReport(
                 new ScoreService.ScoreInput(successful, deaths, elapsed, foundSecrets, totalSecrets),
-                List.of(new ScoreService.RunicPetBonus(runicPet)));
+                List.of(new ScoreService.RunicPetBonus(runicPet),
+                        new ScoreService.RunicBossBonus(difficultyService.runicBoss(run.instanceId()))));
     }
 
     private boolean hasActiveCompletionGroup(UUID instanceId) {

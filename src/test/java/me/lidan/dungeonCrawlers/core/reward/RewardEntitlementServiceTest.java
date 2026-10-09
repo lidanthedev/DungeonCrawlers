@@ -4,6 +4,12 @@ import me.lidan.dungeonCrawlers.config.registry.ConfigModels.RewardDefinition;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.RewardItem;
 import me.lidan.dungeonCrawlers.core.score.DungeonRank;
 import me.lidan.dungeonCrawlers.core.score.ScoreService;
+import me.lidan.dungeonCrawlers.core.difficulty.Difficulty;
+import me.lidan.dungeonCrawlers.persistence.DurableRecord;
+import me.lidan.dungeonCrawlers.persistence.DurableRepository;
+import com.google.gson.JsonParser;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CompletableFuture;
 import me.lidan.dungeonCrawlers.persistence.FileDurableRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -25,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.*;
 
 class RewardEntitlementServiceTest {
     private static final Instant COMPLETED = Instant.parse("2026-08-22T00:00:00Z");
@@ -35,6 +42,77 @@ class RewardEntitlementServiceTest {
     private final RewardDefinition rewards = new RewardDefinition(true, 0, 0, 2, false, List.of(
             new RewardItem("a", 1, 1, 8), new RewardItem("b", 1, 1, 8),
             new RewardItem("c", 1, 1, 8), new RewardItem("d", 1, 1, 8)));
+
+    @Test
+    void allDifficultyPricesApplyToLiveAndOfflineOffersAndStayFixedOnReopen() {
+        long[] expected = {1000, 950, 900, 850, 800, 750, 700, 650, 600, 550};
+        var paid = new RewardDefinition(true, 1000, 0, 1, false, List.of(new RewardItem("a", 1, 1, 1)));
+        var free = new RewardDefinition(true, 0, 0, 1, false, List.of(new RewardItem("a", 1, 1, 1)));
+        for (Difficulty tier : Difficulty.values()) {
+            var service = service(Set.of("a"));
+            var completion = new RewardEntitlementService.Completion(INSTANCE, 42, COMPLETED, score(300),
+                    List.of(new RewardEntitlementService.Participant(ACTIVE, true, true),
+                            new RewardEntitlementService.Participant(OFFLINE, true, false)),
+                    Map.of("paid", paid, "free", free), tier);
+            service.register(completion);
+            for (UUID player : List.of(ACTIVE, OFFLINE)) {
+                var first = service.open(INSTANCE, player).orElseThrow();
+                assertEquals(expected[tier.ordinal()], first.offers().get("paid").price());
+                assertEquals(0, first.offers().get("free").price());
+                assertEquals(first, service.open(INSTANCE, player).orElseThrow());
+            }
+            service.register(new RewardEntitlementService.Completion(INSTANCE, 42, COMPLETED, score(300),
+                    completion.participants(), completion.rewards(), Difficulty.NORMAL));
+            assertEquals(expected[tier.ordinal()], service.preview(INSTANCE, ACTIVE, "paid").orElseThrow().price());
+        }
+    }
+
+    @Test
+    void discountedOffersSurviveRestartAndLegacyRecordsWithoutTierKeepFrozenPrices(@TempDir Path directory) {
+        Clock clock = Clock.fixed(COMPLETED.plusSeconds(10), ZoneOffset.UTC);
+        var paid = new RewardDefinition(true, 1000, 0, 1, false, List.of(new RewardItem("a", 1, 1, 1)));
+        var repository = new FileDurableRepository(directory, 10, Runnable::run);
+        var service = new RewardEntitlementService(clock, Set.of("a")::contains, repository);
+        service.register(new RewardEntitlementService.Completion(INSTANCE, 42, COMPLETED, score(300),
+                List.of(new RewardEntitlementService.Participant(OFFLINE, true, false)), Map.of("paid", paid), Difficulty.VOID));
+        var original = service.open(INSTANCE, OFFLINE).orElseThrow();
+        var saved = repository.list("reward-entitlements").join().getFirst();
+        repository.close();
+
+        try (var reopened = new FileDurableRepository(directory, 10, Runnable::run)) {
+            var restored = new RewardEntitlementService(clock, Set.of("a")::contains, reopened);
+            assertEquals(original, restored.open(INSTANCE, OFFLINE).orElseThrow());
+            assertEquals(650, restored.preview(INSTANCE, OFFLINE, "paid").orElseThrow().price());
+        }
+
+        var json = JsonParser.parseString(new String(saved.payload(), StandardCharsets.UTF_8)).getAsJsonObject();
+        json.getAsJsonObject("run").getAsJsonObject("completion").remove("difficulty");
+        var legacy = new DurableRecord(saved.namespace(), saved.recordId(), json.toString().getBytes(StandardCharsets.UTF_8),
+                saved.checksum(), saved.path());
+        var legacyRepository = mock(DurableRepository.class);
+        when(legacyRepository.list("reward-entitlements")).thenReturn(CompletableFuture.completedFuture(List.of(legacy)));
+        var restoredLegacy = new RewardEntitlementService(clock, Set.of("a")::contains, legacyRepository);
+        assertEquals(original, restoredLegacy.player(INSTANCE, OFFLINE).orElseThrow());
+    }
+
+    @Test
+    void runicBossBonusDiscountIsFrozenWithTierPriceAndSurvivesRestart(@TempDir Path directory) {
+        Clock clock = Clock.fixed(COMPLETED.plusSeconds(10), ZoneOffset.UTC);
+        var paid = new RewardDefinition(true, 1000, 0, 1, false, List.of(new RewardItem("a", 1, 1, 1)));
+        var score = new ScoreService().calculateReport(new ScoreService.ScoreInput(true, 0, Duration.ZERO, 0, 0),
+                List.of(new ScoreService.RunicBossBonus(true))).finalSnapshot();
+        try (var repository = new FileDurableRepository(directory, 10, Runnable::run)) {
+            var service = new RewardEntitlementService(clock, Set.of("a")::contains, repository);
+            service.register(new RewardEntitlementService.Completion(INSTANCE, 42, COMPLETED, score,
+                    List.of(new RewardEntitlementService.Participant(OFFLINE, true, false)), Map.of("paid", paid), Difficulty.VOID));
+            assertEquals(520, service.open(INSTANCE, OFFLINE).orElseThrow().offers().get("paid").price());
+        }
+        try (var repository = new FileDurableRepository(directory, 10, Runnable::run)) {
+            var restored = new RewardEntitlementService(clock, Set.of("a")::contains, repository);
+            assertEquals(520, restored.open(INSTANCE, OFFLINE).orElseThrow().offers().get("paid").price());
+            assertEquals(20, restored.info(INSTANCE).orElseThrow().score().bonus());
+        }
+    }
 
     @Test
     void removedPlayersGetNothingAndOfflineActivePlayersRecoverWithoutRerolling() {

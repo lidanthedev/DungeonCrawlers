@@ -10,6 +10,21 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
 class ScoreServiceTest {
+    @Test void runicBossAddsTwentyBonusOnlyOnSuccessfulClearAndStacksWithPetOnce() {
+        var service = new ScoreService();
+        var boss = new ScoreService.RunicBossBonus(true);
+        List<ScoreService.BonusProvider> providers = List.of(boss, boss, new ScoreService.RunicPetBonus(true));
+        var cleared = service.calculateReport(new ScoreService.ScoreInput(true, 1, Duration.ofMinutes(1), 0, 0), providers);
+        assertEquals(22, cleared.result().bonus());
+        assertEquals(320, cleared.result().total());
+        assertEquals(20, cleared.finalSnapshot().bonusFacts().stream()
+                .filter(fact -> fact.key().equals(ScoreService.RunicBossBonus.ID)).findFirst().orElseThrow().points());
+        var failed = service.calculate(new ScoreService.ScoreInput(false, 1, Duration.ofMinutes(1), 0, 0), providers);
+        assertEquals(2, failed.bonus());
+        assertEquals(0, service.calculate(new ScoreService.ScoreInput(true, 0, Duration.ofMinutes(1), 0, 0),
+                List.of(new ScoreService.RunicBossBonus(false))).bonus());
+    }
+
     private final ScoreService service = new ScoreService();
 
     @Test

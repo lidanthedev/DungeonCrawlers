@@ -158,6 +158,8 @@ class BukkitDifficultyServiceTest {
         when(event.getEntity()).thenReturn(enemy);
         track(enemy, true, true, instance);
         service.death(event);
+        assertTrue(service.runicBoss(instance), "completion must still see Runic status after the enemy is removed");
+        assertFalse(service.runicBoss(UUID.randomUUID()));
         service.death(event);
         verify(claims, times(1)).grantLoot(enemy.getUniqueId(), player, "RUNIC_FRAGMENT", 4);
         clearInvocations(claims);

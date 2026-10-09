@@ -49,7 +49,19 @@ class DungeonDifficultyMenuServiceTest {
                 assertNotNull(item);
                 assertEquals(tier.displayName() + (tier == Difficulty.NORMAL ? "" : " [Locked]"),
                         plain.serialize(item.getItemMeta().displayName()));
+                assertTrue(item.getItemMeta().lore().stream().map(plain::serialize)
+                        .anyMatch(line -> line.equals("Chest prices: " + tier.chestDiscountPercent() + "% less")));
+                var lore = item.getItemMeta().lore().stream().map(plain::serialize).toList();
+                if (tier.ordinal() >= Difficulty.DEMONIC.ordinal()) {
+                    assertTrue(lore.contains("Purple glow; x10 health and x5 damage."));
+                }
+                if (tier.ordinal() >= Difficulty.VOID.ordinal()) {
+                    assertTrue(lore.contains("Runic boss clear: +20 Bonus score"));
+                    assertTrue(lore.contains("Chest prices get another 20% off."));
+                }
             }
+            assertTrue(inventory.getItem(13).getItemMeta().lore().stream().map(plain::serialize)
+                    .anyMatch(line -> line.equals("x10 health and x5 damage after difficulty scaling.")));
             assertEquals(10, java.util.Arrays.stream(slots).mapToObj(inventory::getItem)
                     .map(item -> item.getType()).distinct().count());
             assertEquals(Material.BARRIER, inventory.getItem(49).getType());

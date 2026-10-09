@@ -14,6 +14,7 @@ import com.google.gson.JsonSerializer;
 import me.lidan.dungeonCrawlers.config.DungeonTimings;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.RewardDefinition;
 import me.lidan.dungeonCrawlers.core.claim.OfferMode;
+import me.lidan.dungeonCrawlers.core.difficulty.Difficulty;
 import me.lidan.dungeonCrawlers.core.random.NamedRandomFactory;
 import me.lidan.dungeonCrawlers.core.score.ScoreService;
 import me.lidan.dungeonCrawlers.persistence.DurableRecord;
@@ -195,6 +196,8 @@ public final class RewardEntitlementService {
 
     private Map<String, RewardOffer> rollOffers(Completion completion, UUID playerId) {
         Map<String, RewardOffer> offers = new LinkedHashMap<>();
+        boolean runicBoss = completion.score().successful() && completion.score().bonusFacts().stream()
+                .anyMatch(fact -> fact.key().equals(ScoreService.RunicBossBonus.ID) && fact.points() == 20);
         completion.rewards().entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
             String rewardId = entry.getKey();
             RewardDefinition definition = entry.getValue();
@@ -210,7 +213,8 @@ public final class RewardEntitlementService {
                     new NamedRandomFactory(completion.seed()).stream(rewardStreamKey(playerId, rewardId)),
                     completion.participants().stream().filter(value -> value.playerId().equals(playerId))
                             .mapToDouble(Participant::magicFind).findFirst().orElse(0));
-            offers.put(rewardId, new RewardOffer(offerId, rewardId, definition.price(), definition.minScore(),
+            offers.put(rewardId, new RewardOffer(offerId, rewardId,
+                    completion.difficulty().chestPrice(definition.price(), runicBoss), definition.minScore(),
                     locked, rolls));
         });
         return Map.copyOf(offers);
@@ -314,13 +318,21 @@ public final class RewardEntitlementService {
 
     public record Completion(UUID instanceId, long seed, Instant completedAt,
                              ScoreService.FinalScoreSnapshot score, List<Participant> participants,
-                             Map<String, RewardDefinition> rewards) {
+                             Map<String, RewardDefinition> rewards, Difficulty difficulty) {
+        public Completion(UUID instanceId, long seed, Instant completedAt,
+                          ScoreService.FinalScoreSnapshot score, List<Participant> participants,
+                          Map<String, RewardDefinition> rewards) {
+            this(instanceId, seed, completedAt, score, participants, rewards, Difficulty.NORMAL);
+        }
+
         public Completion {
             Objects.requireNonNull(instanceId, "instanceId");
             Objects.requireNonNull(completedAt, "completedAt");
             Objects.requireNonNull(score, "score");
             Objects.requireNonNull(participants, "participants");
             Objects.requireNonNull(rewards, "rewards");
+            // Persisted completions from before difficulty pricing have no tier field.
+            difficulty = difficulty == null ? Difficulty.NORMAL : difficulty;
             participants = List.copyOf(participants);
             rewards = Map.copyOf(rewards);
             Set<UUID> ids = new HashSet<>();

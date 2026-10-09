@@ -6,6 +6,7 @@ import com.google.gson.JsonParser;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.RewardDefinition;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.RewardItem;
 import me.lidan.dungeonCrawlers.core.reward.RewardEntitlementService;
+import me.lidan.dungeonCrawlers.core.difficulty.Difficulty;
 import me.lidan.dungeonCrawlers.core.reward.RewardModels.ItemPayload;
 import me.lidan.dungeonCrawlers.core.score.DungeonRank;
 import me.lidan.dungeonCrawlers.core.score.ScoreService;
@@ -62,6 +63,26 @@ class RewardClaimServiceTest {
     @AfterEach
     void tearDownBukkit() {
         MockBukkit.unmock();
+    }
+
+    @Test
+    void discountedPriceMatchesAffordabilityFrozenClaimAndEconomyDebit() {
+        var rewards = entitlements(Difficulty.HARD);
+        var offer = rewards.preview(INSTANCE, PLAYER, "gold").orElseThrow();
+        assertEquals(4, offer.price());
+        var economy = Mockito.mock(EconomyGateway.class);
+        Mockito.when(economy.providerIdentity()).thenReturn("TestEconomy");
+        Mockito.when(economy.hasFunds(Mockito.any(), Mockito.eq(4.0))).thenReturn(Optional.of(true));
+        Mockito.when(economy.withdraw(Mockito.any(), Mockito.eq(4.0)))
+                .thenReturn(new EconomyGateway.TransactionResult(true, 4, 0, "charged"));
+        var claims = new RewardClaimService(clock(), rewards, items(), economy);
+        var account = player();
+        assertEquals(RewardClaimService.Affordability.AFFORDABLE, claims.affordability(account, offer.price()));
+        AtomicReference<RewardClaimService.ClaimResult> result = new AtomicReference<>();
+        claims.claim(INSTANCE, PLAYER, "gold", account, result::set);
+        assertTrue(result.get().successful(), result.get().detail());
+        Mockito.verify(economy).withdraw(account, 4.0);
+        assertEquals(4, claims.info(INSTANCE, PLAYER).orElseThrow().offers().get(offer.offerId()).price());
     }
 
     @Test
@@ -531,6 +552,10 @@ class RewardClaimServiceTest {
     }
 
     private static RewardEntitlementService entitlements() {
+        return entitlements(Difficulty.NORMAL);
+    }
+
+    private static RewardEntitlementService entitlements(Difficulty difficulty) {
         RewardDefinition gold = new RewardDefinition(true, 5, 0, 1, false,
                 List.of(new RewardItem("GOLD", 1, 1, 1)));
         RewardDefinition wood = new RewardDefinition(true, 0, 0, 1, false,
@@ -545,7 +570,7 @@ class RewardClaimServiceTest {
                 score.rank(), score.bonusFacts());
         service.register(new RewardEntitlementService.Completion(INSTANCE, 42, COMPLETED, finalScore,
                 List.of(new RewardEntitlementService.Participant(PLAYER, true, true)),
-                Map.of("gold", gold, "wood", wood)));
+                Map.of("gold", gold, "wood", wood), difficulty));
         return service;
     }
 

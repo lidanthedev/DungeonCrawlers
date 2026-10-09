@@ -366,7 +366,7 @@ public final class DungeonPhaseElevenCommand {
         Runnable reset = () -> {
             rewards.resetTest(id);
             rewards.register(new RewardEntitlementService.Completion(id, context.seed(), Instant.now(), maxScore(),
-                    participants, context.floor().rewards()));
+                    participants, context.floor().rewards(), context.difficulty().tier()));
             send(sender, true, "Reward entitlements reset. Use /dungeon reward open " + id + ".");
         };
         if (claims == null) reset.run();

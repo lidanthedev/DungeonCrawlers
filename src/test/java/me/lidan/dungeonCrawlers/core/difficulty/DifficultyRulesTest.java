@@ -2,6 +2,17 @@ package me.lidan.dungeonCrawlers.core.difficulty;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 class DifficultyRulesTest {
+    @Test void chestDiscountUsesExactWholeCoinsWithoutOverflow() {
+        assertEquals(0, Difficulty.IMPOSSIBLE.chestPrice(0));
+        assertEquals(949, Difficulty.HARD.chestPrice(999));
+        assertEquals(759, Difficulty.HARD.chestPrice(999, true));
+        assertEquals(2, Difficulty.HARD.chestPrice(3, true), "round only once after both discounts");
+        assertEquals(44_000, Difficulty.IMPOSSIBLE.chestPrice(100_000, true));
+        assertEquals(5_072_854_620_270_126_693L, Difficulty.IMPOSSIBLE.chestPrice(Long.MAX_VALUE));
+        assertEquals(Long.MAX_VALUE, Difficulty.NORMAL.chestPrice(Long.MAX_VALUE));
+        assertThrows(IllegalArgumentException.class, () -> Difficulty.HARD.chestPrice(-1));
+    }
+
     @Test void tierBalanceAndMultiplicativePenalties() {
         assertEquals(10, Difficulty.values().length);
         var impossible = Difficulty.IMPOSSIBLE.defaults();

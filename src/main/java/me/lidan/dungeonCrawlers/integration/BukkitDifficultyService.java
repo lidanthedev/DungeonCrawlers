@@ -38,6 +38,7 @@ public final class BukkitDifficultyService implements Listener, AutoCloseable {
     private final PlayerLifecycleService lifecycle;
     private final RewardClaimService claims;
     private final Map<UUID, Enemy> enemies = new HashMap<>();
+    private final Set<UUID> runicBossInstances = new HashSet<>();
     private final Map<UUID, Map<UUID, Double>> magicFind = new HashMap<>();
     private final RunicPetAdapter pet;
     private final Team glow;
@@ -51,6 +52,7 @@ public final class BukkitDifficultyService implements Listener, AutoCloseable {
     }
     public boolean activeRunicPet(UUID player) { return pet != null && pet.activeLevel(player) > 0; }
     public Set<UUID> enemyIds() { return Set.copyOf(enemies.keySet()); }
+    public boolean runicBoss(UUID instance) { return runicBossInstances.contains(instance); }
     public void spawn(Entity entity, Spawn spawn) {
         var context = generation.layoutContext(spawn.instance()).orElseThrow();
         var rules = context.difficulty();
@@ -61,6 +63,7 @@ public final class BukkitDifficultyService implements Listener, AutoCloseable {
         var active = MythicBukkit.inst().getMobManager().getActiveMob(entity.getUniqueId()).orElseThrow();
         active.getEntity().setHealthAndMax(active.getEntity().getMaxHealth() * rules.healthMultiplier(runic));
         enemies.put(entity.getUniqueId(), new Enemy(spawn.instance(), runic, spawn.boss()));
+        if (runic && spawn.boss()) runicBossInstances.add(spawn.instance());
         if (runic) {
             entity.setGlowing(true);
             glow.addEntry(entity.getUniqueId().toString());
@@ -140,6 +143,7 @@ public final class BukkitDifficultyService implements Listener, AutoCloseable {
         Enemy enemy = enemies.remove(event.getEntity().getUniqueId());
         glow.removeEntry(event.getEntity().getUniqueId().toString());
         if (enemy == null || !enemy.runic()) return;
+        if (enemy.boss()) runicBossInstances.add(enemy.instance());
         var context = generation.layoutContext(enemy.instance()).orElse(null);
         Player killer = event.getEntity().getKiller();
         var run = runs.info(enemy.instance()).orElse(null);
@@ -164,6 +168,7 @@ public final class BukkitDifficultyService implements Listener, AutoCloseable {
             active.getEntity().getBukkitEntity().setGlowing(true); glow.addEntry(entityId.toString());
             enemies.put(entityId, new Enemy(enemy.instance(), true, enemy.boss()));
         }
+        if (enemy.boss()) runicBossInstances.add(enemy.instance());
         DungeonMessages.send(sender, "<light_purple>Debug enemy is Runic. Debug runs give no fragments or Dungeon XP.</light_purple>");
     }
 
@@ -187,8 +192,9 @@ public final class BukkitDifficultyService implements Listener, AutoCloseable {
             return false;
         });
         magicFind.keySet().removeIf(instance -> generation.layoutContext(instance).isEmpty());
+        runicBossInstances.removeIf(instance -> generation.layoutContext(instance).isEmpty());
     }
-    @Override public void close() { if (pet != null) pet.close(); glow.unregister(); enemies.clear(); magicFind.clear(); }
+    @Override public void close() { if (pet != null) pet.close(); glow.unregister(); enemies.clear(); magicFind.clear(); runicBossInstances.clear(); }
     public record Spawn(UUID instance, int room, Point point, boolean boss) { }
     private record Enemy(UUID instance, boolean runic, boolean boss) { }
 }

@@ -45,7 +45,13 @@ public final class DungeonDifficultyMenuService {
         }));
         gui.setItem(13, item(Material.MAP, "<gold>Dungeon difficulties</gold>",
                 List.of(MiniMessageUtils.miniMessage("<gray>Clear each tier to unlock the next.</gray>"),
-                        MiniMessageUtils.miniMessage("<gray>Every party member must have it unlocked.</gray>")),
+                        MiniMessageUtils.miniMessage("<gray>Every party member must have it unlocked.</gray>"),
+                        MiniMessageUtils.miniMessage(""),
+                        MiniMessageUtils.miniMessage("<light_purple>Runic enemies</light_purple>"),
+                        MiniMessageUtils.miniMessage("<gray>Purple glow and particles.</gray>"),
+                        MiniMessageUtils.miniMessage("<gray>x10 health and x5 damage after difficulty scaling.</gray>"),
+                        MiniMessageUtils.miniMessage("<gray>Mobs and minibosses can be Runic from Demonic.</gray>"),
+                        MiniMessageUtils.miniMessage("<gray>Bosses can be Runic from Void.</gray>")),
                 event -> event.setCancelled(true)));
         for (Difficulty tier : Difficulty.values()) {
             DifficultyRules rules = configs.snapshot().difficulties().get(tier.id());
@@ -89,12 +95,22 @@ public final class DungeonDifficultyMenuService {
         lines.addAll(List.of("", "<gold>Rewards</gold>",
                 "<gray>Dungeon XP: <aqua>x" + number(rules.xpMultiplier()) + "</aqua></gray>",
                 "<gray>Magic Find: <green>x" + number(rules.magicFindMultiplier()) + "</green></gray>",
+                "<gray>Chest prices: <green>" + tier.chestDiscountPercent() + "% less</green></gray>",
                 "", "<gold>Special rules</gold>",
                 rules.ordinaryRevival() ? "<gray>Ordinary revives: <green>Allowed</green></gray>"
                         : "<gray>Ordinary revives: <red>Disabled</red></gray>"));
         if (!rules.ordinaryRevival()) lines.add("<dark_gray>Runic pet revival still works once per run.</dark_gray>");
-        if (rules.runicChance() > 0) lines.add("<gray>Runic enemies: <light_purple>" + percent(rules.runicChance()) + "%</light_purple></gray>");
-        if (rules.runicBossChance() > 0) lines.add("<gray>Runic bosses: <light_purple>" + percent(rules.runicBossChance()) + "%</light_purple></gray>");
+        if (rules.runicChance() > 0) {
+            lines.add("<gray>Runic enemies: <light_purple>" + percent(rules.runicChance()) + "%</light_purple></gray>");
+            lines.add("<dark_gray>Purple glow; x10 health and x5 damage.</dark_gray>");
+            lines.add("<dark_gray>Mobs/minibosses can drop a Runic Fragment.</dark_gray>");
+        }
+        if (rules.runicBossChance() > 0) {
+            lines.add("<gray>Runic bosses: <light_purple>" + percent(rules.runicBossChance()) + "%</light_purple></gray>");
+            lines.add("<dark_gray>Drop 4 Runic Fragments on defeat.</dark_gray>");
+            lines.add("<gray>Runic boss clear: <green>+20 Bonus score</green></gray>");
+            lines.add("<dark_gray>Chest prices get another 20% off.</dark_gray>");
+        }
         lines.add("");
         if (unlocked) lines.add("<yellow>Click to start</yellow>");
         else {
