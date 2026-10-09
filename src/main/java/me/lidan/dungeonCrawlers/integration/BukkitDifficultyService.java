@@ -50,6 +50,7 @@ public final class BukkitDifficultyService implements Listener, AutoCloseable {
         glow.color(net.kyori.adventure.text.format.NamedTextColor.LIGHT_PURPLE);
     }
     public boolean activeRunicPet(UUID player) { return pet != null && pet.activeLevel(player) > 0; }
+    public Set<UUID> enemyIds() { return Set.copyOf(enemies.keySet()); }
     public void spawn(Entity entity, Spawn spawn) {
         var context = generation.layoutContext(spawn.instance()).orElseThrow();
         var rules = context.difficulty();

@@ -41,8 +41,18 @@ Generation, Runic forcing and door interaction require debug mode to be enabled.
 | `/dungeon room delete <id>` | `dungeoncrawlers.admin.authoring` | Delete an unused authored room. |
 | `/dungeon room paste <id> <rotation>` | `dungeoncrawlers.admin.authoring` | Paste an authored room for inspection. |
 
-`<type>` is `normal`, `start`, `portal`, or `boss`. `<encounters>` is `none`, `normal`, `miniboss`, or `normal,miniboss`. The validator reports the total marker count and `Class Selector NPC: Yes/No`. It also warns when Citizens is unavailable.
+`<type>` is `normal`, `start`, `portal`, or `boss`. `<encounters>` is `none`, `normal`, `miniboss`, `normal,miniboss`, or `miniboss,normal`. The validator reports the total marker count and `Class Selector NPC: Yes/No`. It also warns when Citizens is unavailable.
 
 ## Diagnostics
 
 `/dungeon help` shows the common player and administrator commands. Other phase and compatibility commands remain available to operators with their existing `dungeoncrawlers.admin.*` permissions; use `/dungeon help` and the command suggestions for those paths.
+
+## Admin autocomplete
+
+Tab completes configured floor, room, class, blessing, difficulty and reward IDs, player names, and known instance IDs. Room creation and selection validation suggest room types and encounter lists, including `normal,miniboss` and the reverse order. Typing `normal,` suggests the remaining miniboss capability. Room paste and connection tests suggest rotations `0`, `90`, `180`, and `270`.
+
+Door commands suggest cardinal facings and door states; state simulation suggests dungeon states. Reward reconciliation suggests claims waiting for review and `charged`/`not-charged`; delivery pause suggests `on`/`off` and boolean aliases. Compatibility and mob-spawn commands read the native CaveCrawlers item and MythicMobs ID registries.
+
+Combat room indices follow the selected instance, including the player-relative `this` alias. Mob kill/remove suggest living required entities in the selected room. Runic forcing suggests tracked dungeon enemy UUIDs; its existing debug-instance restriction still applies. Runtime lists update as rooms, entities and claim states change.
+
+New room names, seeds, amounts, coordinates, durations and reconciliation evidence remain free input. Autocomplete does not execute commands or change their permission/validation rules.

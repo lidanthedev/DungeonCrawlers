@@ -310,6 +310,18 @@ public final class RewardClaimService {
         }
     }
 
+    public List<UUID> reconciliationIds() {
+        synchronized (records) {
+            return records.values().stream().filter(value -> !value.pending)
+                    .map(value -> value.current)
+                    .filter(record -> record.claimGroup().state() == ClaimGroup.State.ATTEMPTED)
+                    .flatMap(record -> record.offers().values().stream()
+                            .filter(offer -> offer.state() == OfferState.RECONCILIATION_REQUIRED
+                                    && offer.offerId().equals(record.claimGroup().winnerOfferId())))
+                    .map(OfferSnapshot::offerId).toList();
+        }
+    }
+
     public static boolean isPending(ItemStack item) {
         return readBoolean(item, PENDING_KEY);
     }

@@ -8,7 +8,13 @@ class DungeonDifficultyDebugCommandTest {
         MockBukkit.mock();
         try {
             var plugin = MockBukkit.createMockPlugin();
-            assertDoesNotThrow(() -> BukkitLamp.builder(plugin).build().register(
+            var builder = BukkitLamp.builder(plugin);
+            AdminSuggestionProviders.register(builder, null, null, java.util.List::of, java.util.List::of,
+                    java.util.List::of, java.util.List::of);
+            builder.suggestionProviders().addProviderForAnnotation(revxrsal.commands.annotation.SuggestWith.class,
+                    annotation -> annotation.value() == FloorIdSuggestionProvider.class
+                            ? new FloorIdSuggestionProvider<>(java.util.List::of) : null);
+            assertDoesNotThrow(() -> builder.build().register(
                     new DungeonDifficultyDebugCommand(null, () -> false, null, null)));
         } finally { MockBukkit.unmock(); }
     }

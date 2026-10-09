@@ -152,6 +152,8 @@ class RewardClaimServiceTest {
         RewardClaimService claims = new RewardClaimService(clock(), entitlements, items(), economy);
         AtomicReference<RewardClaimService.ClaimResult> result = new AtomicReference<>();
 
+        assertTrue(claims.reconciliationIds().isEmpty());
+
         claims.claim(INSTANCE, PLAYER, "gold", player(), result::set);
 
         assertEquals(RewardClaimService.ClaimStatus.RECONCILIATION_REQUIRED, result.get().status());
@@ -162,11 +164,13 @@ class RewardClaimServiceTest {
 
         UUID offerId = claims.info(INSTANCE, PLAYER).orElseThrow().offers().values().stream()
                 .filter(value -> value.price() == 5).findFirst().orElseThrow().offerId();
+        assertEquals(List.of(offerId), claims.reconciliationIds());
         AtomicReference<RewardClaimService.ReconcileResult> reconciliation = new AtomicReference<>();
         claims.reconcile(offerId, RewardClaimService.Decision.NOT_CHARGED, "test", "provider log says no debit",
                 reconciliation::set);
 
         assertTrue(reconciliation.get().successful(), reconciliation.get().detail());
+        assertTrue(claims.reconciliationIds().isEmpty());
         assertEquals(ClaimGroup.State.NONE, claims.info(INSTANCE, PLAYER).orElseThrow().claimGroup().state());
         assertEquals(1, withdrawals.get());
     }

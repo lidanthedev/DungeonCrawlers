@@ -15,7 +15,12 @@ class DifficultyIdSuggestionProviderTest {
             var plugin = MockBukkit.createMockPlugin();
             var player = server.addPlayer();
             player.setOp(true);
-            BukkitLamp.builder(plugin).build().register(
+            var builder = BukkitLamp.builder(plugin);
+            AdminSuggestionProviders.register(builder, null, null, List::of, List::of, List::of, List::of);
+            builder.suggestionProviders().addProviderForAnnotation(revxrsal.commands.annotation.SuggestWith.class,
+                    annotation -> annotation.value() == FloorIdSuggestionProvider.class
+                            ? new FloorIdSuggestionProvider<>(() -> List.of("floor_1")) : null);
+            builder.build().register(
                     new DungeonDifficultyDebugCommand(null, () -> false, null, null));
             assertEquals(List.of("normal", "hard", "insane", "extreme", "demonic", "hellish", "death",
                             "void", "hardcore", "impossible"),

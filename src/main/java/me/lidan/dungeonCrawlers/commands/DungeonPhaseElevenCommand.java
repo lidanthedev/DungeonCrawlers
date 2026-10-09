@@ -31,6 +31,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import revxrsal.commands.annotation.Command;
 import revxrsal.commands.annotation.Subcommand;
+import revxrsal.commands.annotation.Suggest;
 import revxrsal.commands.annotation.SuggestWith;
 import revxrsal.commands.bukkit.annotation.CommandPermission;
 
@@ -261,7 +262,9 @@ public final class DungeonPhaseElevenCommand {
 
     @Subcommand("reward reconcile")
     @CommandPermission("dungeoncrawlers.admin.debug")
-    public void rewardReconcile(CommandSender sender, String claimId, String decision, String evidence) {
+    public void rewardReconcile(CommandSender sender,
+                                @SuggestWith(AdminSuggestionProviders.ReconciliationClaims.class) String claimId,
+                                @Suggest({"charged", "not-charged"}) String decision, String evidence) {
         if (!requireDebug(sender)) return;
         if (claims == null) {
             send(sender, false, "Reward purchases are not enabled on this server.");
@@ -288,7 +291,7 @@ public final class DungeonPhaseElevenCommand {
 
     @Subcommand("reward delivery-pause-test")
     @CommandPermission("dungeoncrawlers.admin.debug")
-    public void rewardDeliveryPauseTest(CommandSender sender, String mode) {
+    public void rewardDeliveryPauseTest(CommandSender sender, @Suggest({"on", "off", "true", "false"}) String mode) {
         if (!requireDebug(sender)) return;
         if (claims == null) {
             send(sender, false, "Reward purchases are not enabled on this server.");

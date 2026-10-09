@@ -128,3 +128,14 @@ Credits persist in schema-1 records under `dungeon-admin-completions`, keyed by 
 - Uploaded JAR SHA-256 `488ed3b930230e6b831aa20e482040026b66ead1bd0eac449d08329a80c77f97`. No active instances remained at 20:00:38 UTC.
 - `cc reload all` ran at 20:01:41 UTC. Recovery reported zero blockers and `startsEnabled=true` at 20:01:50. Configuration validation passed at 20:02:16.
 - The console rejected amount zero at 20:02:05. Omitting amount at 20:02:12 granted LidanTheGamer one Hardcore credit on floor_1, reported total one, and confirmed access through Impossible without XP or loot.
+
+## Admin argument autocomplete
+
+2026-10-09: Audited every admin command's arguments. Added suggestions for room types and both comma-separated capability orders, rotations, state simulation, door facings/states, class/blessing inspection IDs, difficulty-debug floor IDs, reward decisions/pause options, native item/Mythic mob IDs, combat room indices, live required entity IDs, tracked Runic enemy IDs and claims awaiting reconciliation. Existing configured IDs, instance aliases and player suggestions remain in use. New names, numeric/free-text inputs stay unrestricted.
+
+- Native CaveCrawlers completion classes use its relocated Lamp package, so the addon reads the same native registries through its existing adapters. Lamp normalizes parameter names (`instanceId` becomes `instance id`); context providers resolve the unique preceding String/Integer arguments by type.
+- Java 21 clean build passed all 292 tests with zero failures, errors or skips. Actual Lamp command-tree checks cover prefixes and comma completion, room/entity scoping across instances and `this`, missing/dead entities, updated native/runtime lists, console handling and non-admin denial. Reconciliation regression confirms a claim appears only while review is required.
+- Uploaded JAR SHA-256 `5f5ed326d35e6973b846dc8ff5222ad06173908ed832fe2b01e38bfbd04f5b2d`. No active instances remained at 12:46:28 UTC.
+- `cc reload all` ran at 12:46:56 UTC; the addon enabled at 12:47:06 and recovery reported zero blockers with `startsEnabled=true` at 12:47:15. Existing transient Essentials command-send exceptions and a ten-second watchdog dump occurred; the server resumed.
+- Configuration validation passed at 12:47:34. Class inspection passed at 12:47:37; native Runic Fragment serialization passed at 12:47:42. A fixture-only blessing ID (`life`) was correctly rejected; the configured blessing was checked afterward. `/dungeon help` ran as LidanTheGamer at 12:47:56 without a command exception.
+- Client TAB display and Brigadier round-trip suggestions remain pending human confirmation. No rooms, runs, mobs or claim decisions were mutated during these smoke checks.

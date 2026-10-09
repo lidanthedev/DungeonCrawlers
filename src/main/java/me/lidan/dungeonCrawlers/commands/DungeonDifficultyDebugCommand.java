@@ -34,12 +34,12 @@ public final class DungeonDifficultyDebugCommand {
         else preparation.openDoorAt(player, run.orElseThrow().door().center());
     }
     @Subcommand("runic force")
-    public void force(CommandSender sender, UUID entityId) {
+    public void force(CommandSender sender, @SuggestWith(AdminSuggestionProviders.RunicEntities.class) UUID entityId) {
         if (debug.getAsBoolean()) service.forceRunic(sender, entityId);
         else DungeonMessages.send(sender, "<red>Debug mode is disabled.</red>");
     }
     @Subcommand("instance generate-difficulty-debug")
-    public void generate(Player player, String floorId,
+    public void generate(Player player, @SuggestWith(FloorIdSuggestionProvider.class) String floorId,
                          @SuggestWith(DifficultyIdSuggestionProvider.class) String tier, long seed) {
         if (debug.getAsBoolean()) preparation.startDebug(player, floorId, tier, seed);
         else DungeonMessages.send(player, "<red>Debug mode is disabled.</red>");

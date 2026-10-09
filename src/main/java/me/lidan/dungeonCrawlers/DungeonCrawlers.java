@@ -469,6 +469,9 @@ public final class DungeonCrawlers extends JavaPlugin {
 
     private void registerCommands() {
         // Register commands
+        me.lidan.dungeonCrawlers.commands.AdminSuggestionProviders.register(commandHandlerBuilder, combat,
+                runPreparation, new CaveItemsAdapter()::ids, mythicMobs::ids,
+                difficultyService::enemyIds, claims::reconciliationIds);
         commandHandlerBuilder.suggestionProviders().addProviderForAnnotation(SuggestWith.class, annotation -> {
             if (annotation.value() != DifficultyIdSuggestionProvider.class) return null;
             return new DifficultyIdSuggestionProvider<BukkitCommandActor>();

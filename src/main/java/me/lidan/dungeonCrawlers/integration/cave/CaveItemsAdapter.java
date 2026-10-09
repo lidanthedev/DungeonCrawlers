@@ -8,6 +8,10 @@ import org.bukkit.inventory.ItemStack;
 import java.util.Optional;
 
 public final class CaveItemsAdapter implements CaveItemsGateway {
+    public java.util.Set<String> ids() {
+        return java.util.Set.copyOf(me.lidan.cavecrawlers.items.ItemsManager.getInstance().getKeys());
+    }
+
     private ItemsAPI api() {
         return CaveCrawlers.getAPI().getItemsAPI();
     }
@@ -25,4 +29,3 @@ public final class CaveItemsAdapter implements CaveItemsGateway {
         return Optional.ofNullable(api().buildItem(itemId, amount));
     }
 }
-
