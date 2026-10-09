@@ -440,7 +440,8 @@ public final class RewardClaimService {
                         ClaimStatus.PROCESSING, "another claim is still processing"));
                 return;
             }
-            current = mutable == null ? createRecord(instanceId, playerId, entitlement) : mutable.current;
+            current = mutable == null ? createRecord(instanceId, playerId, entitlement)
+                    : withLiveAccess(mutable.current, entitlement);
             if (mutable != null && current.claimGroup().state() != ClaimGroup.State.NONE) {
                 ClaimStatus status = current.claimGroup().state() == ClaimGroup.State.ATTEMPTED
                         ? ClaimStatus.RECONCILIATION_REQUIRED : ClaimStatus.ALREADY_CLAIMED;
@@ -569,6 +570,11 @@ public final class RewardClaimService {
                         ClaimStatus.PROCESSING, "reward claim changed while preparing"));
                 return;
             }
+            if (!entitlements.isOpen(current.instanceId(), current.playerId())) {
+                complete(callback, ClaimResult.failure(current.instanceId(), current.playerId(), offerId,
+                        ClaimStatus.EXPIRED, "reward entitlement is unavailable or expired"));
+                return;
+            }
             OfferSnapshot attempted = transition(source, OfferStateMachine.Event.CONFIRM_DEBIT, attempt);
             ClaimGroup group = current.claimGroup().attempt(offerId, attempt);
             ClaimRecord target = replaceOffer(current, attempted, group,
@@ -596,8 +602,11 @@ public final class RewardClaimService {
             return;
         }
 
+        boolean accessOpen = entitlements.isOpen(current.instanceId(), current.playerId());
         EconomyGateway.TransactionResult transaction;
-        if (account instanceof Player player
+        if (!accessOpen) {
+            transaction = new EconomyGateway.TransactionResult(false, 0, 0, "reward access closed before debit");
+        } else if (account instanceof Player player
                 && !canAcceptPayloads(player, offer.items(), offerId, current.playerId())) {
             transaction = new EconomyGateway.TransactionResult(false, 0, 0, INVENTORY_FULL_DETAIL);
         } else {
@@ -641,7 +650,8 @@ public final class RewardClaimService {
                     audit(current, "DEBIT_FAILED", offerId, attempt, failedTransaction.detail()));
             persistCandidate(mutable, current, target, false, success -> complete(callback,
                     success ? ClaimResult.failure(current.instanceId(), current.playerId(), offerId,
-                            ClaimStatus.REJECTED, INSUFFICIENT_FUNDS_DETAIL)
+                            ClaimStatus.REJECTED, accessOpen ? INSUFFICIENT_FUNDS_DETAIL
+                                    : "reward entitlement is unavailable or expired")
                             : ClaimResult.failure(current.instanceId(), current.playerId(), offerId,
                             ClaimStatus.RECONCILIATION_REQUIRED,
                             "purchase failed but state persistence is uncertain")));
@@ -1064,6 +1074,18 @@ public final class RewardClaimService {
                     highWater(run.completedAt()), null, provider, playerId, reward.price(), List.of()));
         }
         return new ClaimRecord(instanceId, playerId, offers, ClaimGroup.none(), Map.of(), List.of(), 0);
+    }
+
+    private static ClaimRecord withLiveAccess(ClaimRecord record,
+                                              RewardEntitlementService.PlayerEntitlement entitlement) {
+        if (entitlement.mode() != OfferMode.LIVE) return record;
+        Map<UUID, OfferSnapshot> offers = new LinkedHashMap<>();
+        record.offers().forEach((id, offer) -> offers.put(id, new OfferSnapshot(offer.offerId(), offer.mode(),
+                offer.state(), offer.quarantinePrior(), offer.completedAt(), offer.recoveredAt(),
+                entitlement.outerDeadline(), entitlement.sessionStartedAt(), entitlement.sessionExpiresAt(),
+                offer.clockHighWater(), offer.attemptId(), offer.provider(), offer.accountId(), offer.price(), offer.items())));
+        return new ClaimRecord(record.instanceId(), record.playerId(), offers, record.claimGroup(),
+                record.mailbox(), record.audit(), record.recordVersion());
     }
 
     private Instant highWater(Instant completedAt) {

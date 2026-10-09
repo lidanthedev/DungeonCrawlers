@@ -26,6 +26,7 @@ import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -42,6 +43,33 @@ class RewardEntitlementServiceTest {
     private final RewardDefinition rewards = new RewardDefinition(true, 0, 0, 2, false, List.of(
             new RewardItem("a", 1, 1, 8), new RewardItem("b", 1, 1, 8),
             new RewardItem("c", 1, 1, 8), new RewardItem("d", 1, 1, 8)));
+
+    @Test
+    void liveRewardsRemainOpenUntilInstanceClosesWhileOfflineRecoveryKeepsItsDeadline(@TempDir Path directory) {
+        Clock clock = Clock.fixed(COMPLETED.plusSeconds(600), ZoneOffset.UTC);
+        var open = new AtomicBoolean(true);
+        var completion = completion(List.of(new RewardEntitlementService.Participant(ACTIVE, true, true),
+                new RewardEntitlementService.Participant(OFFLINE, true, false)));
+        try (var repository = new FileDurableRepository(directory, 10, Runnable::run)) {
+            var service = new RewardEntitlementService(clock, Set.of("a", "b", "c", "d")::contains, repository);
+            service.configureLiveAccess(id -> id.equals(INSTANCE) && open.get());
+            var original = service.register(completion).players().get(ACTIVE).offers();
+            assertTrue(service.isOpen(INSTANCE, ACTIVE));
+            assertEquals(original, service.open(INSTANCE, ACTIVE).orElseThrow().offers());
+            assertTrue(service.preview(INSTANCE, ACTIVE, "wooden").isPresent());
+            open.set(false);
+            assertFalse(service.isOpen(INSTANCE, ACTIVE));
+            assertTrue(service.open(INSTANCE, ACTIVE).isEmpty());
+            assertTrue(service.preview(INSTANCE, ACTIVE, "wooden").isEmpty());
+            assertTrue(service.open(INSTANCE, OFFLINE).isPresent());
+        }
+        try (var repository = new FileDurableRepository(directory, 10, Runnable::run)) {
+            var restored = new RewardEntitlementService(clock, Set.of("a", "b", "c", "d")::contains, repository);
+            restored.configureLiveAccess(id -> false);
+            assertTrue(restored.open(INSTANCE, ACTIVE).isEmpty());
+            assertTrue(restored.open(INSTANCE, OFFLINE).isPresent());
+        }
+    }
 
     @Test
     void allDifficultyPricesApplyToLiveAndOfflineOffersAndStayFixedOnReopen() {

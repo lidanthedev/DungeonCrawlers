@@ -44,6 +44,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -63,6 +64,69 @@ class RewardClaimServiceTest {
     @AfterEach
     void tearDownBukkit() {
         MockBukkit.unmock();
+    }
+
+    @Test
+    void lateLivePurchaseRefreshesPersistedPreflightDeadlineAndOwnedDeliverySurvivesClosure() {
+        var rewards = entitlements();
+        var open = new AtomicBoolean(true);
+        var now = new AtomicReference<>(COMPLETED.plusSeconds(10));
+        var clock = Mockito.mock(Clock.class);
+        Mockito.when(clock.instant()).thenAnswer(ignored -> now.get());
+        var repository = new InMemoryRepository();
+        var economy = Mockito.mock(EconomyGateway.class);
+        Mockito.when(economy.providerIdentity()).thenReturn("Vault");
+        Mockito.when(economy.withdraw(Mockito.any(), Mockito.eq(5.0)))
+                .thenReturn(new EconomyGateway.TransactionResult(true, 5, 0, "charged"));
+        var claims = new RewardClaimService(clock, repository, rewards, items(),
+                () -> null, Runnable::run, ignored -> { });
+        var result = new AtomicReference<RewardClaimService.ClaimResult>();
+        claims.claim(INSTANCE, PLAYER, "gold", player(), result::set);
+        assertEquals(RewardClaimService.ClaimStatus.BLOCKED_PROVIDER, result.get().status());
+
+        rewards.configureLiveAccess(id -> id.equals(INSTANCE) && open.get());
+        now.set(COMPLETED.plusSeconds(600));
+        var restored = new RewardClaimService(clock, repository, rewards, items(),
+                () -> economy, Runnable::run, ignored -> { });
+        restored.claim(INSTANCE, PLAYER, "gold", player(), result::set);
+        assertTrue(result.get().successful(), result.get().detail());
+        Mockito.verify(economy).withdraw(Mockito.any(), Mockito.eq(5.0));
+        open.set(false);
+        restored.claim(INSTANCE, PLAYER, "wood", player(), result::set);
+        assertEquals(RewardClaimService.ClaimStatus.REJECTED, result.get().status());
+        Mockito.verify(economy, Mockito.times(1)).withdraw(Mockito.any(), Mockito.eq(5.0));
+
+        var online = new PlayerMock(MockBukkit.getMock(), "Claimant", PLAYER);
+        MockBukkit.getMock().addPlayer(online);
+        var delivery = new AtomicReference<RewardClaimService.DeliveryResult>();
+        restored.deliver(INSTANCE, PLAYER, online, delivery::set);
+        assertTrue(delivery.get().successful(), delivery.get().detail());
+        assertEquals(1, online.getInventory().getItem(0).getAmount());
+    }
+
+    @Test
+    void instanceClosureDuringPersistenceNeverChargesThePlayer() {
+        for (int closeAfterWrite : List.of(1, 2)) {
+            var rewards = entitlements();
+            var open = new AtomicBoolean(true);
+            rewards.configureLiveAccess(id -> open.get());
+            var writes = new AtomicInteger();
+            var repository = Mockito.spy(new InMemoryRepository());
+            Mockito.doAnswer(invocation -> {
+                var submission = invocation.callRealMethod();
+                if (writes.incrementAndGet() == closeAfterWrite) open.set(false);
+                return submission;
+            }).when(repository).submit(Mockito.any());
+            var economy = Mockito.mock(EconomyGateway.class);
+            Mockito.when(economy.providerIdentity()).thenReturn("Vault");
+            var claims = new RewardClaimService(clock(), repository, rewards, items(),
+                    () -> economy, Runnable::run, ignored -> { });
+            var result = new AtomicReference<RewardClaimService.ClaimResult>();
+            claims.claim(INSTANCE, PLAYER, "gold", player(), result::set);
+            assertFalse(result.get().successful());
+            Mockito.verify(economy, Mockito.never()).withdraw(Mockito.any(), Mockito.anyDouble());
+            assertEquals(ClaimGroup.State.NONE, claims.info(INSTANCE, PLAYER).orElseThrow().claimGroup().state());
+        }
     }
 
     @Test

@@ -307,6 +307,7 @@ public final class DungeonCrawlers extends JavaPlugin {
                 phaseClock(), getLogger()::warning, this::finalizeRewards, timings);
         rewards = new RewardEntitlementService(phaseClock(), new CaveItemsAdapter()::isConfigured,
                 durableRepository, timings);
+        rewards.configureLiveAccess(instanceId -> runPreparation.info(instanceId).isPresent());
         claims = new RewardClaimService(phaseClock(), durableRepository, rewards, new CaveItemsAdapter(),
                 () -> {
                     RegisteredServiceProvider<Economy> registration = getServer().getServicesManager()

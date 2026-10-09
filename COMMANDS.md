@@ -23,6 +23,8 @@ Activating the boss portal before its entrance door was opened still runs the no
 
 Chest prices decrease by 5% of the base price per difficulty step, from Normal at 0% off to Impossible at 45% off. Defeating a Runic boss grants +20 Bonus score and another 20% off the discounted price. Both discounts multiply before rounding down once to whole coins. For example, an Impossible chest priced at 100,000 costs 55,000 normally or 44,000 after a Runic boss clear. Free chests stay free, and saved offers retain their original prices. The difficulty menu explains Runic scaling, spawn tiers, fragments and boss bonuses.
 
+Completed live rewards remain available until the instance closes. The separate live reward timer cannot expire chest access or purchases while that instance is open. Closing or reloading the instance ends live access; already purchased rewards retain their delivery recovery. Offline completion rewards keep their existing recovery deadlines.
+
 Difficulty diagnostics require `dungeoncrawlers.admin.debug`:
 
 - `/dungeon difficulty info [player]` reports effective MAGIC_FIND, deaths and the pet charge.
