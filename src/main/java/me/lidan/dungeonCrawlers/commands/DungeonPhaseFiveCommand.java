@@ -27,7 +27,9 @@ import me.lidan.dungeonCrawlers.integration.PartyProvider;
 import me.lidan.dungeonCrawlers.integration.ProgressBarService;
 import me.lidan.dungeonCrawlers.integration.SpawnProvider;
 import me.lidan.dungeonCrawlers.integration.spawn.BukkitSpawnProvider;
+import me.lidan.dungeonCrawlers.core.difficulty.DungeonProgressionService;
 import org.bukkit.Location;
+import revxrsal.commands.annotation.Optional;
 import org.bukkit.Server;
 import org.bukkit.World;
 import org.bukkit.command.CommandSender;
@@ -52,6 +54,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Consumer;
 
 /** Player-facing start, class selection, and preparation-door commands. */
 @Command("dungeon")
@@ -64,6 +67,7 @@ public final class DungeonPhaseFiveCommand {
     private final PlayerSnapshotService snapshots;
     private final TeleportPermitService permits;
     private final Server server;
+    private final Plugin plugin;
     private final Clock clock;
     private final String generationWorldName;
     private final DungeonActionBar actionBar;
@@ -77,11 +81,22 @@ public final class DungeonPhaseFiveCommand {
     private final BukkitDoorBlockService doorBlocks = new BukkitDoorBlockService();
     private final Map<UUID, Map<UUID, me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot>> captured
             = new LinkedHashMap<>();
+    private final Set<UUID> previewRecoveries = new java.util.HashSet<>();
     private final Map<UUID, me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot> pendingRecovery
             = new LinkedHashMap<>();
     private final Map<UUID, me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot> snapshotCleanupPending
             = new ConcurrentHashMap<>();
     private DungeonClassMenuService classMenuService;
+    private DungeonProgressionService progression;
+    private DungeonDifficultyMenuService difficultyMenu;
+    private Consumer<UUID> beforeCancel = ignored -> { };
+
+    public void configureDifficulties(DungeonProgressionService progression, Consumer<UUID> beforeCancel) {
+        this.progression = progression;
+        this.beforeCancel = beforeCancel;
+        this.difficultyMenu = new DungeonDifficultyMenuService(configRegistry, progression,
+                (player, args) -> start(player, args[0], args[1]));
+    }
     private ClassSelectorNpcService classSelectorNpcs = new NoOpClassSelectorNpcService();
 
     public DungeonPhaseFiveCommand(ConfigRegistryService configRegistry, PartyProvider parties,
@@ -167,6 +182,7 @@ public final class DungeonPhaseFiveCommand {
         this.snapshots = Objects.requireNonNull(snapshots, "snapshots");
         this.permits = Objects.requireNonNull(permits, "permits");
         this.server = Objects.requireNonNull(server, "server");
+        this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.generationWorldName = Objects.requireNonNull(generationWorldName, "generationWorldName");
         this.actionBar = Objects.requireNonNull(actionBar, "actionBar");
@@ -184,9 +200,22 @@ public final class DungeonPhaseFiveCommand {
                                 SecretDiscoveryService phaseSeven, PlayerLifecycleService lifecycle,
                                 PortalEncounterService phaseNine) { }
 
+    public void start(Player player, String floorId) {
+        start(player, floorId, null);
+    }
+
     @Subcommand("start")
     @CommandPermission("dungeoncrawlers.use")
-    public void start(Player player, @SuggestWith(FloorIdSuggestionProvider.class) String floorId) {
+    public void start(Player player, @SuggestWith(FloorIdSuggestionProvider.class) String floorId,
+                      @Optional @SuggestWith(DifficultyIdSuggestionProvider.class) String difficultyId) {
+        start(player, floorId, difficultyId, ThreadLocalRandom.current().nextLong(), true);
+    }
+
+    public void startDebug(Player player, String floorId, String difficultyId, long seed) {
+        start(player, floorId, difficultyId, seed, false);
+    }
+
+    private void start(Player player, String floorId, String difficultyId, long seed, boolean progressionEnabled) {
         ConfigSnapshot config = configRegistry.snapshot();
         FloorDefinition floor = config.floors().get(floorId);
         if (floor == null) {
@@ -207,8 +236,21 @@ public final class DungeonPhaseFiveCommand {
             }
             return;
         }
+        if (difficultyId == null && difficultyMenu != null) { difficultyMenu.open(player, floorId); return; }
+        String tierId = difficultyId == null ? "normal" : difficultyId.toLowerCase(java.util.Locale.ROOT);
+        var difficulty = config.difficulties().get(tierId);
+        if (difficulty == null) { DungeonMessages.send(player, DungeonMessages.error("Unknown dungeon difficulty.")); return; }
+        if (progressionEnabled && progression != null) {
+            var locked = progression.lockedMembers(party.snapshot().onlineMembers(), floorId, difficulty.tier());
+            if (!locked.isEmpty()) {
+                String names = locked.stream().map(id -> server.getOfflinePlayer(id).getName())
+                        .map(name -> name == null ? "Offline player" : name).collect(java.util.stream.Collectors.joining(", "));
+                DungeonMessages.send(player, DungeonMessages.error("Difficulty locked for: " + names + ". Clear the previous tier on this floor."));
+                return;
+            }
+        }
         GenerationService.StartResult result = generation.start(new GenerationService.StartRequest(
-                config, floor, party.snapshot(), ThreadLocalRandom.current().nextLong(), 0));
+                config, floor, party.snapshot(), seed, 0, difficulty, progressionEnabled));
         if (!result.accepted()) {
             DungeonMessages.send(player, DungeonMessages.error(playerError(result.detail())));
             return;
@@ -305,8 +347,11 @@ public final class DungeonPhaseFiveCommand {
 
     /** Called by the admin instance-cancel path before generation cleanup. */
     public void cancelFromAdmin(UUID instanceId) {
+        beforeCancel.accept(instanceId);
         RunPreparationService.RunSnapshot snapshot = runs.info(instanceId).orElse(null);
-        if (snapshot != null) {
+        if (snapshot == null && captured.containsKey(instanceId)) {
+            abort(instanceId, "room preview closed", "room preview closed");
+        } else if (snapshot != null) {
             switch (snapshot.state()) {
                 case FAILED -> abort(instanceId, "failed run reading period ended", "failed run closed");
                 case COMPLETED -> abort(instanceId, "completed reward period ended", "run closed");
@@ -321,6 +366,16 @@ public final class DungeonPhaseFiveCommand {
             if (phaseSeven != null) phaseSeven.cleanup(instanceId);
             if (combat != null) combat.cleanup(instanceId);
         }
+    }
+
+    /** Uses the normal durable player recovery path without registering a dungeon run. */
+    public CompletableFuture<Void> savePreviewRecovery(Player player, UUID instanceId) {
+        var snapshot = BukkitPlayerRecovery.capture(player, instanceId, clock);
+        var submission = snapshots.save(snapshot);
+        if (!submission.accepted()) return CompletableFuture.failedFuture(new IllegalStateException(submission.detail()));
+        captured.computeIfAbsent(instanceId, ignored -> new LinkedHashMap<>()).put(player.getUniqueId(), snapshot);
+        previewRecoveries.add(instanceId);
+        return submission.runtimeAck().thenApply(ignored -> null);
     }
 
     /** Closes a run after the central deadline service has finished its reading or reward period. */
@@ -363,6 +418,7 @@ public final class DungeonPhaseFiveCommand {
 
     /** Called by the interaction listener when a player clicks a preparation door. */
     public void openDoorAt(Player player, Point point) {
+        if (!canOpenDungeonDoor(player.getUniqueId())) return;
         var door = runs.doorAt(point);
         if (door.isEmpty()) return;
         var result = runs.openDoor(door.orElseThrow().instanceId(), player.getUniqueId());
@@ -391,6 +447,12 @@ public final class DungeonPhaseFiveCommand {
         }
     }
 
+    public boolean canOpenDungeonDoor(UUID playerId) {
+        UUID instance = runs.instanceFor(playerId).orElse(null);
+        return instance != null && (lifecycle == null || lifecycle.player(instance, playerId)
+                .map(player -> player.state() == PlayerLifecycleService.PlayerState.ALIVE).orElse(false));
+    }
+
     public java.util.Optional<ClassDefinition> selectedClass(UUID playerId) {
         return runs.selectedClass(playerId);
     }
@@ -412,7 +474,7 @@ public final class DungeonPhaseFiveCommand {
         var restored = BukkitPlayerRecovery.restore(player, snapshot, server, fallback);
         if (restored.successful()) {
             BukkitGhostState.exit(player);
-            deleteSnapshotAfterRestore(snapshot);
+            finishPlayerRestore(player, snapshot);
         } else {
             pendingRecovery.put(playerId, snapshot);
         }
@@ -511,8 +573,8 @@ public final class DungeonPhaseFiveCommand {
                 authorizeRestore(playerId, snapshot, fallback);
                 var result = BukkitPlayerRecovery.restore(player, snapshot, server, fallback);
                 if (result.successful()) {
-                    BukkitGhostState.exit(player);
-                    deleteSnapshotAfterRestore(snapshot);
+                    if (!previewRecoveries.contains(snapshot.instanceId())) BukkitGhostState.exit(player);
+                    finishPlayerRestore(player, snapshot);
                     restored++;
                 } else {
                     pendingRecovery.put(playerId, snapshot);
@@ -520,6 +582,7 @@ public final class DungeonPhaseFiveCommand {
             }
         }
         captured.clear();
+        previewRecoveries.clear();
         return restored;
     }
 
@@ -537,7 +600,7 @@ public final class DungeonPhaseFiveCommand {
         if (restored.successful()) {
             BukkitGhostState.exit(player);
             if (pending) pendingRecovery.remove(player.getUniqueId(), snapshot);
-            deleteSnapshotAfterRestore(snapshot);
+            finishPlayerRestore(player, snapshot);
         } else {
             pendingRecovery.put(player.getUniqueId(), snapshot);
         }
@@ -566,6 +629,25 @@ public final class DungeonPhaseFiveCommand {
         snapshots.deleteAfterRestore(snapshot).whenComplete((ignored, failure) -> {
             if (failure == null) snapshotCleanupPending.remove(snapshot.playerId(), snapshot);
         });
+    }
+
+    private void finishPlayerRestore(Player player,
+                                     me.lidan.dungeonCrawlers.persistence.model.PlayerRecoverySnapshot snapshot) {
+        if (!plugin.isEnabled()) return;
+        var destinationWorld = player.getWorld();
+        // Wait past the deferred world-change event and Multiverse's subsequent game mode enforcement.
+        server.getScheduler().runTaskLater(plugin, () -> {
+            if (!player.isOnline() || !player.getWorld().equals(destinationWorld)) return;
+            if (runs.instanceFor(player.getUniqueId()).isPresent()) return;
+            try {
+                var mode = org.bukkit.GameMode.valueOf(snapshot.gameMode());
+                player.setGameMode(mode);
+                if (player.getGameMode() == mode) deleteSnapshotAfterRestore(snapshot);
+                else pendingRecovery.put(player.getUniqueId(), snapshot);
+            } catch (RuntimeException exception) {
+                pendingRecovery.put(player.getUniqueId(), snapshot);
+            }
+        }, 3L);
     }
 
     private void preparePlayers(UUID instanceId, me.lidan.dungeonCrawlers.core.party.PartySnapshot party,
@@ -619,6 +701,7 @@ public final class DungeonPhaseFiveCommand {
             });
             if (lifecycle != null) {
                 var lifecycleRegistration = lifecycle.register(instanceId, party.onlineMembers());
+                lifecycle.configureOrdinaryRevival(instanceId, generation.layoutContext(instanceId).orElseThrow().difficulty().ordinaryRevival());
                 if (!lifecycleRegistration.successful()) {
                     abort(instanceId, lifecycleRegistration.detail());
                     return;
@@ -689,6 +772,7 @@ public final class DungeonPhaseFiveCommand {
     }
 
     private void abort(UUID instanceId, String reason, String outcome, boolean retainSnapshotsForReconnect) {
+        boolean preview = previewRecoveries.remove(instanceId);
         classSelectorNpcs.removeFor(instanceId);
         if (classMenuService != null) classMenuService.closeInstance(instanceId);
         if (phaseNine != null) phaseNine.cleanup(instanceId);
@@ -706,8 +790,8 @@ public final class DungeonPhaseFiveCommand {
                 authorizeRestore(playerId, snapshot, fallback);
                 var restored = BukkitPlayerRecovery.restore(player, snapshot, server, fallback);
                 if (restored.successful()) {
-                    BukkitGhostState.exit(player);
-                    deleteSnapshotAfterRestore(snapshot);
+                    if (!preview) BukkitGhostState.exit(player);
+                    finishPlayerRestore(player, snapshot);
                     DungeonMessages.send(player, DungeonMessages.warning(closedMessage(outcome)
                             + " Your previous player state was restored."));
                 } else {
@@ -727,6 +811,7 @@ public final class DungeonPhaseFiveCommand {
             case "failed run closed" -> "The failed dungeon has closed.";
             case "run closed" -> "The reward period has ended.";
             case "run wiped" -> "Your party was defeated.";
+            case "room preview closed" -> "Room preview closed.";
             default -> "Dungeon preparation was cancelled.";
         };
     }

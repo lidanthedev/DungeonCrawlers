@@ -37,7 +37,7 @@ public final class DungeonPhaseSixCommand {
     @Subcommand("room activate")
     @CommandPermission("dungeoncrawlers.admin.debug")
     public void roomActivate(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
-                             int roomIndex) {
+                             @SuggestWith(AdminSuggestionProviders.RoomIndexes.class) int roomIndex) {
         if (!requireDebug(sender)) return;
         UUID id = parse(sender, instanceId);
         if (id != null) send(sender, combat.activate(id, roomIndex));
@@ -46,7 +46,7 @@ public final class DungeonPhaseSixCommand {
     @Subcommand("room clear")
     @CommandPermission("dungeoncrawlers.admin.debug")
     public void roomClear(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
-                          int roomIndex) {
+                          @SuggestWith(AdminSuggestionProviders.RoomIndexes.class) int roomIndex) {
         if (!requireDebug(sender)) return;
         UUID id = parse(sender, instanceId);
         if (id != null) send(sender, combat.clear(id, roomIndex));
@@ -55,7 +55,7 @@ public final class DungeonPhaseSixCommand {
     @Subcommand("mob list")
     @CommandPermission("dungeoncrawlers.admin.debug")
     public void mobList(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
-                        @Optional Integer roomIndex) {
+                        @Optional @SuggestWith(AdminSuggestionProviders.RoomIndexes.class) Integer roomIndex) {
         if (!requireDebug(sender)) return;
         UUID id = parse(sender, instanceId);
         if (id == null) return;
@@ -104,7 +104,8 @@ public final class DungeonPhaseSixCommand {
     @Subcommand("mob spawn")
     @CommandPermission("dungeoncrawlers.admin.debug")
     public void mobSpawn(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
-                          int roomIndex, String mobId) {
+                          @SuggestWith(AdminSuggestionProviders.RoomIndexes.class) int roomIndex,
+                          @SuggestWith(AdminSuggestionProviders.MobIds.class) String mobId) {
         if (!requireDebug(sender)) return;
         UUID id = parse(sender, instanceId);
         if (id != null) send(sender, combat.spawn(id, roomIndex, mobId));
@@ -113,7 +114,8 @@ public final class DungeonPhaseSixCommand {
     @Subcommand("mob kill")
     @CommandPermission("dungeoncrawlers.admin.debug")
     public void mobKill(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
-                         int roomIndex, UUID entityId) {
+                         @SuggestWith(AdminSuggestionProviders.RoomIndexes.class) int roomIndex,
+                         @SuggestWith(AdminSuggestionProviders.MobEntities.class) UUID entityId) {
         if (!requireDebug(sender)) return;
         UUID id = parse(sender, instanceId);
         if (id != null) send(sender, combat.kill(id, roomIndex, entityId));
@@ -122,7 +124,8 @@ public final class DungeonPhaseSixCommand {
     @Subcommand("mob remove")
     @CommandPermission("dungeoncrawlers.admin.debug")
     public void mobRemove(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
-                           int roomIndex, UUID entityId) {
+                           @SuggestWith(AdminSuggestionProviders.RoomIndexes.class) int roomIndex,
+                           @SuggestWith(AdminSuggestionProviders.MobEntities.class) UUID entityId) {
         if (!requireDebug(sender)) return;
         UUID id = parse(sender, instanceId);
         if (id != null) send(sender, combat.remove(id, roomIndex, entityId));

@@ -4,6 +4,8 @@ import me.lidan.cavecrawlers.stats.StatType;
 import me.lidan.cavecrawlers.utils.Range;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.*;
 import me.lidan.dungeonCrawlers.config.BoostedConfigFactory;
+import me.lidan.dungeonCrawlers.core.difficulty.Difficulty;
+import me.lidan.dungeonCrawlers.core.difficulty.DifficultyRules;
 import org.bukkit.Material;
 
 import java.io.IOException;
@@ -53,16 +55,43 @@ public final class ConfigLoader {
         Map<String, BlessingDefinition> blessings = parseBlessings(root.resolve("blessings.yml"), parser);
         Map<String, RoomDefinition> rooms = parseRooms(root.resolve("rooms.yml"), parser);
         Map<String, FloorDefinition> floors = parseFloors(root.resolve("floors"), parser);
+        Map<String, DifficultyRules> difficulties = parseDifficulties(root.resolve("difficulties.yml"), parser);
         crossValidate(floors, rooms, classes, blessings, parser);
         if (!parser.errors.isEmpty()) return new ConfigLoadResult(null, parser.errors, parser.warnings);
         try {
             String hash = hashFiles(root);
             return new ConfigLoadResult(new ConfigSnapshot(1, floors, rooms, classes, blessings,
-                    encounters.snapshot(), hash, clock.instant()), parser.errors, parser.warnings);
+                    encounters.snapshot(), hash, clock.instant(), difficulties), parser.errors, parser.warnings);
         } catch (IOException exception) {
             parser.error("config hash failed: " + exception.getMessage());
             return new ConfigLoadResult(null, parser.errors, parser.warnings);
         }
+    }
+
+    private Map<String, DifficultyRules> parseDifficulties(Path file, Parser p) {
+        if (!Files.exists(file)) return Difficulty.defaultRules();
+        Map<String, Object> root = p.file(file);
+        p.schema(root, file);
+        Map<String, Object> entries = p.map(root.get("difficulties"), "difficulties.yml:difficulties", true);
+        Map<String, DifficultyRules> result = new LinkedHashMap<>();
+        for (Difficulty tier : Difficulty.values()) {
+            String path = "difficulties.yml:" + tier.id();
+            Map<String, Object> entry = p.map(entries.get(tier.id()), path, true);
+            DifficultyRules d = tier.defaults();
+            result.put(tier.id(), new DifficultyRules(tier,
+                    p.optionalDouble(entry.get("health-multiplier"), path + ".health-multiplier", d.healthMultiplier(), 0, Double.MAX_VALUE),
+                    p.optionalDouble(entry.get("duplicate-class-reduction"), path + ".duplicate-class-reduction", d.duplicateClassReduction(), -Double.MIN_VALUE, 1),
+                    p.optionalDouble(entry.get("incoming-multiplier"), path + ".incoming-multiplier", d.incomingMultiplier(), 0, Double.MAX_VALUE),
+                    p.optionalDouble(entry.get("isolation-multiplier"), path + ".isolation-multiplier", d.isolationMultiplier(), 0, Double.MAX_VALUE),
+                    p.optionalDouble(entry.get("xp-multiplier"), path + ".xp-multiplier", d.xpMultiplier(), 0, Double.MAX_VALUE),
+                    p.optionalDouble(entry.get("magic-find-multiplier"), path + ".magic-find-multiplier", d.magicFindMultiplier(), 0, Double.MAX_VALUE),
+                    p.optionalBoolean(entry.get("ordinary-revival"), path + ".ordinary-revival", d.ordinaryRevival()),
+                    p.optionalDouble(entry.get("runic-chance"), path + ".runic-chance", d.runicChance(), -Double.MIN_VALUE, 1),
+                    p.optionalDouble(entry.get("fragment-chance"), path + ".fragment-chance", d.fragmentChance(), -Double.MIN_VALUE, 1),
+                    p.optionalDouble(entry.get("runic-boss-chance"), path + ".runic-boss-chance", d.runicBossChance(), -Double.MIN_VALUE, 1)));
+        }
+        for (String key : entries.keySet()) if (!result.containsKey(key)) p.error("unknown difficulty " + key);
+        return result;
     }
 
     private Map<String, ClassDefinition> parseClasses(Path file, Parser p) {
@@ -155,8 +184,10 @@ public final class ConfigLoader {
             return result;
         }
         for (Path file : files) {
+            try { configFactory.migrateFloor(file); }
+            catch (IOException exception) { p.error("floor migration failed: " + exception.getMessage()); }
             Map<String, Object> root = p.file(file);
-            p.schema(root, file);
+            p.schema(root, file, 2);
             String prefix = "floors/" + file.getFileName() + ":";
             String id = p.id(p.string(root.get("id"), prefix + "id"), prefix);
             int number = p.integer(root.get("number"), prefix + "number", 1, 10_000);
@@ -190,10 +221,13 @@ public final class ConfigLoader {
             List<WeightedId> blessingRefs = p.weightedIds(root.get("blessings"), prefix + "blessings");
             Map<String, RewardDefinition> rewards = p.rewards(root.get("rewards"), prefix + "rewards");
             Limits limits = p.limits(root.get("limits"), prefix + "limits");
+            Map<String, Object> xp = p.map(root.getOrDefault("dungeon-xp", Map.of()), prefix + "dungeon-xp", false);
+            double completionXp = p.optionalDouble(xp.get("completion"), prefix + "dungeon-xp.completion", 100.0 * number * number, 0, Double.MAX_VALUE);
+            double failureFactor = p.optionalDouble(xp.get("failure-factor"), prefix + "dungeon-xp.failure-factor", .10, 0, 1);
             if (id != null && display != null && templates.start() != null && templates.portal() != null
                     && templates.boss() != null && templates.bossOffset() != null && bossMob != null) {
                 if (result.putIfAbsent(id, new FloorDefinition(id, number, display, templates, generation,
-                        normalMobs, minibossMobs, bossMob, encounter, allowedClasses, blessingRefs, rewards, limits)) != null) {
+                        normalMobs, minibossMobs, bossMob, encounter, allowedClasses, blessingRefs, rewards, limits, completionXp, failureFactor)) != null) {
                     p.error(prefix + "duplicate floor id " + id);
                 }
             }
@@ -247,6 +281,7 @@ public final class ConfigLoader {
         catch (NoSuchAlgorithmException exception) { throw new IllegalStateException(exception); }
         List<Path> files = new ArrayList<>(List.of(root.resolve("classes.yml"), root.resolve("blessings.yml"),
                 root.resolve("rooms.yml")));
+        if (Files.isRegularFile(root.resolve("difficulties.yml"))) files.add(root.resolve("difficulties.yml"));
         if (Files.isDirectory(root.resolve("floors"))) {
             try (Stream<Path> stream = Files.list(root.resolve("floors"))) {
                 files.addAll(stream.filter(Files::isRegularFile).sorted().toList());
@@ -511,7 +546,8 @@ public final class ConfigLoader {
                 String itemId = externalItemId(string(entry.get("item"), path + "[].item"), path);
                 double weight = optionalDouble(entry.get("weight"), path + "[].weight", 1, 0, Double.MAX_VALUE);
                 int[] amount = amount(entry.get("amount"), path + "[].amount");
-                if (itemId != null) result.add(new RewardItem(itemId, weight, amount[0], amount[1]));
+                if (itemId != null) result.add(new RewardItem(itemId, weight, amount[0], amount[1],
+                        optionalBoolean(entry.get("magic-find-sensitive"), path + "[].magic-find-sensitive", false)));
             }
             return result;
         }

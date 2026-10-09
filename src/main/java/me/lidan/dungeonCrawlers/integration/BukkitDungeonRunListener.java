@@ -40,15 +40,17 @@ public final class BukkitDungeonRunListener implements Listener {
         this.phaseSeven = phaseSeven;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onPreparationDoor(PlayerInteractEvent event) {
         if (event.getHand() == EquipmentSlot.OFF_HAND) return;
-        if (event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getClickedBlock() == null
+        if ((event.getAction() != Action.RIGHT_CLICK_BLOCK && event.getAction() != Action.LEFT_CLICK_BLOCK)
+                || event.getClickedBlock() == null
                 || !event.getClickedBlock().getWorld().getName().equals(generationWorldName)) return;
         Point point = new Point(event.getClickedBlock().getX(), event.getClickedBlock().getY(),
                 event.getClickedBlock().getZ());
         if (runs.doorAt(point).isEmpty()) return;
         event.setCancelled(true);
+        if (!phaseFive.canOpenDungeonDoor(event.getPlayer().getUniqueId())) return;
         phaseFive.openDoorAt(event.getPlayer(), point);
     }
 

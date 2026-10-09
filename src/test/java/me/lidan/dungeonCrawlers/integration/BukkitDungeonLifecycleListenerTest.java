@@ -111,6 +111,40 @@ class BukkitDungeonLifecycleListenerTest {
         assertEquals(0, state.deaths());
     }
 
+    @Test
+    void completionClearsGhostPresentationAndAllowsRewardChestInteraction() {
+        UUID instanceId = UUID.randomUUID(), playerId = UUID.randomUUID(), alive = UUID.randomUUID();
+        var player = mock(Player.class);
+        when(player.getUniqueId()).thenReturn(playerId);
+        var runs = mock(RunPreparationService.class);
+        when(runs.instanceFor(playerId)).thenReturn(Optional.of(instanceId));
+        var clock = Clock.fixed(Instant.EPOCH, ZoneOffset.UTC);
+        var updates = new CentralUpdateService(clock, ignored -> { });
+        var lifecycle = new PlayerLifecycleService(updates, clock, ignored -> { });
+        lifecycle.configureRevival(id -> false, notice -> {
+            BukkitGhostState.exit(player);
+            return true;
+        });
+        updates.register(instanceId, ignored -> { });
+        lifecycle.register(instanceId, List.of(playerId, alive));
+        lifecycle.configureOrdinaryRevival(instanceId, false);
+        lifecycle.start(instanceId);
+        lifecycle.lethal(instanceId, playerId);
+        var listener = new BukkitDungeonLifecycleListener(lifecycle, runs, mock(Plugin.class), clock);
+        var before = mock(org.bukkit.event.player.PlayerInteractEvent.class);
+        when(before.getPlayer()).thenReturn(player);
+        listener.onGhostInteract(before);
+        verify(before).setCancelled(true);
+        assertTrue(lifecycle.complete(instanceId).successful());
+        verify(player).setInvulnerable(false);
+        verify(player).setCollidable(true);
+        verify(player).removePotionEffect(org.bukkit.potion.PotionEffectType.INVISIBILITY);
+        var after = mock(org.bukkit.event.player.PlayerInteractEvent.class);
+        when(after.getPlayer()).thenReturn(player);
+        listener.onGhostInteract(after);
+        verify(after, never()).setCancelled(true);
+    }
+
     private static RunPreparationService.RunSnapshot runSnapshot(UUID instanceId, UUID playerId,
                                                                    RunPreparationService.RunState state) {
         DoorService.DoorSnapshot door = new DoorService.DoorSnapshot(instanceId, new Point(0, 64, 0),

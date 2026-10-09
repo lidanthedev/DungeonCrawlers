@@ -124,6 +124,7 @@ public final class CombatRoomService {
         // intentionally has no CombatRoom state of its own.  Once the preceding
         // room is cleared, opening that link simply unlocks the portal entrance.
         if (target == null) {
+            instance.portalDoorOpened = true;
             return ActivationResult.success("portal room ready", snapshot(instance))
                     .withOpenedDoorBlocks(link.triggerBlocks());
         }
@@ -136,6 +137,11 @@ public final class CombatRoomService {
         return instances.values().stream().anyMatch(instance -> instance.plan.links().stream()
                 .anyMatch(link -> room(instance, link.fromIndex()).isPresent()
                         && link.triggerBlocks().contains(clickedBlock)));
+    }
+
+    public synchronized boolean portalDoorOpened(UUID instanceId) {
+        MutableInstance instance = instances.get(Objects.requireNonNull(instanceId, "instanceId"));
+        return instance != null && instance.portalDoorOpened;
     }
 
     public synchronized ActivationResult activateAt(Point clickedBlock) {
@@ -432,6 +438,7 @@ public final class CombatRoomService {
     private static final class MutableInstance {
         private final GenerationService.CombatPlan plan;
         private final List<MutableRoom> rooms;
+        private boolean portalDoorOpened;
 
         private MutableInstance(GenerationService.CombatPlan plan, List<MutableRoom> rooms) {
             this.plan = plan;

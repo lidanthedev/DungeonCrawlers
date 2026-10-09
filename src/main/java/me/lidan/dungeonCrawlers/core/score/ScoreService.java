@@ -142,6 +142,24 @@ public final class ScoreService {
         List<BonusFact> evaluate(ScoreSnapshot snapshot);
     }
 
+    public record RunicPetBonus(boolean active) implements BonusProvider {
+        @Override public String id() { return "runic_pet"; }
+        @Override public int priority() { return 0; }
+        @Override public List<BonusFact> evaluate(ScoreSnapshot snapshot) {
+            return active ? List.of(new BonusFact(id(), 2, "Active Runic pet")) : List.of();
+        }
+    }
+
+    public record RunicBossBonus(boolean runic) implements BonusProvider {
+        public static final String ID = "runic_boss";
+        @Override public String id() { return ID; }
+        @Override public int priority() { return 0; }
+        @Override public List<BonusFact> evaluate(ScoreSnapshot snapshot) {
+            return runic && snapshot.successful()
+                    ? List.of(new BonusFact(ID, 20, "Defeated Runic boss")) : List.of();
+        }
+    }
+
     public record ScoreResult(int skill, int time, int exploration, int bonus, int total, DungeonRank rank,
                               List<BonusFact> bonusFacts) {
         public ScoreResult {

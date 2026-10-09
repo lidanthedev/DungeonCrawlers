@@ -164,6 +164,40 @@ class PlayerLifecycleServiceTest {
     }
 
     @Test
+    void forcedPartyDeathCountsAllRemainingPlayersBeforeWipeAndCancelsRunicRevival() {
+        UUID instance = UUID.randomUUID();
+        UUID alive = UUID.randomUUID(), ghost = UUID.randomUUID(), offline = UUID.randomUUID(), removed = UUID.randomUUID();
+        List<PlayerLifecycleService.Notice> notices = new ArrayList<>();
+        CentralUpdateService updates = new CentralUpdateService(Clock.fixed(START, ZoneOffset.UTC), ignored -> { });
+        PlayerLifecycleService service = new PlayerLifecycleService(updates, Clock.fixed(START, ZoneOffset.UTC),
+                notices::add);
+        service.configureRevival(ignored -> true, ignored -> true);
+        assertTrue(updates.register(instance, ignored -> { }));
+        assertTrue(service.register(instance, List.of(alive, ghost, offline, removed)).successful());
+        assertTrue(service.start(instance).successful());
+        assertTrue(service.lethal(instance, ghost).successful());
+        assertTrue(service.disconnect(instance, offline, false).successful());
+        assertTrue(service.escape(instance, removed).successful());
+
+        assertTrue(service.killParty(instance, "closed portal door").successful());
+        for (UUID id : List.of(alive, ghost, offline)) {
+            var player = service.player(instance, id).orElseThrow();
+            assertEquals(1, player.deaths());
+            assertEquals(PlayerLifecycleService.PlayerState.GHOST, player.state());
+            assertNull(player.reviveAt());
+            assertEquals(PlayerLifecycleService.ReviveKind.NONE, player.reviveKind());
+        }
+        assertEquals(0, service.player(instance, removed).orElseThrow().deaths());
+        assertEquals(PlayerLifecycleService.PlayerState.REMOVED, service.player(instance, removed).orElseThrow().state());
+        assertTrue(service.info(instance).orElseThrow().wiped());
+        assertTrue(service.killParty(instance, "repeated callback").successful());
+        assertEquals(1, notices.stream().filter(notice -> notice.event() == PlayerLifecycleService.Event.WIPED).count());
+        updates.tick(START.plusSeconds(60));
+        assertEquals(1, service.player(instance, alive).orElseThrow().deaths());
+        assertFalse(service.scheduleAdminRevive(instance, ghost).successful());
+    }
+
+    @Test
     void administrativeReviveUsesShortCountdownBeforeReviving() {
         UUID instance = UUID.randomUUID();
         UUID ghost = UUID.randomUUID();
@@ -297,4 +331,103 @@ class PlayerLifecycleServiceTest {
         assertEquals(PlayerLifecycleService.PlayerState.GHOST,
                 service.player(instance, ghost).orElseThrow().state());
     }
+    @Test
+    void runicReviveIsLatchedAtDeathKeepsSoloAliveAndRetainsItsDeath() {
+        UUID instance = UUID.randomUUID(), player = UUID.randomUUID();
+        var active = new java.util.concurrent.atomic.AtomicBoolean(true);
+        var effect = new java.util.concurrent.atomic.AtomicBoolean(false);
+        var updates = new CentralUpdateService(Clock.fixed(START, ZoneOffset.UTC), ignored -> { });
+        var service = new PlayerLifecycleService(updates, Clock.fixed(START, ZoneOffset.UTC), ignored -> { });
+        service.configureRevival(id -> active.get(), notice -> { assertNull(notice.reviveTarget()); return effect.get(); });
+        updates.register(instance, ignored -> { }); service.register(instance, List.of(player));
+        service.configureOrdinaryRevival(instance, false); service.start(instance);
+        service.lethal(instance, player, START);
+        active.set(false);
+        assertFalse(service.info(instance).orElseThrow().wiped());
+        updates.tick(START.plusSeconds(5));
+        assertFalse(service.player(instance, player).orElseThrow().runicChargeUsed());
+        assertEquals(1, service.player(instance, player).orElseThrow().deaths());
+        effect.set(true); updates.tick(START.plusSeconds(6));
+        assertTrue(service.player(instance, player).orElseThrow().runicChargeUsed());
+        assertEquals(1, service.player(instance, player).orElseThrow().deaths());
+        active.set(true); service.lethal(instance, player, START.plusSeconds(10));
+        assertTrue(service.info(instance).orElseThrow().wiped());
+        assertEquals(2, service.player(instance, player).orElseThrow().deaths());
+    }
+
+    @Test
+    void hellishGhostHasNoTimerAndEquippingPetAfterDeathDoesNotCreateOne() {
+        UUID instance = UUID.randomUUID(), player = UUID.randomUUID(), alive = UUID.randomUUID();
+        var active = new java.util.concurrent.atomic.AtomicBoolean(false);
+        var updates = new CentralUpdateService(Clock.fixed(START, ZoneOffset.UTC), ignored -> { });
+        var service = new PlayerLifecycleService(updates, Clock.fixed(START, ZoneOffset.UTC), ignored -> { });
+        service.configureRevival(id -> active.get(), notice -> true);
+        updates.register(instance, ignored -> { }); service.register(instance, List.of(player, alive));
+        service.configureOrdinaryRevival(instance, false); service.start(instance);
+        service.lethal(instance, player, START); active.set(true);
+        updates.tick(START.plusSeconds(500));
+        assertNull(service.player(instance, player).orElseThrow().reviveAt());
+        assertEquals(PlayerLifecycleService.PlayerState.GHOST, service.player(instance, player).orElseThrow().state());
+        assertFalse(service.revive(instance, player).successful());
+    }
+
+    @Test
+    void completionRevivesOnlineGhostsAndOfflineGhostsOnReconnectRetainingDeaths() {
+        UUID instance = UUID.randomUUID(), ghost = UUID.randomUUID(), offline = UUID.randomUUID();
+        UUID alive = UUID.randomUUID(), removed = UUID.randomUUID();
+        var notices = new ArrayList<PlayerLifecycleService.Notice>();
+        var updates = new CentralUpdateService(Clock.fixed(START, ZoneOffset.UTC), ignored -> { });
+        var service = new PlayerLifecycleService(updates, Clock.fixed(START, ZoneOffset.UTC), notices::add);
+        var effects = new ArrayList<UUID>();
+        service.configureRevival(id -> false, notice -> {
+            assertNull(notice.reviveTarget());
+            effects.add(notice.playerId());
+            return true;
+        });
+        updates.register(instance, ignored -> { });
+        service.register(instance, List.of(ghost, offline, alive, removed));
+        service.configureOrdinaryRevival(instance, false);
+        service.start(instance);
+        service.lethal(instance, ghost, START);
+        service.disconnect(instance, offline);
+        service.escape(instance, removed);
+        assertTrue(service.complete(instance).successful());
+        assertEquals(List.of(ghost), effects);
+        var revived = service.player(instance, ghost).orElseThrow();
+        assertEquals(PlayerLifecycleService.PlayerState.ALIVE, revived.state());
+        assertEquals(1, revived.deaths());
+        assertFalse(revived.runicChargeUsed());
+        assertNull(revived.reviveAt());
+        assertFalse(service.info(instance).orElseThrow().running());
+        assertTrue(service.complete(instance).successful());
+        assertEquals(1, effects.size());
+        assertTrue(service.reconnect(instance, offline).successful());
+        assertEquals(PlayerLifecycleService.PlayerState.ALIVE, service.player(instance, offline).orElseThrow().state());
+        assertEquals(1, service.player(instance, offline).orElseThrow().deaths());
+        assertEquals(PlayerLifecycleService.PlayerState.REMOVED, service.player(instance, removed).orElseThrow().state());
+        updates.tick(START.plusSeconds(100));
+        assertEquals(2, notices.stream().filter(notice -> notice.event() == PlayerLifecycleService.Event.REVIVED).count());
+        assertFalse(service.start(instance).successful());
+    }
+
+    @Test
+    void failedCompletionRevivalRemainsRetryableAndCancelsGhostTimer() {
+        UUID instance = UUID.randomUUID(), ghost = UUID.randomUUID(), alive = UUID.randomUUID();
+        var effect = new java.util.concurrent.atomic.AtomicBoolean(false);
+        var updates = new CentralUpdateService(Clock.fixed(START, ZoneOffset.UTC), ignored -> { });
+        var service = new PlayerLifecycleService(updates, Clock.fixed(START, ZoneOffset.UTC), ignored -> { });
+        service.configureRevival(id -> false, notice -> effect.get());
+        updates.register(instance, ignored -> { });
+        service.register(instance, List.of(ghost, alive));
+        service.start(instance);
+        service.lethal(instance, ghost, START);
+        assertFalse(service.complete(instance).successful());
+        assertEquals(PlayerLifecycleService.PlayerState.GHOST, service.player(instance, ghost).orElseThrow().state());
+        assertNull(service.player(instance, ghost).orElseThrow().reviveAt());
+        effect.set(true);
+        assertTrue(service.complete(instance).successful());
+        assertEquals(PlayerLifecycleService.PlayerState.ALIVE, service.player(instance, ghost).orElseThrow().state());
+        assertEquals(1, service.player(instance, ghost).orElseThrow().deaths());
+    }
+
 }

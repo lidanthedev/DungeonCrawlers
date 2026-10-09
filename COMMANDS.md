@@ -6,7 +6,7 @@ All commands use the `/dungeon` root. Player-facing messages use the plugin's Mi
 
 | Command | Permission | Purpose |
 | --- | --- | --- |
-| `/dungeon start <floor>` | `dungeoncrawlers.use` | Start a solo or party run. |
+| `/dungeon start <floor> [difficulty]` | `dungeoncrawlers.use` | Leader selects the difficulty; omitted tier opens the menu. All members must unlock it on that floor. |
 | `/dungeon class menu` | `dungeoncrawlers.command.class` | Open the class GUI while the run is still preparing. |
 | `/dungeon class list` | `dungeoncrawlers.use` | List floor-allowed classes as clickable text. |
 | `/dungeon class select <id>` | `dungeoncrawlers.use` | Select a class by its configured id. |
@@ -14,6 +14,25 @@ All commands use the `/dungeon` root. Player-facing messages use the plugin's Mi
 | `/dungeon reward open` | `dungeoncrawlers.use` | Open completed rewards. |
 
 The class menu and selector NPC recheck run membership, snapshot readiness, allowed class ids, and the PREPARING state on every selection. Selection is locked after the start door opens, while the NPC may remain present as a locked signpost until cleanup.
+
+`/dungeon completions add <player> <floor> <difficulty> [amount]` requires `dungeoncrawlers.admin.progression` (operators by default). Amount defaults to 1 and must be positive. It adds persistent completion credit for the selected floor/tier and unlocks through the next tier, without XP, loot or a simulated run. It supports online players and previously joined offline players, and works with debug mode disabled. Each party member needs their own unlocks.
+
+Example: `/dungeon completions add LidanTheGamer floor_1 hardcore 1` unlocks Impossible and all lower tiers on floor_1. Grant the same credit to Eldan39 to test together.
+
+Activating the boss portal before its entrance door was opened still runs the normal countdown, then wipes the whole party instead of teleporting to the boss. Clearing the preceding room only unlocks that door; it must be opened normally. Opening it during an already-started bypass countdown does not avoid the wipe.
+
+Chest prices decrease by 5% of the base price per difficulty step, from Normal at 0% off to Impossible at 45% off. Defeating a Runic boss grants +20 Bonus score and another 20% off the discounted price. Both discounts multiply before rounding down once to whole coins. For example, an Impossible chest priced at 100,000 costs 55,000 normally or 44,000 after a Runic boss clear. Free chests stay free, and saved offers retain their original prices. The difficulty menu explains Runic scaling, spawn tiers, fragments and boss bonuses.
+
+Completed live rewards remain available until the instance closes. The separate live reward timer cannot expire chest access or purchases while that instance is open. Closing or reloading the instance ends live access; already purchased rewards retain their delivery recovery. Offline completion rewards keep their existing recovery deadlines.
+
+Difficulty diagnostics require `dungeoncrawlers.admin.debug`:
+
+- `/dungeon difficulty info [player]` reports effective MAGIC_FIND, deaths and the pet charge.
+- `/dungeon instance generate-difficulty-debug <floor> <tier> <seed>` uses normal preparation with unlock checks bypassed. It awards no Dungeon XP, unlocks or Runic fragments.
+- `/dungeon runic force <entity-uuid>` upgrades an enemy only in a debug instance.
+- `/dungeon door interact` exercises the same class/snapshot gate and lifecycle as a start-door click.
+
+Generation, Runic forcing and door interaction require debug mode to be enabled.
 
 ## Room authoring
 
@@ -27,9 +46,21 @@ The class menu and selector NPC recheck run membership, snapshot readiness, allo
 | `/dungeon room update <id>` | `dungeoncrawlers.admin.authoring` | Replace an authored room while preserving its configured definition. |
 | `/dungeon room delete <id>` | `dungeoncrawlers.admin.authoring` | Delete an unused authored room. |
 | `/dungeon room paste <id> <rotation>` | `dungeoncrawlers.admin.authoring` | Paste an authored room for inspection. |
+| `/dungeon room preview <id>` | `dungeoncrawlers.admin.authoring` | Paste one room in an isolated instance slot and teleport only you there in spectator mode. No mobs, XP, or rewards. Room IDs autocomplete. |
+| `/dungeon room preview stop` | `dungeoncrawlers.admin.authoring` | Restore your saved location/game mode and clear the preview. Disconnect, reload, and admin instance cleanup also close it. |
 
-`<type>` is `normal`, `start`, `portal`, or `boss`. `<encounters>` is `none`, `normal`, `miniboss`, or `normal,miniboss`. The validator reports the total marker count and `Class Selector NPC: Yes/No`. It also warns when Citizens is unavailable.
+`<type>` is `normal`, `start`, `portal`, or `boss`. `<encounters>` is `none`, `normal`, `miniboss`, `normal,miniboss`, or `miniboss,normal`. The validator reports the total marker count and `Class Selector NPC: Yes/No`. It also warns when Citizens is unavailable.
 
 ## Diagnostics
 
 `/dungeon help` shows the common player and administrator commands. Other phase and compatibility commands remain available to operators with their existing `dungeoncrawlers.admin.*` permissions; use `/dungeon help` and the command suggestions for those paths.
+
+## Admin autocomplete
+
+Tab completes configured floor, room, class, blessing, difficulty and reward IDs, player names, and known instance IDs. Room creation and selection validation suggest room types and encounter lists, including `normal,miniboss` and the reverse order. Typing `normal,` suggests the remaining miniboss capability. Room paste and connection tests suggest rotations `0`, `90`, `180`, and `270`.
+
+Door commands suggest cardinal facings and door states; state simulation suggests dungeon states. Reward reconciliation suggests claims waiting for review and `charged`/`not-charged`; delivery pause suggests `on`/`off` and boolean aliases. Compatibility and mob-spawn commands read the native CaveCrawlers item and MythicMobs ID registries.
+
+Combat room indices follow the selected instance, including the player-relative `this` alias. Mob kill/remove suggest living required entities in the selected room. Runic forcing suggests tracked dungeon enemy UUIDs; its existing debug-instance restriction still applies. Runtime lists update as rooms, entities and claim states change.
+
+New room names, seeds, amounts, coordinates, durations and reconciliation evidence remain free input. Autocomplete does not execute commands or change their permission/validation rules.

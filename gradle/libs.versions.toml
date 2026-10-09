@@ -1,6 +1,6 @@
 [versions]
 paper = "1.21.11-R0.1-SNAPSHOT"
-cave-crawlers = "v2.0.0"
+cave-crawlers = "dev"
 worldedit = "7.3.18"
 fawe = "2.15.1"
 mythic-mobs = "5.11.2"
@@ -18,7 +18,7 @@ gson = "2.11.0"
 
 [libraries]
 paper-api = { module = "io.papermc.paper:paper-api", version.ref = "paper" }
-cave-crawlers = { module = "com.github.lidanthedev:CaveCrawlers", version.ref = "cave-crawlers" }
+cave-crawlers = { module = "me.lidan:CaveCrawlers", version.ref = "cave-crawlers" }
 worldedit-bukkit = { module = "com.sk89q.worldedit:worldedit-bukkit", version.ref = "worldedit" }
 fawe-core = { module = "com.fastasyncworldedit:FastAsyncWorldEdit-Core", version.ref = "fawe" }
 mythic-mobs = { module = "io.lumine:Mythic-Dist", version.ref = "mythic-mobs" }

@@ -45,6 +45,7 @@ import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
 import revxrsal.commands.annotation.Command;
 import revxrsal.commands.annotation.Subcommand;
+import revxrsal.commands.annotation.Suggest;
 import revxrsal.commands.annotation.SuggestWith;
 import revxrsal.commands.bukkit.annotation.CommandPermission;
 
@@ -158,6 +159,14 @@ public final class DungeonCrawlersCommand {
         if (sender.hasPermission("dungeoncrawlers.admin.room")) {
             DungeonGenerationCommand.suggest(sender, "<yellow>Get the room marker kit</yellow>",
                     "/dungeon room setup");
+        }
+        if (sender.hasPermission("dungeoncrawlers.admin.authoring")) {
+            DungeonGenerationCommand.suggest(sender, "<yellow>Preview an authored room</yellow>",
+                    "/dungeon room preview ");
+        }
+        if (sender.hasPermission("dungeoncrawlers.admin.progression")) {
+            DungeonGenerationCommand.suggest(sender, "<yellow>Grant floor difficulty completions</yellow>",
+                    "/dungeon completions add ");
         }
         if (sender.hasPermission("dungeoncrawlers.admin.reload")) {
             DungeonGenerationCommand.suggest(sender, "<yellow>Validate and reload configuration</yellow>",
@@ -387,7 +396,7 @@ public final class DungeonCrawlersCommand {
 
     @Subcommand("class info")
     @CommandPermission("dungeoncrawlers.admin.config")
-    public void classInfo(CommandSender sender, String id) {
+    public void classInfo(CommandSender sender, @SuggestWith(ClassIdSuggestionProvider.class) String id) {
         var value = configRegistry.snapshot().classes().get(id);
         if (value == null) {
             DungeonMessages.send(sender, DungeonMessages.error("Unknown class: <white>" + id + "</white>"));
@@ -403,7 +412,7 @@ public final class DungeonCrawlersCommand {
 
     @Subcommand("blessing info")
     @CommandPermission("dungeoncrawlers.admin.config")
-    public void blessingInfo(CommandSender sender, String id) {
+    public void blessingInfo(CommandSender sender, @SuggestWith(BlessingIdSuggestionProvider.class) String id) {
         var value = configRegistry.snapshot().blessings().get(id);
         if (value == null) {
             DungeonMessages.send(sender, DungeonMessages.error("Unknown blessing: <white>" + id + "</white>"));
@@ -422,7 +431,9 @@ public final class DungeonCrawlersCommand {
 
     @Subcommand("state simulate")
     @CommandPermission("dungeoncrawlers.admin.debug")
-    public void stateSimulate(CommandSender sender, String from, String to) {
+    public void stateSimulate(CommandSender sender,
+                              @Suggest({"generating", "preparing", "running", "boss", "completion_pending", "completed", "failed", "destroyed"}) String from,
+                              @Suggest({"generating", "preparing", "running", "boss", "completion_pending", "completed", "failed", "destroyed"}) String to) {
         if (!debug(sender)) return;
         try {
             var result = transitions.transition(InstanceState.valueOf(from.toUpperCase(Locale.ROOT)),
@@ -511,7 +522,8 @@ public final class DungeonCrawlersCommand {
 
     @Subcommand("compatibility item")
     @CommandPermission("dungeoncrawlers.admin.debug")
-    public void item(CommandSender sender, String itemId) {
+    public void item(CommandSender sender,
+                     @SuggestWith(AdminSuggestionProviders.ItemIds.class) String itemId) {
         if (!debug(sender)) return;
         ItemStack built = caveItems.build(itemId, 1).orElse(null);
         if (built == null) {
@@ -530,7 +542,8 @@ public final class DungeonCrawlersCommand {
 
     @Subcommand("compatibility mythic")
     @CommandPermission("dungeoncrawlers.admin.debug")
-    public void mythic(Player player, String mobId) {
+    public void mythic(Player player,
+                       @SuggestWith(AdminSuggestionProviders.MobIds.class) String mobId) {
         if (!debug(player)) return;
         MythicMobGateway.SpawnResult spawned = mythic.spawn(mobId, player.getLocation(), 1);
         if (!spawned.successful()) {

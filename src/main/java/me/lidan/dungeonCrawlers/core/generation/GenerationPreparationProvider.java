@@ -26,6 +26,22 @@ public final class GenerationPreparationProvider implements GenerationService.Pr
     }
 
     @Override
+    public GenerationService.PreparedGeneration preparePreview(UUID instanceId, ConfigSnapshot snapshot,
+                                                               SlotLease slot, String roomId) throws Exception {
+        var room = snapshot.rooms().get(roomId);
+        if (room == null) throw new IllegalArgumentException("unknown room " + roomId);
+        // An unrelated broken room must not prevent inspecting this room.
+        var selected = new ConfigSnapshot(snapshot.schemaVersion(), snapshot.floors(), Map.of(roomId, room),
+                snapshot.classes(), snapshot.blessings(), snapshot.encounters(), snapshot.hash(),
+                snapshot.loadedAt(), snapshot.difficulties());
+        var loaded = catalogLoader.load(selected);
+        if (!loaded.successful()) throw new IllegalArgumentException(String.join("; ", loaded.errors()));
+        var template = loaded.catalog().orElseThrow().get(roomId).template();
+        var plan = planner.preview(instanceId, template, slot.origin(), slot.usableBounds(), snapshot.hash());
+        return new GenerationService.PreparedGeneration(plan, Map.of(roomId, authoring.schematic(roomId)));
+    }
+
+    @Override
     public GenerationService.PreparedGeneration prepare(UUID instanceId, long seed, FloorDefinition floor,
                                                         ConfigSnapshot snapshot, SlotLease slot) throws Exception {
         return prepare(instanceId, seed, floor, snapshot, slot, ignored -> { });
