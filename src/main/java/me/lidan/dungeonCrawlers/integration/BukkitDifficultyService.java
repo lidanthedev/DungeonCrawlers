@@ -52,6 +52,10 @@ public final class BukkitDifficultyService implements Listener, AutoCloseable {
     }
     public boolean activeRunicPet(UUID player) { return pet != null && pet.activeLevel(player) > 0; }
     public Set<UUID> enemyIds() { return Set.copyOf(enemies.keySet()); }
+    public boolean belongsTo(Entity entity, UUID instance) {
+        Enemy enemy = enemies.get(entity.getUniqueId());
+        return enemy != null && enemy.instance().equals(instance);
+    }
     public boolean runicBoss(UUID instance) { return runicBossInstances.contains(instance); }
     public void spawn(Entity entity, Spawn spawn) {
         var context = generation.layoutContext(spawn.instance()).orElseThrow();

@@ -153,6 +153,8 @@ public final class DungeonCrawlers extends JavaPlugin {
     private PlayerLifecycleService lifecycle;
     private me.lidan.dungeonCrawlers.core.difficulty.DungeonProgressionService progression;
     private me.lidan.dungeonCrawlers.integration.BukkitDifficultyService difficultyService;
+    private me.lidan.dungeonCrawlers.integration.BukkitClassAbilityService classAbilities;
+    private me.lidan.dungeonCrawlers.integration.cave.DungeonSupportItems supportItems;
     private DebugSettings debugSettings;
     private DungeonPlaceholderExpansion placeholderExpansion;
     private DungeonTimings timings;
@@ -480,6 +482,12 @@ public final class DungeonCrawlers extends JavaPlugin {
     }
 
     private void migrateVersionedDataConfigs() throws IOException {
+        Path classesPath = getDataFolder().toPath().resolve("classes.yml");
+        try {
+            configFactory.openVersionedConfig(classesPath, "classes.yml", 2);
+        } finally {
+            configFactory.release(classesPath);
+        }
         Path blessingsPath = getDataFolder().toPath().resolve("blessings.yml");
         try {
             configFactory.openVersionedConfig(blessingsPath, "blessings.yml", 2);
@@ -601,6 +609,13 @@ public final class DungeonCrawlers extends JavaPlugin {
                         || phaseSeven.secrets(instance).stream().anyMatch(secret -> secret.worldPoint().equals(point))));
         registerEvent(new BukkitDungeonRunListener(phaseFiveCommand, runPreparation, generationWorldName, phaseSeven));
         registerEvent(difficultyService);
+        classAbilities = new me.lidan.dungeonCrawlers.integration.BukkitClassAbilityService(this,
+                runPreparation, lifecycle, generation, configRegistry, entityIdentity, bossIdentity,
+                difficultyService, phaseClock(), generationWorldName);
+        registerEvent(classAbilities);
+        supportItems = new me.lidan.dungeonCrawlers.integration.cave.DungeonSupportItems(this,
+                classAbilities::activateSupport);
+        supportItems.register();
         registerEvent(new BukkitDungeonLifecycleListener(lifecycle, runPreparation, this, phaseClock(),
                 generationWorldName, phaseFiveCommand::recoverOnJoin, phaseFiveCommand::leaveFromDungeon));
         registerEvent(new BukkitCombatListener(combat, entityIdentity, generationWorldName, () -> disabling,
@@ -942,6 +957,7 @@ public final class DungeonCrawlers extends JavaPlugin {
             combat.reconcileAll();
             if (placeholderExpansion != null) placeholderExpansion.refreshSnapshots();
             difficultyService.tick();
+            classAbilities.tick();
             deliverDungeonXp();
         }, 20L, 20L);
     }
@@ -952,6 +968,8 @@ public final class DungeonCrawlers extends JavaPlugin {
         if (progression != null && runPreparation != null) runPreparation.snapshots().forEach(
                 run -> recordProgression(run.instanceId(), false, null));
         if (difficultyService != null) difficultyService.close();
+        if (supportItems != null) supportItems.close();
+        if (classAbilities != null) classAbilities.close();
         if (classSelectorNpcs != null) classSelectorNpcs.shutdown();
         if (placeholderExpansion != null) placeholderExpansion.unregister();
         if (reservations != null) reservations.pauseAdmission();

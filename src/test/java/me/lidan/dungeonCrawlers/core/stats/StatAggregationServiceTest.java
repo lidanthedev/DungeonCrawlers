@@ -35,6 +35,25 @@ class StatAggregationServiceTest {
     }
 
     @Test
+    void classPercentagesScaleWithSkillLevelAndExistingBonuses() {
+        StatAggregationService service = new StatAggregationService();
+        ClassDefinition selected = new ClassDefinition("berserker", "Berserker", Material.IRON_SWORD,
+                new StatModifiers(Map.of(StatType.STRENGTH, 50.0), Map.of()),
+                Map.of(StatType.STRENGTH, 2.0), 0);
+        BlessingDefinition blessing = blessing("strength", BlessingStacking.LEVELS, 1,
+                new StatModifiers(Map.of(StatType.STRENGTH, 10.0), Map.of(StatType.STRENGTH, 1.5)));
+        Map<StatType, Double> incoming = Map.of(StatType.STRENGTH, 100.0, StatType.DEFENSE, 80.0);
+        var result = service.aggregate(incoming, selected, Map.of("strength", blessing), Map.of("strength", 1), 20);
+
+        assertEquals(336.0, result.get(StatType.STRENGTH), 0.00001); // (100 + 50 + 10) * 1.4 * 1.5
+        assertEquals(80.0, result.get(StatType.DEFENSE));
+        assertEquals(150.0, service.aggregate(incoming, selected, Map.of(), Map.of(), -1).get(StatType.STRENGTH));
+        assertEquals(330.0, service.aggregate(incoming, selected, Map.of(), Map.of(), 100).get(StatType.STRENGTH));
+        assertEquals(100.0, incoming.get(StatType.STRENGTH));
+        assertEquals(100.0, service.aggregate(incoming, null, Map.of(), Map.of(), 20).get(StatType.STRENGTH));
+    }
+
+    @Test
     void aggregationDoesNotClampConfiguredStats() {
         StatAggregationService service = new StatAggregationService();
         Map<StatType, Double> result = service.aggregate(Map.of(

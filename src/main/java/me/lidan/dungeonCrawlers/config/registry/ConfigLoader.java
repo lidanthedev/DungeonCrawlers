@@ -105,7 +105,7 @@ public final class ConfigLoader {
 
     private Map<String, ClassDefinition> parseClasses(Path file, Parser p) {
         Map<String, Object> root = p.file(file);
-        p.schema(root, file);
+        p.schema(root, file, 2);
         Map<String, Object> entries = p.map(root.get("classes"), "classes.yml:classes", true);
         Map<String, ClassDefinition> result = new LinkedHashMap<>();
         for (var pair : entries.entrySet()) {
@@ -114,7 +114,14 @@ public final class ConfigLoader {
             Material icon = p.material(entry.get("icon"), "classes.yml:" + id + ".icon");
             StatModifiers stats = p.stats(entry, "classes.yml:" + id);
             String display = p.string(entry.get("display-name"), "classes.yml:" + id + ".display-name");
-            if (id != null && icon != null && display != null) result.put(id, new ClassDefinition(id, display, icon, stats));
+            Map<StatType, Double> percentages = p.statField(entry, "stat-percent-per-level", "classes.yml:" + id);
+            boolean invalidPercentage = percentages.values().stream().anyMatch(value -> value < 0 || value > 100);
+            if (invalidPercentage) p.error("classes.yml:" + id + ".stat-percent-per-level must contain values in 0..100");
+            double healing = p.optionalDouble(entry.get("healing-percent-per-level"),
+                    "classes.yml:" + id + ".healing-percent-per-level", 0, -Double.MIN_VALUE, 100);
+            if (id != null && icon != null && display != null && !invalidPercentage) {
+                result.put(id, new ClassDefinition(id, display, icon, stats, percentages, healing));
+            }
         }
         if (result.isEmpty()) p.error("classes.yml:classes must not be empty");
         return result;

@@ -12,6 +12,8 @@ import me.lidan.dungeonCrawlers.config.registry.ConfigRegistryService;
 import me.lidan.dungeonCrawlers.core.door.DoorService;
 import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
 import me.lidan.dungeonCrawlers.integration.DungeonActionBar;
+import me.lidan.dungeonCrawlers.integration.BukkitClassAbilityService;
+import me.lidan.dungeonCrawlers.integration.DungeonClassScaling;
 import me.lidan.dungeonCrawlers.integration.DungeonMessages;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -156,12 +158,13 @@ public final class DungeonClassMenuService implements Listener {
                                   boolean updating) {
         Map<String, ClassDefinition> classes = configRegistry.snapshot().classes();
         List<String> available = snapshot.allowedClasses();
+        int dungeonLevel = DungeonClassScaling.dungeonLevel(player);
         for (int index = 0; index < CLASS_SLOTS.length; index++) {
             GuiItem item;
             if (index < available.size()) {
                 String classId = available.get(index);
                 ClassDefinition definition = classes.get(classId);
-                item = classItem(classId, definition,
+                item = classItem(classId, definition, dungeonLevel,
                         classId.equals(snapshot.selectedClasses().get(player.getUniqueId())),
                         event -> select(player, snapshot.instanceId(), classId));
             } else {
@@ -183,7 +186,7 @@ public final class DungeonClassMenuService implements Listener {
     }
 
     private dev.triumphteam.gui.guis.GuiItem classItem(
-            String classId, ClassDefinition definition, boolean selected,
+            String classId, ClassDefinition definition, int dungeonLevel, boolean selected,
             Consumer<org.bukkit.event.inventory.InventoryClickEvent> action) {
         if (definition == null) {
             return ItemBuilder.from(Material.BARRIER)
@@ -195,7 +198,7 @@ public final class DungeonClassMenuService implements Listener {
         }
         return ItemBuilder.from(definition.icon())
                 .name(MiniMessageUtils.miniMessage(definition.displayName()))
-                .lore(classLore(definition, selected))
+                .lore(classLore(definition, dungeonLevel, selected))
                 .asGuiItem(event -> {
                     event.setCancelled(true);
                     action.accept(event);
@@ -203,11 +206,32 @@ public final class DungeonClassMenuService implements Listener {
     }
 
     private static List<net.kyori.adventure.text.Component> classLore(ClassDefinition definition,
-                                                                        boolean selected) {
+                                                                   int dungeonLevel, boolean selected) {
         List<net.kyori.adventure.text.Component> lore = new ArrayList<>();
         lore.add(MiniMessageUtils.miniMessage("<gray>Requirement: <green>Allowed on this floor</green></gray>"));
         lore.add(MiniMessageUtils.miniMessage("<gray>Configured bonuses:</gray>"));
         appendStats(lore, definition.stats());
+        lore.add(MiniMessageUtils.miniMessage("<gray>Dungeon skill level: <white>" + dungeonLevel + "</white></gray>"));
+        definition.statPercentPerLevel().entrySet().stream().sorted((left, right) ->
+                        statName(left.getKey()).compareTo(statName(right.getKey())))
+                .forEach(entry -> lore.add(MiniMessageUtils.miniMessage("<green>+"
+                        + amount(entry.getValue() * dungeonLevel) + "% " + statName(entry.getKey())
+                        + " <gray>+" + amount(entry.getValue()) + "% per level</gray></green>")));
+        if (definition.healingPercentPerLevel() > 0) {
+            lore.add(MiniMessageUtils.miniMessage("<green>+"
+                    + amount(definition.healingPercentPerLevel() * dungeonLevel) + "% healing <gray>+"
+                    + amount(definition.healingPercentPerLevel()) + "% per level</gray></green>"));
+        }
+        String abilityName = BukkitClassAbilityService.abilityName(definition.id());
+        if (!abilityName.isEmpty()) {
+            lore.add(MiniMessageUtils.miniMessage("<gold>" + abilityName + " <yellow>DROP</yellow></gold>"));
+            lore.add(MiniMessageUtils.miniMessage("<gray>Cooldown: "
+                    + BukkitClassAbilityService.cooldownSeconds(definition.id()) + "s</gray>"));
+            String description = BukkitClassAbilityService.abilityDescription(definition.id(), dungeonLevel);
+            for (String line : description.split("; ")) {
+                lore.add(MiniMessageUtils.miniMessage("<gray>" + line + "</gray>"));
+            }
+        }
         lore.add(MiniMessageUtils.miniMessage(selected
                 ? "<green><bold>Currently selected</bold></green>"
                 : "<yellow>Click to select</yellow>"));

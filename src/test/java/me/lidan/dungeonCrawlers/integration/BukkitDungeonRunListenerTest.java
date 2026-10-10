@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeAll;
 
 import java.util.Optional;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -57,6 +58,26 @@ class BukkitDungeonRunListenerTest {
         when(block.getType()).thenReturn(material);
         when(block.getY()).thenReturn(64);
         return new PlayerInteractEvent(player, Action.RIGHT_CLICK_BLOCK, null, block, BlockFace.UP, hand);
+    }
+
+    @Test
+    void skillLevelReachesRunStatAggregation() {
+        var listener = listener();
+        var selected = new me.lidan.dungeonCrawlers.config.registry.ConfigModels.ClassDefinition(
+                "berserker", "Berserker", Material.IRON_SWORD,
+                new me.lidan.dungeonCrawlers.config.registry.ConfigModels.StatModifiers(Map.of(), Map.of()),
+                Map.of(StatType.STRENGTH, 2.0), 0);
+        when(phaseFive.selectedClass(playerId)).thenReturn(Optional.of(selected));
+        when(secrets.aggregate(eq(instance), eq(selected), anyMap(), eq(20)))
+                .thenReturn(Map.of(StatType.STRENGTH, 140.0));
+        Stats stats = new Stats();
+        stats.set(StatType.STRENGTH, 100);
+        try (var levels = mockStatic(DungeonClassScaling.class)) {
+            levels.when(() -> DungeonClassScaling.dungeonLevel(player)).thenReturn(20);
+            listener.onStatsCalculate(new me.lidan.cavecrawlers.stats.StatsCalculateEvent(player, stats));
+        }
+        assertEquals(140, stats.get(StatType.STRENGTH).getValue());
+        verify(secrets).aggregate(eq(instance), eq(selected), anyMap(), eq(20));
     }
 
     @Test

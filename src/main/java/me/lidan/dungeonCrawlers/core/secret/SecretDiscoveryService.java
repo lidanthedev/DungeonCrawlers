@@ -172,10 +172,15 @@ public final class SecretDiscoveryService {
     }
 
     public synchronized Map<StatType, Double> aggregate(UUID instanceId, ClassDefinition selectedClass,
-                                                          Map<StatType, Double> incoming) {
+                                                       Map<StatType, Double> incoming) {
+        return aggregate(instanceId, selectedClass, incoming, 0);
+    }
+
+    public synchronized Map<StatType, Double> aggregate(UUID instanceId, ClassDefinition selectedClass,
+                                                       Map<StatType, Double> incoming, int dungeonLevel) {
         MutableInstance state = instances.get(Objects.requireNonNull(instanceId, "instanceId"));
         if (state == null) return Map.copyOf(incoming);
-        return stats.aggregate(incoming, selectedClass, state.definitions, state.levels.snapshot());
+        return stats.aggregate(incoming, selectedClass, state.definitions, state.levels.snapshot(), dungeonLevel);
     }
 
     public synchronized Map<String, Integer> blessingLevels(UUID instanceId) {

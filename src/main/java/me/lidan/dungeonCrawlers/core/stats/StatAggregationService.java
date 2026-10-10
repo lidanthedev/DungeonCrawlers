@@ -15,6 +15,12 @@ public final class StatAggregationService {
     public Map<StatType, Double> aggregate(Map<StatType, Double> incoming, ClassDefinition selectedClass,
                                            Map<String, BlessingDefinition> definitions,
                                            Map<String, Integer> activeLevels) {
+        return aggregate(incoming, selectedClass, definitions, activeLevels, 0);
+    }
+
+    public Map<StatType, Double> aggregate(Map<StatType, Double> incoming, ClassDefinition selectedClass,
+                                           Map<String, BlessingDefinition> definitions,
+                                           Map<String, Integer> activeLevels, int dungeonLevel) {
         Objects.requireNonNull(incoming, "incoming");
         Objects.requireNonNull(definitions, "definitions");
         Objects.requireNonNull(activeLevels, "activeLevels");
@@ -33,6 +39,10 @@ public final class StatAggregationService {
         for (StatType stat : StatType.values()) {
             double add = selectedClass == null ? 0 : selectedClass.stats().add().getOrDefault(stat, 0.0);
             double factor = selectedClass == null ? 1 : selectedClass.stats().multiply().getOrDefault(stat, 1.0);
+            if (selectedClass != null) {
+                factor *= 1 + selectedClass.statPercentPerLevel().getOrDefault(stat, 0.0)
+                        * Math.clamp(dungeonLevel, 0, 60) / 100.0;
+            }
             for (var active : orderedLevels.entrySet()) {
                 BlessingDefinition blessing = activeBlessings.get(active.getKey());
                 StatModifiers perLevel = blessing.perLevel();

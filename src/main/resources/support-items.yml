@@ -1,0 +1,47 @@
+# Native CaveCrawlers definitions are installed once and preserve later admin edits.
+# Right click from the main hand. Effects reach living party members within 16 blocks
+# in the same active dungeon. Any class may use these items.
+DC_AEGIS_STANDARD:
+  name: Aegis Standard
+  material: WHITE_BANNER
+  description: "A tank's rallying standard. Right click to shelter your dungeon party."
+  stats:
+    HEALTH: 100
+    DEFENSE: 75
+  ability: dc_aegis_standard
+  ability-name: Rallying Aegis
+  ability-description: "Heal nearby party members for 10% of max health and grant +35% Defense for 10 seconds."
+  cooldown-seconds: 25
+DC_BASTION_HORN:
+  name: Bastion Horn
+  material: GOAT_HORN
+  description: "Sound the call to hold the line. Right click to protect your dungeon party."
+  stats:
+    HEALTH: 150
+    DEFENSE: 100
+  ability: dc_bastion_horn
+  ability-name: Bastion's Call
+  ability-description: "Heal nearby party members for 5% of max health and reduce incoming damage by 25% for 10 seconds."
+  cooldown-seconds: 35
+DC_RENEWAL_STAFF:
+  name: Renewal Staff
+  material: BLAZE_ROD
+  description: "A healer's staff of renewal. Right click to restore your dungeon party."
+  stats:
+    HEALTH: 100
+    INTELLIGENCE: 100
+  ability: dc_renewal_staff
+  ability-name: Wellspring
+  ability-description: "Heal nearby party members for 30% of max health and restore 5% each second for 10 seconds. Healing scales with your Healer bonus."
+  cooldown-seconds: 25
+DC_DAWNLIGHT_TOME:
+  name: Dawnlight Tome
+  material: ENCHANTED_BOOK
+  description: "An inspiring tome of dawn. Right click to strengthen your dungeon party."
+  stats:
+    HEALTH: 75
+    INTELLIGENCE: 150
+  ability: dc_dawnlight_tome
+  ability-name: Dawn's Benediction
+  ability-description: "Heal nearby party members for 15% of max health and grant +25% Strength and Intelligence for 10 seconds."
+  cooldown-seconds: 30
