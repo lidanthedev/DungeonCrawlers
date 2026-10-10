@@ -22,3 +22,11 @@ Secret chests, trapped secret chests and the completed boss Ender Chest handle r
 Java 21 clean build passed, followed by a final build with all 424 tests passing and no failures, errors or skips. The event-dispatch regression test registers the real ghost listener and verifies cancelled and uncancelled clicks for all three chest types, living/ghost/removed states, offhand clicks and nonparticipants.
 
 The tested JAR was uploaded to Modern Cave Crawl (`fa696721`), SHA-256 `e545f8ef193278281971ed25c52e307978a6a5f96cc8f8b068369f3a78c43aa6`. The remote checksum matched. Waited for the active boss fight to finish and confirmed zero instances before `cc reload all` at 16:02 UTC. DungeonCrawlers enabled and recovery reported `startsEnabled=true`; compatibility automated checks passed, with the existing Human Gate 0 still requiring manual checks. The broad reload briefly triggered the watchdog and recovered. Actual player chest clicks remain unchecked.
+
+## Reward chest beacon and particles, 2026-10-11
+
+Completed boss reward chests gain a small virtual Beacon model, a full-bright gold/white beam reaching the world's maximum height, end-rod sparkles and a gold particle ring. Three nonpersistent BlockDisplay entities render the model and beam independently of sky access; no roof or arena blocks are removed. The existing once-per-second update loop emits particles and removes the visuals after instance closure or invalidation. Replacement and plugin shutdown remove all displays, and partial initialization cleans up without blocking reward finalization.
+
+Java 21 clean build passed all 428 tests and external-plugin shading verification. Regression coverage verifies beam height, upright geometry, no obstruction reads/block changes, particle emission, replacement, invalid entities, instance closure, idempotent shutdown and partial-spawn cleanup. JAR SHA-256: `9b6979ea5cd76fce27e02808828665de366ec9fdce4af18fa9d3ce11bd0674f5`. Client appearance and a completed live boss chest remain unchecked.
+
+Deployed to Modern Cave Crawl (`fa696721`) with matching local/remote checksum after confirming zero active instances. `cc reload all` enabled DungeonCrawlers and recovery reported `startsEnabled=true`; configuration validation and automated compatibility checks passed. Existing Human Gate 0 remains pending its separate manual checks.
