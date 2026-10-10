@@ -621,7 +621,8 @@ public final class DungeonCrawlers extends JavaPlugin {
         registerEvent(new BukkitCombatListener(combat, entityIdentity, generationWorldName, () -> disabling,
                 bossIdentity, phaseNine, phaseFiveCommand::canOpenDungeonDoor));
         registerEvent(new BukkitPortalBossListener(this, phaseNine, runPreparation, generationWorldName));
-        registerEvent(new BukkitRewardChestListener(phaseNine, generationWorldName, phaseElevenCommand::openRewards));
+        registerEvent(new BukkitRewardChestListener(phaseNine, generationWorldName,
+                phaseElevenCommand::openRewards, phaseFiveCommand::canOpenDungeonDoor));
         registerEvent(rewardMailboxListener);
         registerEvent(new BukkitReloadProtectionListener(this::hasCompletionPending));
         registerEvent(classMenuService);

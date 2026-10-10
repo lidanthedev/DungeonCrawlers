@@ -73,7 +73,7 @@ public final class BukkitDungeonRunListener implements Listener {
         aggregated.forEach((type, value) -> event.getStats().set(type, value));
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onSecretInteract(PlayerInteractEvent event) {
         if (phaseSeven == null || event.getHand() == EquipmentSlot.OFF_HAND
                 || event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getClickedBlock() == null
