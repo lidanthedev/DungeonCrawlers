@@ -56,15 +56,15 @@ Its conditional board displays only while the viewer belongs to a dungeon.
 | `%dungeoncrawlers_rooms_cleared%` | `3` | Cleared combat rooms. |
 | `%dungeoncrawlers_rooms_total%` | `9` | Total combat rooms, including miniboss rooms. |
 | `%dungeoncrawlers_clear_percent%` | `33` | Integer combat-room completion percentage, without the percent sign. |
-| `%dungeoncrawlers_sidebar_floor%` | `Floor I • Normal` | Floor and difficulty, with legacy colors. |
-| `%dungeoncrawlers_sidebar_phase%` | `Clear the dungeon` | Current objective or class-selection readiness. |
+| `%dungeoncrawlers_sidebar_floor%` | `ꜰʟᴏᴏʀ ɪ • ɴᴏʀᴍᴀʟ` | Floor and difficulty, with legacy colors. |
+| `%dungeoncrawlers_sidebar_phase%` | `ᴄʟᴇᴀʀ ᴛʜᴇ ᴅᴜɴɢᴇᴏɴ` | Current objective or class-selection readiness. |
 | `%dungeoncrawlers_sidebar_room_secrets%` | `1/3` | Found/total secrets in the room the viewer is standing in. Returns `0/0` between rooms or outside the dungeon world. |
 | `%dungeoncrawlers_sidebar_deaths%` | `2` | Total party deaths. |
-| `%dungeoncrawlers_sidebar_score%` | `Score: 305 (S+)` | Final score/rank line; empty before finalization. |
-| `%dungeoncrawlers_sidebar_party_1%` | `[B] LidanTheGamer 1,235❤` | Party member class, name, and current HP in small caps. HP color follows remaining percentage. Slots 1–5 are supported; unused slots return empty. Ghosts/dead players show `☠`; offline players show `ᴏꜰꜰʟɪɴᴇ`. |
+| `%dungeoncrawlers_sidebar_score%` | `ꜱᴄᴏʀᴇ: 305 (ꜱ+)` | Final score/rank line; empty before finalization. |
+| `%dungeoncrawlers_sidebar_party_1%` | `[ʙ] ʟɪᴅᴀɴᴛʜᴇɢᴀᴍᴇʀ 1,235❤` | Party member class, name, and current HP in small caps. HP color follows remaining percentage. Slots 1–5 are supported; unused slots return empty. Ghosts/dead players show `☠`; offline players show `ᴏꜰꜰʟɪɴᴇ`. |
 
 HP is read on the server thread and published once per second for TAB's
-asynchronous readers. Displayed HP rounds up and uses thousands separators. HP is green at 75% or higher, yellow at 50–75%, gold at 25–50%, and red below 25%. Maximum HP and physical room location are also published on the server thread. All sidebar text uses small caps while preserving color codes. The room count updates independently for each viewer, including cleared rooms; it is separate from the overall run secret count.
+asynchronous readers. Displayed HP rounds up and uses thousands separators. HP is green at 75% or higher, yellow from 50% to below 75%, gold from 25% to below 50%, and red below 25%. Maximum HP and physical room location are also published on the server thread. All sidebar text uses small caps while preserving color codes. The room count updates independently for each viewer, including cleared rooms; it is separate from the overall run secret count.
 
 `%dungeoncrawlers_player_current_room_secrets%` returns the same found/total count; `_found` and `_total` return individual numbers.
 
