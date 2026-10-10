@@ -145,6 +145,7 @@ public final class DungeonCrawlers extends JavaPlugin {
     private BukkitProgressBarService progressBars;
     private SecretDiscoveryService phaseSeven;
     private PortalEncounterService phaseNine;
+    private me.lidan.dungeonCrawlers.integration.BukkitRewardChestVisuals rewardChestVisuals;
     private DungeonPhaseElevenCommand phaseElevenCommand;
     private RewardEntitlementService rewards;
     private RewardClaimService claims;
@@ -300,6 +301,8 @@ public final class DungeonCrawlers extends JavaPlugin {
                 }, true, timings);
         var classPreferences = new me.lidan.dungeonCrawlers.integration.BukkitClassPreferences(this);
         runPreparation.configureClassPreferences(classPreferences::read, classPreferences::write);
+        rewardChestVisuals = new me.lidan.dungeonCrawlers.integration.BukkitRewardChestVisuals(
+                instance -> runPreparation.info(instance).isPresent());
         phaseSeven = new SecretDiscoveryService(configRegistry::snapshot);
         lifecycle = new PlayerLifecycleService(centralUpdates, phaseClock(), this::handleLifecycleNotice, timings);
         bossIdentity = new BukkitBossIdentity(this);
@@ -656,6 +659,11 @@ public final class DungeonCrawlers extends JavaPlugin {
         recordProgression(snapshot.instanceId(), true, null);
         var point = snapshot.rewardChest();
         world.getBlockAt(point.x(), point.y(), point.z()).setType(org.bukkit.Material.ENDER_CHEST, false);
+        try {
+            rewardChestVisuals.show(snapshot.instanceId(), new org.bukkit.Location(world, point.x(), point.y(), point.z()));
+        } catch (RuntimeException error) {
+            getLogger().warning("instance=" + snapshot.instanceId() + " reward chest visual failed: " + error.getMessage());
+        }
         participants.stream().map(RewardEntitlementService.Participant::playerId)
                 .map(getServer()::getPlayer)
                 .filter(java.util.Objects::nonNull)
@@ -959,6 +967,7 @@ public final class DungeonCrawlers extends JavaPlugin {
             if (placeholderExpansion != null) placeholderExpansion.refreshSnapshots();
             difficultyService.tick();
             classAbilities.tick();
+            rewardChestVisuals.tick();
             deliverDungeonXp();
         }, 20L, 20L);
     }
@@ -971,6 +980,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         if (difficultyService != null) difficultyService.close();
         if (supportItems != null) supportItems.close();
         if (classAbilities != null) classAbilities.close();
+        if (rewardChestVisuals != null) rewardChestVisuals.close();
         if (classSelectorNpcs != null) classSelectorNpcs.shutdown();
         if (placeholderExpansion != null) placeholderExpansion.unregister();
         if (reservations != null) reservations.pauseAdmission();
