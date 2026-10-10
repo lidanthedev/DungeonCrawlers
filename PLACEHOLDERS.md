@@ -38,8 +38,8 @@ snapshots only, so it does not start work, perform I/O, or change a run.
 | `%dungeoncrawlers_player_bonus_score%` | `2` | Final bonus category score. |
 | `%dungeoncrawlers_player_elapsed_time%` | `14m 32s` | Run duration. |
 | `%dungeoncrawlers_player_elapsed_seconds%` | `872` | Run duration in seconds. |
-| `%dungeoncrawlers_player_current_room%` | `3` | Active combat room index, or `0` when unavailable. |
-| `%dungeoncrawlers_player_current_room_id%` | `crypt_large_01` | Active combat room template id. |
+| `%dungeoncrawlers_player_current_room%` | `3` | Viewer's physical room index, or `0` when unavailable. |
+| `%dungeoncrawlers_player_current_room_id%` | `crypt_large_01` | Viewer's physical room template id. |
 
 The shorter names `score`, `rank`, `deaths`, `players`, `alive`, `ghosts`,
 `secrets_found`, and `secrets_total` are also available in player context.
@@ -58,12 +58,15 @@ Its conditional board displays only while the viewer belongs to a dungeon.
 | `%dungeoncrawlers_clear_percent%` | `33` | Integer combat-room completion percentage, without the percent sign. |
 | `%dungeoncrawlers_sidebar_floor%` | `Floor I • Normal` | Floor and difficulty, with legacy colors. |
 | `%dungeoncrawlers_sidebar_phase%` | `Clear the dungeon` | Current objective or class-selection readiness. |
+| `%dungeoncrawlers_sidebar_room_secrets%` | `1/3` | Found/total secrets in the room the viewer is standing in. Returns `0/0` between rooms or outside the dungeon world. |
 | `%dungeoncrawlers_sidebar_deaths%` | `2` | Total party deaths. |
 | `%dungeoncrawlers_sidebar_score%` | `Score: 305 (S+)` | Final score/rank line; empty before finalization. |
-| `%dungeoncrawlers_sidebar_party_1%` | `[B] LidanTheGamer 1,235❤` | Party member class, name, and current HP. Slots 1–5 are supported; unused slots return empty. Ghosts/dead players show `☠`; offline players show `OFFLINE`. |
+| `%dungeoncrawlers_sidebar_party_1%` | `[B] LidanTheGamer 1,235❤` | Party member class, name, and current HP in small caps. HP color follows remaining percentage. Slots 1–5 are supported; unused slots return empty. Ghosts/dead players show `☠`; offline players show `ᴏꜰꜰʟɪɴᴇ`. |
 
 HP is read on the server thread and published once per second for TAB's
-asynchronous readers. Displayed HP rounds up and uses thousands separators.
+asynchronous readers. Displayed HP rounds up and uses thousands separators. HP is green at 75% or higher, yellow at 50–75%, gold at 25–50%, and red below 25%. Maximum HP and physical room location are also published on the server thread. All sidebar text uses small caps while preserving color codes. The room count updates independently for each viewer, including cleared rooms; it is separate from the overall run secret count.
+
+`%dungeoncrawlers_player_current_room_secrets%` returns the same found/total count; `_found` and `_total` return individual numbers.
 
 TAB can treat a literal `%` between placeholders as the beginning of another
 placeholder. Keep the literal percent sign at the end of a line's placeholders:
