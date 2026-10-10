@@ -4,7 +4,7 @@ FoundryHammerTell:
   - sound{s=block.anvil.place;v=0.6;p=0.6} @self
   - delay 25
   - effect:particles{p=explosion;a=1} @self
-  - damage{a=240000} @PlayersInRadius{r=3.5}
+  - damage{a=1200000} @PlayersInRadius{r=3.5}
 FoundryCantorBolt:
   Skills:
   - sound{s=block.note_block.chime;v=0.6;p=1.4} @self
@@ -15,7 +15,7 @@ FoundryBoltTrail:
   - effect:particles{p=end_rod;a=1} @origin
 FoundryBoltHit:
   Skills:
-  - damage{a=180000}
+  - damage{a=1000000}
 FoundrySkitterLeap:
   Skills:
   - sound{s=entity.spider.ambient;v=0.6;p=0.5} @self

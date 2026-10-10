@@ -1,8 +1,8 @@
 VeyraChainbound:
   Type: WITHER_SKELETON
   Display: '&bVeyra, the Chainbound Architect'
-  Health: 90000000
-  Damage: 650000
+  Health: 200000000
+  Damage: 3500000
   Equipment:
   - NETHERITE_HELMET HEAD
   - NETHERITE_CHESTPLATE CHEST
@@ -23,8 +23,8 @@ VeyraChainbound:
 FoundrySentinel:
   Type: HUSK
   Display: '&8[Foundry] &6Riveted Sentinel'
-  Health: 4000000
-  Damage: 180000
+  Health: 15000000
+  Damage: 900000
   Equipment:
   - IRON_HELMET HEAD
   - IRON_CHESTPLATE CHEST
@@ -42,8 +42,8 @@ FoundrySentinel:
 FoundryCantor:
   Type: SKELETON
   Display: '&8[Foundry] &bAshen Cantor'
-  Health: 2800000
-  Damage: 130000
+  Health: 12000000
+  Damage: 750000
   Equipment:
   - LEATHER_HELMET{color=CYAN} HEAD
   - LEATHER_CHESTPLATE{color=CYAN} CHEST
@@ -61,8 +61,8 @@ FoundryCantor:
 FoundrySkitter:
   Type: SPIDER
   Display: '&8[Foundry] &5Gearweb Skitter'
-  Health: 2000000
-  Damage: 120000
+  Health: 10000000
+  Damage: 650000
   Options:
     PreventOtherDrops: true
     Despawn: false
@@ -75,8 +75,8 @@ FoundrySkitter:
 FoundryChainkeeper:
   Type: IRON_GOLEM
   Display: '&8[Foundry] &cThe Last Chainkeeper'
-  Health: 18000000
-  Damage: 350000
+  Health: 60000000
+  Damage: 1800000
   Options:
     PreventOtherDrops: true
     Despawn: false

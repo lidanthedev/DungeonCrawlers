@@ -50,3 +50,15 @@ These require real client input or a party and remain unchecked:
 - [ ] Exercise disconnect/reconnect and participant departure live; wipe during introduction, retraction and final phase. Automated lifecycle/state tests cover these paths; the live wipe pass covered transformation and a Normal final-phase death.
 - [ ] Complete a full ordinary run, physically open/claim rewards, and verify victory XP/progression. Admin boss jumps were used for encounter testing.
 - [ ] Five-player load: synchronized presentation, collision safety, frame rate, server tick time and balance.
+
+## Balance revision, 2026-10-10
+
+User requested stronger Floor III mobs after comparing their low HP with Floor I. Live `/plugins/MythicMobs/Mobs/dungeon_mobs.yml` confirmed Crypt enemies at 5M HP / 400K damage and minibosses at 20M / 1M. Live `ringmaster.yml` has 55M / 2M and an Encore at 75M / 3M.
+
+- F3 base stats now match the combat tuning table in [SUNDERED_FOUNDRY.md](SUNDERED_FOUNDRY.md). Hammer damage is 1.2M and Cantor bolt damage is 1M. Timing and phase thresholds are unchanged.
+- Java 21 `./gradlew build --no-daemon` passed, including all 375 tests and the external API shading check. JAR SHA-256: `dd1ef3f6c333495302c6dc1b7b351e24a7eeac97aabf579e02f1a2ffa4732b51`.
+- Uploaded successfully to development server `fa696721`; backed up the three edited server YAML files with `.before-balance-20261010`, then patched only Foundry stat values. User approved closing the active run for reload.
+- `cc reload all` completed, DungeonCrawlers loaded three floors / 26 rooms / three encounters with config hash `508d4f82c922ea31c90ccd171007825a1a4279ce37ac944005c70ed51d625e1a`. `mm reload` completed with previously known unrelated pack warnings and no Foundry definition errors.
+- `mm mobs info` verified all five loaded F3 HP and damage values at 08:29 UTC.
+- Debug Impossible run `41615ebe-840c-4d49-ab5c-7c1b86892b04`, seed 3003, prepared and activated its first room with Sentinel and Cantor alive. Boss health NBT read at 08:30:38 UTC returned `1.0E9f`, confirming 1B solo Impossible HP without double scaling. Test run closed after the read.
+- This revision did not repeat the entire cinematic or measure Survival/party fight duration. Earlier cinematic evidence remains above; balance still needs a player combat pass.

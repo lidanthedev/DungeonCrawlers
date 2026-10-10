@@ -90,7 +90,7 @@ public final class BukkitChainboundArena implements ChainboundEncounter.Arena, L
         center = new Location(actor.getWorld(), origin.x() + .5, origin.y(), origin.z() + .5);
         scene = new BukkitFoundryScene(center, context.instanceId());
         var active = MythicBukkit.inst().getMobManager().getActiveMob(boss).orElseThrow();
-        double existingMultiplier = active.getEntity().getMaxHealth() / 90_000_000D;
+        double existingMultiplier = active.getEntity().getMaxHealth() / Settings.defaults().health();
         int party = runs.info(context.instanceId()).orElseThrow().participants().size();
         active.getEntity().setHealthAndMax(settings.health() * existingMultiplier * (1 + .45 * (party - 1)));
         actor.setRemoveWhenFarAway(false);

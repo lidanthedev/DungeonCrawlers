@@ -29,7 +29,7 @@ public final class ChainboundEncounter implements EncounterFactory.Encounter {
             }
         }
         public static Settings defaults() {
-            return new Settings(90_000_000, 650_000, .65, .18, 6500, 14000, 2000, 8500, 6500, 5500, 5000);
+            return new Settings(200_000_000, 3_500_000, .65, .18, 6500, 14000, 2000, 8500, 6500, 5500, 5000);
         }
     }
 

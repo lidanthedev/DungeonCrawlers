@@ -64,3 +64,17 @@ At 18%, the Last Weave begins. Veyra glows, the music speeds up, attacks arrive 
 ## Verification
 
 See [the human gate](SUNDERED_FOUNDRY_HUMAN_GATE.md) for exact build and live-test status. Automated checks do not establish multiplayer balance, artistic quality in the client, or frame rate under five-player load; those require the documented live pass.
+
+## Combat tuning
+
+The 2026-10-10 balance revision uses live Floor I MythicMobs as its baseline. Crypt enemies have 5M HP and 400K damage; its minibosses have 20M HP and 1M damage. Foundry regulars now have 2–3 times that health and distinct attack strengths.
+
+| Mob | Base health | Base damage | Special damage |
+| --- | ---: | ---: | ---: |
+| Riveted Sentinel | 15M | 900K | Hammer 1.2M |
+| Ashen Cantor | 12M | 750K | Bolt 1M |
+| Gearweb Skitter | 10M | 650K | Leap uses melee |
+| Last Chainkeeper | 60M | 1.8M | Hammer 1.2M |
+| Veyra | 200M | 3.5M | Arena attacks use configured boss damage |
+
+Existing difficulty and party multipliers still apply. Solo Impossible Veyra has 1B HP. The arena normalizes Mythic's spawn health against the bundled default before applying `foundry.yml`, so raising the base does not multiply health twice. Existing installations need their Foundry Mythic definitions and `foundry.yml` updated explicitly; the installer preserves existing files.

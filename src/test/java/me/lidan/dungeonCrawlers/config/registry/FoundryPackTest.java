@@ -39,7 +39,7 @@ class FoundryPackTest {
         var loader = new ConfigLoader(new EncounterRegistry());
         String hash = loader.load(directory).snapshot().hash();
         Path settings = directory.resolve("foundry.yml");
-        Files.writeString(settings, Files.readString(settings).replace("damage: 650000", "damage: 700000"));
+        Files.writeString(settings, Files.readString(settings).replace("damage: 3500000", "damage: 4000000"));
         assertNotEquals(hash, loader.load(directory).snapshot().hash());
         Files.writeString(settings, Files.readString(settings).replace("final-threshold: 0.18", "final-threshold: 0.8"));
         assertFalse(loader.load(directory).successful());
