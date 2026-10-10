@@ -1,0 +1,28 @@
+FoundryHammerTell:
+  Skills:
+  - effect:particles{p=crit;a=12;hS=3;vS=0.1;y=0.2} @self
+  - sound{s=block.anvil.place;v=0.6;p=0.6} @self
+  - delay 25
+  - effect:particles{p=explosion;a=1} @self
+  - damage{a=240000} @PlayersInRadius{r=3.5}
+FoundryCantorBolt:
+  Skills:
+  - sound{s=block.note_block.chime;v=0.6;p=1.4} @self
+  - delay 15
+  - projectile{onTick=FoundryBoltTrail;onHit=FoundryBoltHit;v=12;i=2;hR=0.6;vR=0.6;mr=24;md=60;g=0}
+FoundryBoltTrail:
+  Skills:
+  - effect:particles{p=end_rod;a=1} @origin
+FoundryBoltHit:
+  Skills:
+  - damage{a=180000}
+FoundrySkitterLeap:
+  Skills:
+  - sound{s=entity.spider.ambient;v=0.6;p=0.5} @self
+  - delay 15
+  - leap{velocity=140}
+FoundryChainPull:
+  Skills:
+  - sound{s=block.chain.place;v=0.8;p=0.5} @self
+  - delay 25
+  - pull{velocity=0.6}

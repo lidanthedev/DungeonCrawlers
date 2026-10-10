@@ -117,6 +117,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class DungeonCrawlers extends JavaPlugin {
+    private me.lidan.dungeonCrawlers.integration.BukkitFoundryRooms foundryRooms;
     private Lamp.Builder<BukkitCommandActor> commandHandlerBuilder;
     private ConfigRegistryService configRegistry;
     private PlayerReservationService reservations;
@@ -306,6 +307,17 @@ public final class DungeonCrawlers extends JavaPlugin {
                 new me.lidan.dungeonCrawlers.core.encounter.RingmasterEncounter(context,
                         new me.lidan.dungeonCrawlers.integration.BukkitRingmasterArena(context, this,
                                 runPreparation, lifecycle, mythicMobs, difficultyService), phaseClock()));
+        encounterFactories.register(me.lidan.dungeonCrawlers.core.encounter.ChainboundEncounter.ID, context -> {
+            boolean impossible = generation.layoutContext(context.instanceId()).orElseThrow().difficulty().tier()
+                    == me.lidan.dungeonCrawlers.core.difficulty.Difficulty.IMPOSSIBLE;
+            try {
+                var settings = me.lidan.dungeonCrawlers.config.FoundryPack.load(configFactory,
+                        getDataFolder().toPath().resolve("foundry.yml"));
+                return new me.lidan.dungeonCrawlers.core.encounter.ChainboundEncounter(context,
+                        new me.lidan.dungeonCrawlers.integration.BukkitChainboundArena(context, this, generation,
+                                runPreparation, lifecycle, teleportPermits, phaseClock(), impossible), settings, impossible, phaseClock());
+            } catch (IOException exception) { throw new IllegalStateException(exception); }
+        });
         phaseNine = new PortalEncounterService(centralUpdates, runPreparation,
                 encounterFactories,
                 bossGateway,
@@ -328,6 +340,10 @@ public final class DungeonCrawlers extends JavaPlugin {
                 this, generation, runPreparation, lifecycle, claims);
         combatGateway.configureDifficulty(difficultyService::spawn);
         bossGateway.configureDifficulty(difficultyService::spawn);
+        foundryRooms = new me.lidan.dungeonCrawlers.integration.BukkitFoundryRooms(this, generation, runPreparation,
+                lifecycle, combat, teleportPermits, phaseClock(), worldName);
+        combat.configureObjectives(foundryRooms::complete, foundryRooms::cleanup);
+        getServer().getPluginManager().registerEvents(foundryRooms, this);
         lifecycle.configureRevival(difficultyService::activeRunicPet, this::applyRevival);
         runPreparation.configureCombatStarted(instance -> {
             var context = generation.layoutContext(instance).orElseThrow();
@@ -450,6 +466,11 @@ public final class DungeonCrawlers extends JavaPlugin {
         saveDefaultResourceIfMissing("rooms.yml");
         saveDefaultResourceIfMissing("difficulties.yml");
         saveDefaultResourceIfMissing("floors/floor_1.yml");
+        saveDefaultResourceIfMissing("floors/floor_3.yml");
+        saveDefaultResourceIfMissing("rooms_foundry.yml");
+        saveDefaultResourceIfMissing("foundry.yml");
+        try { me.lidan.dungeonCrawlers.config.FoundryPack.installTemplates(this); }
+        catch (IOException exception) { throw new IllegalStateException("Cannot install Foundry templates", exception); }
         saveDefaultResourceIfMissing("config.yml");
     }
 
@@ -914,6 +935,7 @@ public final class DungeonCrawlers extends JavaPlugin {
     private void startTasks() {
         getServer().getScheduler().runTaskTimer(this, (Runnable) () -> {
             centralUpdates.tick();
+            foundryRooms.tick(phaseClock().instant());
             generation.checkCleanupDeadlines();
         }, 1L, 1L);
         getServer().getScheduler().runTaskTimer(this, () -> {

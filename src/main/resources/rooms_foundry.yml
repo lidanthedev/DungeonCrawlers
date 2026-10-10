@@ -1,0 +1,12 @@
+schema-version: 1
+rooms:
+  foundry_start: { type: start }
+  foundry_portal: { type: portal }
+  foundry_heart: { type: boss }
+  foundry_resonance: { type: normal, encounters: [normal], min-floor: 3, max-floor: 3, weight: 10 }
+  foundry_counterweight: { type: normal, encounters: [normal], min-floor: 3, max-floor: 3, weight: 10 }
+  foundry_splitforge: { type: normal, encounters: [normal], min-floor: 3, max-floor: 3, weight: 10 }
+  foundry_archives: { type: normal, encounters: [normal], min-floor: 3, max-floor: 3, weight: 10 }
+  foundry_turbine: { type: normal, encounters: [normal], min-floor: 3, max-floor: 3, weight: 10 }
+  foundry_catwalk: { type: normal, encounters: [normal], min-floor: 3, max-floor: 3, weight: 10 }
+  foundry_warden: { type: normal, encounters: [miniboss], min-floor: 3, max-floor: 3, weight: 10 }

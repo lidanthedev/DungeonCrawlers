@@ -20,6 +20,24 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CombatRoomServiceTest {
     @Test
+    void objectiveHoldsRoomClearUntilEnemiesAndPuzzleAreBothDoneAndCleansWithInstance() {
+        UUID instance = UUID.randomUUID();
+        FakeMobs mobs = new FakeMobs();
+        CombatRoomService service = new CombatRoomService(mobs, new FakeChunks(), ignored -> { });
+        var solved = new java.util.concurrent.atomic.AtomicBoolean();
+        var cleaned = new java.util.ArrayList<UUID>();
+        service.configureObjectives((id, room) -> solved.get(), cleaned::add);
+        service.register(plan(instance, 1)); service.activateFirst(instance);
+        for (UUID entity : List.copyOf(mobs.entities)) service.onDeath(instance, 1, entity);
+        assertEquals(CombatRoomService.RoomState.ACTIVE, service.info(instance).orElseThrow().rooms().getFirst().state());
+        assertFalse(service.activateFromDoor(instance, new Point(2, 0, 0)).successful());
+        solved.set(true); service.refreshObjective(instance, 1);
+        assertEquals(CombatRoomService.RoomState.CLEARED, service.info(instance).orElseThrow().rooms().getFirst().state());
+        assertTrue(service.activateFromDoor(instance, new Point(2, 0, 0)).successful());
+        service.cleanup(instance); service.cleanup(instance);
+        assertEquals(List.of(instance), cleaned);
+    }
+    @Test
     void clearsRoomAndUnlocksNextOnlyAfterAllDeaths() {
         UUID instance = UUID.randomUUID();
         FakeMobs mobs = new FakeMobs();

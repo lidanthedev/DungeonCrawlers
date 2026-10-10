@@ -157,7 +157,7 @@ class BoostedConfigMigrationTest {
     }
 
     @Test
-    void floorTwoMigratesToThreeWithBackupAndPreservesCustomBossAndRewards() throws Exception {
+    void floorTwoMigratesToFourWithBackupAndPreservesCustomBossAndRewards() throws Exception {
         Path floors = directory.resolve("floors");
         Files.createDirectories(floors);
         Path floor = floors.resolve("floor_custom.yml");
@@ -169,7 +169,8 @@ class BoostedConfigMigrationTest {
             factory.migrateFloor(floor);
             factory.migrateFloor(floor);
             var config = factory.open(floor);
-            assertEquals(3, BoostedConfigFactory.schemaVersion(config));
+            assertEquals(4, BoostedConfigFactory.schemaVersion(config));
+            assertTrue(config.getList("generation.room-pool").isEmpty());
             assertEquals("CustomBoss", config.getString("boss.mob"));
             assertEquals(12345, config.getInt("rewards.special.price"));
             assertEquals(999, config.getInt("dungeon-xp.completion"));

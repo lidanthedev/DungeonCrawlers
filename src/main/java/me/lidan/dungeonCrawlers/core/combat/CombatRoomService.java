@@ -26,6 +26,18 @@ public final class CombatRoomService {
     private final Consumer<String> diagnostics;
     private final Consumer<RoomNotice> notices;
     private final Map<UUID, MutableInstance> instances = new LinkedHashMap<>();
+    private java.util.function.BiPredicate<UUID, Integer> objectiveComplete = (instance, room) -> true;
+    private Consumer<UUID> objectiveCleanup = ignored -> { };
+
+    public void configureObjectives(java.util.function.BiPredicate<UUID, Integer> complete, Consumer<UUID> cleanup) {
+        objectiveComplete = Objects.requireNonNull(complete);
+        objectiveCleanup = Objects.requireNonNull(cleanup);
+    }
+
+    public synchronized void refreshObjective(UUID instanceId, int roomIndex) {
+        MutableInstance instance = instances.get(instanceId);
+        if (instance != null) room(instance, roomIndex).ifPresent(room -> maybeClear(instance, room));
+    }
 
     public CombatRoomService(CombatMobGateway mobs, CombatChunkGateway chunks, Consumer<String> diagnostics) {
         this(mobs, chunks, diagnostics, ignored -> { });
@@ -217,6 +229,10 @@ public final class CombatRoomService {
     private void maybeClear(MutableInstance instance, MutableRoom room) {
         if (room.state != RoomState.ACTIVE || room.requirements.stream().anyMatch(requirement ->
                 requirement.state != MobState.DEAD)) return;
+        if (!objectiveComplete.test(instance.plan.instanceId(), room.room.index())) {
+            room.detail = "enemies defeated; solve the room mechanism to continue";
+            return;
+        }
         room.state = RoomState.CLEARED;
         room.detail = "room cleared";
         releaseTickets(instance, room);
@@ -356,6 +372,7 @@ public final class CombatRoomService {
     public synchronized void cleanup(UUID instanceId) {
         MutableInstance instance = instances.remove(Objects.requireNonNull(instanceId, "instanceId"));
         if (instance == null) return;
+        objectiveCleanup.accept(instanceId);
         instance.rooms.forEach(room -> {
             room.requirements.forEach(requirement -> {
                 if (requirement.entityId != null) mobs.remove(requirement.entityId);

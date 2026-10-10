@@ -1,0 +1,56 @@
+schema-version: 4
+id: floor_3
+number: 3
+display-name: "<aqua>Floor III <dark_gray>· <gold>The Sundered Foundry"
+templates:
+  start: foundry_start
+  portal: foundry_portal
+  boss: foundry_heart
+  boss-offset: [0, 0, 3000]
+generation:
+  rooms: 6
+  minibosses: 0
+  final-miniboss: true
+  room-pool: [foundry_resonance, foundry_counterweight, foundry_splitforge, foundry_archives, foundry_turbine, foundry_catwalk, foundry_warden]
+  max-attempts-per-position: 128
+  collision-padding: 1
+mobs:
+  normal: [FoundrySentinel, FoundryCantor, FoundrySkitter]
+  miniboss: [FoundryChainkeeper]
+boss:
+  mob: VeyraChainbound
+  encounter: chainbound
+classes:
+  allowed: [berserker, mage, tank, healer, archer]
+blessings:
+  - { id: crypt_strength, weight: 55 }
+  - { id: crypt_vitality, weight: 45 }
+rewards:
+  wooden:
+    enabled: true
+    price: 0
+    min-score: 0
+    rolls: 2
+    unique: false
+    items:
+      - { item: UNDEAD_ESSENCE, weight: 75, amount: "12-24" }
+      - { item: CRYPT_FRAGMENT, weight: 25, amount: "2-5", magic-find-sensitive: true }
+  obsidian:
+    enabled: true
+    price: 500000
+    min-score: 250
+    rolls: 3
+    unique: false
+    items:
+      - { item: CRYPT_FRAGMENT, weight: 65, amount: "6-12", magic-find-sensitive: true }
+      - { item: UNDEAD_ESSENCE, weight: 35, amount: "30-50" }
+dungeon-xp:
+  completion: 900
+  failure-factor: 0.10
+limits:
+  max-party-size: 5
+  max-template-dimension: 512
+  max-template-volume: 16777216
+  max-loaded-chunks-per-instance: 256
+  mob-respawn-retries: 2
+  repository-queue-capacity: 1000

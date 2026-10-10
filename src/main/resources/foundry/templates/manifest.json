@@ -1,0 +1,102 @@
+{
+  "foundry_start": {
+    "size": [
+      41,
+      23,
+      33
+    ],
+    "kind": "start",
+    "sha256": "d23ecf3589f2923875b8da0699a1471e2b196167301c7b15be3795455bda4184",
+    "blocks": 4281
+  },
+  "foundry_resonance": {
+    "size": [
+      49,
+      27,
+      49
+    ],
+    "kind": "bell",
+    "sha256": "34a491b14a83e1ef2383fcc35eb863d4ec07b99c74d37894f333a0b597be8d3f",
+    "blocks": 5878
+  },
+  "foundry_counterweight": {
+    "size": [
+      49,
+      29,
+      57
+    ],
+    "kind": "balance",
+    "sha256": "6b44b5f685abcb783204b7512423a5e3e94bea9df8cc26287bfcb117f215f2bb",
+    "blocks": 7846
+  },
+  "foundry_splitforge": {
+    "size": [
+      57,
+      25,
+      49
+    ],
+    "kind": "forge",
+    "sha256": "97e6db2b48302efc27b0696a39e70eb1073004395c605e575e6e078e4577c347",
+    "blocks": 7775
+  },
+  "foundry_archives": {
+    "size": [
+      41,
+      31,
+      57
+    ],
+    "kind": "archive",
+    "sha256": "90b16715e2f3fe9a452c40dfbf61aa13bffb3ee5cfbf67bf1d7168d859161fdc",
+    "blocks": 7884
+  },
+  "foundry_turbine": {
+    "size": [
+      57,
+      35,
+      57
+    ],
+    "kind": "turbine",
+    "sha256": "1e057b8e98ab817be1541672c7a48ed62082090c347325b6f2dc1eb31d126f52",
+    "blocks": 9032
+  },
+  "foundry_catwalk": {
+    "size": [
+      41,
+      33,
+      65
+    ],
+    "kind": "parkour",
+    "sha256": "a385e16d83327bd97a03c7337be430c748c2a843f88da585af6067962d39c19c",
+    "blocks": 7885
+  },
+  "foundry_warden": {
+    "size": [
+      57,
+      33,
+      49
+    ],
+    "kind": "warden",
+    "sha256": "b35ebe427beaf21c083e1b3f2fc4db0470e49b43a65124b04d3710434a5d09fb",
+    "blocks": 7393
+  },
+  "foundry_portal": {
+    "size": [
+      41,
+      29,
+      41
+    ],
+    "kind": "portal",
+    "sha256": "909879d92ee9f3217b934c502d9c9051caa336101567e2f029a3a43a2089d076",
+    "blocks": 4286
+  },
+  "foundry_heart": {
+    "size": [
+      81,
+      49,
+      81
+    ],
+    "kind": "boss",
+    "sha256": "30218a6047dac8348b87a2dea3eec5ded626db1e1f752af96ae82440bde31839",
+    "blocks": 41837
+  }
+}

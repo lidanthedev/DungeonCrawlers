@@ -1,0 +1,14 @@
+schema-version: 1
+# Health is multiplied by the selected dungeon difficulty and party scaling.
+boss:
+  health: 90000000
+  damage: 650000
+  transform-threshold: 0.65
+  final-threshold: 0.18
+  intro-millis: 6500
+  transform-millis: 14000
+  warning-millis: 2000
+  normal-interval-millis: 8500
+  riven-interval-millis: 6500
+  final-interval-millis: 5500
+  death-millis: 5000

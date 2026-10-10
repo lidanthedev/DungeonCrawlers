@@ -10,6 +10,7 @@ public final class EncounterRegistry {
 
     public EncounterRegistry() {
         ids.add(me.lidan.dungeonCrawlers.core.encounter.RingmasterEncounter.ID);
+        ids.add(me.lidan.dungeonCrawlers.core.encounter.ChainboundEncounter.ID);
     }
 
     public synchronized boolean register(String id) {

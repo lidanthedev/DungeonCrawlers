@@ -87,7 +87,13 @@ public final class ConfigModels {
     public record TemplateRefs(String start, String portal, String boss, Vector3i bossOffset) { }
     public record Vector3i(int x, int y, int z) { }
     public record Generation(int rooms, int minibosses, boolean finalMiniboss,
-                             int maxAttemptsPerPosition, int collisionPadding) { }
+                             int maxAttemptsPerPosition, int collisionPadding, List<String> roomPool) {
+        public Generation(int rooms, int minibosses, boolean finalMiniboss,
+                          int maxAttemptsPerPosition, int collisionPadding) {
+            this(rooms, minibosses, finalMiniboss, maxAttemptsPerPosition, collisionPadding, List.of());
+        }
+        public Generation { roomPool = List.copyOf(roomPool); }
+    }
     public record WeightedId(String id, double weight) { }
     public record RewardDefinition(boolean enabled, long price, int minScore, int rolls, boolean unique,
                                    List<RewardItem> items) {

@@ -54,8 +54,17 @@ public final class ConfigLoader {
         Map<String, ClassDefinition> classes = parseClasses(root.resolve("classes.yml"), parser);
         Map<String, BlessingDefinition> blessings = parseBlessings(root.resolve("blessings.yml"), parser);
         Map<String, RoomDefinition> rooms = parseRooms(root.resolve("rooms.yml"), parser);
+        if (Files.isRegularFile(root.resolve("rooms_foundry.yml"))) {
+            parseRooms(root.resolve("rooms_foundry.yml"), parser).forEach((id, definition) -> {
+                if (rooms.putIfAbsent(id, definition) != null) parser.error("duplicate room id " + id);
+            });
+        }
         Map<String, FloorDefinition> floors = parseFloors(root.resolve("floors"), parser);
         Map<String, DifficultyRules> difficulties = parseDifficulties(root.resolve("difficulties.yml"), parser);
+        if (Files.isRegularFile(root.resolve("foundry.yml"))) {
+            try { me.lidan.dungeonCrawlers.config.FoundryPack.load(configFactory, root.resolve("foundry.yml")); }
+            catch (IOException exception) { parser.error("foundry.yml: " + exception.getMessage()); }
+        }
         crossValidate(floors, rooms, classes, blessings, parser);
         if (!parser.errors.isEmpty()) return new ConfigLoadResult(null, parser.errors, parser.warnings);
         try {
@@ -187,7 +196,7 @@ public final class ConfigLoader {
             try { configFactory.migrateFloor(file); }
             catch (IOException exception) { p.error("floor migration failed: " + exception.getMessage()); }
             Map<String, Object> root = p.file(file);
-            p.schema(root, file, 3);
+            p.schema(root, file, 4);
             String prefix = "floors/" + file.getFileName() + ":";
             String id = p.id(p.string(root.get("id"), prefix + "id"), prefix);
             int number = p.integer(root.get("number"), prefix + "number", 1, 10_000);
@@ -205,7 +214,8 @@ public final class ConfigLoader {
             Generation generation = new Generation(rooms, minibosses,
                     p.optionalBoolean(generationMap.get("final-miniboss"), prefix + "generation.final-miniboss", false),
                     p.optionalInteger(generationMap.get("max-attempts-per-position"), prefix + "generation.max-attempts-per-position", 64, 1, 100_000),
-                    p.optionalInteger(generationMap.get("collision-padding"), prefix + "generation.collision-padding", 1, 0, 1_000));
+                    p.optionalInteger(generationMap.get("collision-padding"), prefix + "generation.collision-padding", 1, 0, 1_000),
+                    p.idList(generationMap.getOrDefault("room-pool", List.of()), prefix + "generation.room-pool"));
             Map<String, Object> mobs = p.map(root.get("mobs"), prefix + "mobs", true);
             List<String> normalMobs = p.stringList(mobs.get("normal"), prefix + "mobs.normal");
             List<String> minibossMobs = p.stringList(mobs.get("miniboss"), prefix + "mobs.miniboss");
@@ -251,9 +261,12 @@ public final class ConfigLoader {
                     .forEach(id -> p.error("floor " + floor.id() + " references missing class " + id));
             floor.blessings().stream().map(WeightedId::id).filter(id -> !blessings.containsKey(id))
                     .forEach(id -> p.error("floor " + floor.id() + " references missing blessing " + id));
-            boolean normalAvailable = rooms.values().stream().anyMatch(room -> room.type() == RoomType.NORMAL
+            floor.generation().roomPool().forEach(id -> requireRoomType(floor.id(), id, RoomType.NORMAL, rooms, p));
+            boolean normalAvailable = rooms.values().stream().filter(room -> floor.generation().roomPool().isEmpty()
+                    || floor.generation().roomPool().contains(room.id())).anyMatch(room -> room.type() == RoomType.NORMAL
                     && room.capabilities().contains(EncounterCapability.NORMAL) && supportsFloor(room, floor.number()));
-            boolean minibossAvailable = rooms.values().stream().anyMatch(room -> room.type() == RoomType.NORMAL
+            boolean minibossAvailable = rooms.values().stream().filter(room -> floor.generation().roomPool().isEmpty()
+                    || floor.generation().roomPool().contains(room.id())).anyMatch(room -> room.type() == RoomType.NORMAL
                     && room.capabilities().contains(EncounterCapability.MINIBOSS) && supportsFloor(room, floor.number()));
             if (floor.generation().rooms() - floor.generation().minibosses() > 0 && !normalAvailable) {
                 p.error("floor " + floor.id() + " has no compatible normal room");
@@ -282,6 +295,8 @@ public final class ConfigLoader {
         List<Path> files = new ArrayList<>(List.of(root.resolve("classes.yml"), root.resolve("blessings.yml"),
                 root.resolve("rooms.yml")));
         if (Files.isRegularFile(root.resolve("difficulties.yml"))) files.add(root.resolve("difficulties.yml"));
+        if (Files.isRegularFile(root.resolve("rooms_foundry.yml"))) files.add(root.resolve("rooms_foundry.yml"));
+        if (Files.isRegularFile(root.resolve("foundry.yml"))) files.add(root.resolve("foundry.yml"));
         if (Files.isDirectory(root.resolve("floors"))) {
             try (Stream<Path> stream = Files.list(root.resolve("floors"))) {
                 files.addAll(stream.filter(Files::isRegularFile).sorted().toList());
