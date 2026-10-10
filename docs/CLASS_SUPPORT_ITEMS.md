@@ -18,6 +18,6 @@ Administrators can obtain them through CaveCrawlers:
 /cc item give <player> DC_DAWNLIGHT_TOME 1
 ```
 
-DungeonCrawlers registers the four abilities at startup and installs missing item definitions into CaveCrawlers' item files. CaveCrawlers item reloads preserve the abilities and existing inventory IDs. Existing definitions are retained, including administrator changes to item stats and appearance. The bundled `support-items.yml` records installation defaults. Ability effects and cooldowns are controlled by DungeonCrawlers.
+DungeonCrawlers registers the four abilities at startup and installs missing item definitions into CaveCrawlers' item files. CaveCrawlers item reloads preserve the abilities and existing inventory IDs. Existing definitions are retained, including administrator changes to item stats and appearance. The bundled `support-items.yml` records installation defaults. Ability effects are controlled by DungeonCrawlers; cooldowns, mana, and action-bar feedback use the normal CaveCrawlers item-ability flow.
 
 On DungeonCrawlers shutdown, owned abilities, settings variants, listeners, and active item registrations are removed. The persisted definitions remain for the next startup.

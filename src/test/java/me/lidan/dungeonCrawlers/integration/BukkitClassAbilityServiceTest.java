@@ -1,8 +1,11 @@
 package me.lidan.dungeonCrawlers.integration;
 
+import me.lidan.cavecrawlers.CaveCrawlers;
 import me.lidan.cavecrawlers.damage.DamageCalculationEvent;
 import me.lidan.cavecrawlers.damage.DamageManager;
 import me.lidan.cavecrawlers.damage.FinalDamageCalculation;
+import me.lidan.cavecrawlers.items.ItemsManager;
+import me.lidan.cavecrawlers.stats.ActionBarManager;
 import me.lidan.cavecrawlers.stats.StatType;
 import me.lidan.cavecrawlers.stats.Stats;
 import me.lidan.cavecrawlers.stats.StatsCalculateEvent;
@@ -17,7 +20,10 @@ import me.lidan.dungeonCrawlers.core.lifecycle.PlayerLifecycleService;
 import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Bounds;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.damage.DamageSource;
 import org.bukkit.damage.DamageType;
@@ -32,7 +38,11 @@ import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerEvent;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.potion.PotionEffectType;
@@ -65,6 +75,7 @@ class BukkitClassAbilityServiceTest {
             nativePlugin.when(() -> org.bukkit.plugin.java.JavaPlugin.getPlugin(me.lidan.cavecrawlers.CaveCrawlers.class))
                     .thenReturn(null);
             Class.forName(StatsManager.class.getName());
+            Class.forName(me.lidan.cavecrawlers.stats.ActionBarManager.class.getName());
         }
     }
 
@@ -83,10 +94,16 @@ class BukkitClassAbilityServiceTest {
     private final ArrayDeque<Runnable> scheduled = new ArrayDeque<>();
     private final StatsManager statsManager = mock(StatsManager.class);
     private final DamageManager damageManager = mock(DamageManager.class);
+    private final ItemsManager itemsManager = mock(ItemsManager.class);
+    private final ActionBarManager actionBar = mock(ActionBarManager.class);
+    private final CaveCrawlers caveCrawlers = mock(CaveCrawlers.class);
     private final Arrow damageArrow = mock(Arrow.class);
     private MockedStatic<StatsManager> nativeStats;
     private MockedStatic<DungeonClassScaling> levels;
     private MockedStatic<DamageManager> nativeDamage;
+    private MockedStatic<ItemsManager> nativeItems;
+    private MockedStatic<ActionBarManager> nativeBars;
+    private MockedStatic<CaveCrawlers> nativeCave;
     private BukkitClassAbilityService service;
     private Player source;
 
@@ -105,6 +122,14 @@ class BukkitClassAbilityServiceTest {
         levels.when(() -> DungeonClassScaling.dungeonLevel(any())).thenReturn(20);
         nativeDamage = mockStatic(DamageManager.class);
         nativeDamage.when(DamageManager::getInstance).thenReturn(damageManager);
+        nativeItems = mockStatic(ItemsManager.class);
+        nativeItems.when(ItemsManager::getInstance).thenReturn(itemsManager);
+        when(itemsManager.getItemFromItemStack(any())).thenReturn(null);
+        nativeBars = mockStatic(ActionBarManager.class);
+        nativeBars.when(ActionBarManager::getInstance).thenReturn(actionBar);
+        nativeCave = mockStatic(CaveCrawlers.class);
+        nativeCave.when(CaveCrawlers::getInstance).thenReturn(caveCrawlers);
+        when(caveCrawlers.getConfig()).thenReturn(mock(FileConfiguration.class));
         when(damageManager.launchProjectile(any(Player.class), eq(Arrow.class), any(FinalDamageCalculation.class)))
                 .thenReturn(damageArrow);
         when(plugin.getServer()).thenReturn(server);
@@ -130,6 +155,9 @@ class BukkitClassAbilityServiceTest {
     @AfterEach
     void tearDown() {
         if (service != null) service.close();
+        nativeCave.close();
+        nativeBars.close();
+        nativeItems.close();
         nativeDamage.close();
         levels.close();
         nativeStats.close();
@@ -142,10 +170,18 @@ class BukkitClassAbilityServiceTest {
         when(event.getPlayer()).thenReturn(source);
         service.onDrop(event);
         verify(statsManager, never()).calculateStats(source);
+        verify(itemsManager, never()).getItemFromItemStack(any());
+        assertEquals(0, service.classAbility("berserker").getAbilityCooldown().getCooldown(source.getUniqueId()));
+        ItemStack restoredWeapon = new ItemStack(Material.DIAMOND_SWORD);
+        when(source.getInventory().getItemInMainHand()).thenReturn(restoredWeapon);
         runScheduled();
+        verify(itemsManager).getItemFromItemStack(same(restoredWeapon));
         service.onDrop(event);
+        runScheduled();
         verify(event, times(2)).setCancelled(true);
         verify(statsManager, times(1)).calculateStats(source);
+        verify(actionBar).showActionBar(eq(source),
+                argThat((String message) -> message.contains("Still on cooldown")));
 
         state(source, PlayerLifecycleService.PlayerState.GHOST);
         service.onDrop(event);
@@ -156,24 +192,37 @@ class BukkitClassAbilityServiceTest {
         when(event.getPlayer()).thenReturn(outside);
         service.onDrop(event);
         verify(event, times(3)).setCancelled(true);
+        assertTrue(scheduled.isEmpty());
+    }
+
+    @Test
+    void queuedDropDoesNotCastAfterPlayerLeavesTheDungeon() {
+        var event = mock(PlayerDropItemEvent.class);
+        when(event.getPlayer()).thenReturn(source);
+        service.onDrop(event);
+        verify(event).setCancelled(true);
+        when(runs.instanceFor(source.getUniqueId())).thenReturn(Optional.empty());
+        runScheduled();
+        verify(itemsManager, never()).getItemFromItemStack(any());
+        verify(statsManager, never()).calculateStats(any());
     }
 
     @Test
     void rejectsGhostsFinishedRunsAndPlayersOutsideDungeonWorld() {
         state(source, PlayerLifecycleService.PlayerState.GHOST);
-        assertFalse(service.activateClass(source));
+        service.activateClass(dropEvent(source));
         state(source, PlayerLifecycleService.PlayerState.ALIVE);
         select("berserker", RunPreparationService.RunState.COMPLETED, List.of(source));
         assertFalse(service.activateSupport(source, "dc_renewal_staff"));
         select("berserker", RunPreparationService.RunState.RUNNING, List.of(source));
         when(world.getName()).thenReturn("world");
-        assertFalse(service.activateClass(source));
+        service.activateClass(dropEvent(source));
         verify(statsManager, never()).calculateStats(any());
     }
 
     @Test
-    void bloodrageScalesStatsAndOwnedEnemyDamageThenExpiresWithoutExtendingCooldown() {
-        assertTrue(service.activateClass(source));
+    void bloodrageScalesStatsAndOwnedEnemyDamageThenExpiresWithNativeCooldown() {
+        service.activateClass(dropEvent(source));
         runScheduled();
         Stats stats = new Stats();
         stats.set(StatType.STRENGTH, 100);
@@ -192,16 +241,26 @@ class BukkitClassAbilityServiceTest {
         service.onStats(new StatsCalculateEvent(source, stats));
         assertEquals(100, stats.get(StatType.STRENGTH).getValue());
         verify(statsManager, times(2)).calculateStats(source);
-        assertFalse(service.activateClass(source));
-        clock.advance(20);
-        assertTrue(service.activateClass(source));
+        // The native ItemAbility cooldown blocks an immediate recast without a new effect.
+        service.activateClass(dropEvent(source));
+        verify(statsManager, times(2)).calculateStats(source);
+        verify(actionBar, times(1)).showActionBar(eq(source),
+                argThat((String message) -> message.contains("Still on cooldown")));
+        service.classAbility("berserker").getAbilityCooldown().resetCooldown(source.getUniqueId());
+        service.activateClass(dropEvent(source));
+        runScheduled();
+        verify(statsManager, times(3)).calculateStats(source);
     }
 
     @Test
-    void failedEmptyRoomCastDoesNotConsumeCooldownAndLightningOnlyStrikesOwnedRoomMobs() {
+    void failedEmptyRoomCastSpendsNoCooldownAndLightningOnlyStrikesOwnedRoomMobs() {
         select("mage", RunPreparationService.RunState.RUNNING, List.of(source));
         when(world.getNearbyEntities(any(Location.class), anyDouble(), anyDouble(), anyDouble())).thenReturn(List.of());
-        assertFalse(service.activateClass(source));
+        service.activateClass(dropEvent(source));
+        verify(damageManager, never()).launchProjectile(any(Player.class), eq(Arrow.class), any(FinalDamageCalculation.class));
+        verify(actionBar, times(1)).showActionBar(eq(source),
+                argThat((Component message) -> PlainTextComponentSerializer.plainText().serialize(message)
+                        .contains("No dungeon enemies")));
         Mob own = mob(1, 64, 0, true);
         Mob foreign = mob(2, 64, 0, false);
         Mob otherRoom = mob(30, 64, 0, true);
@@ -211,7 +270,7 @@ class BukkitClassAbilityServiceTest {
         when(difficulty.belongsTo(performer, instance)).thenReturn(true);
         when(world.getNearbyEntities(any(Location.class), anyDouble(), anyDouble(), anyDouble()))
                 .thenReturn(List.of(own, foreign, otherRoom, boss, performer));
-        assertTrue(service.activateClass(source));
+        service.activateClass(dropEvent(source));
         verify(own).addPotionEffect(argThat(effect -> effect.getType().equals(PotionEffectType.GLOWING)
                 && effect.getDuration() == 200));
         verify(own).damage(eq(80000D), argThat((DamageSource damage) -> damage.getDirectEntity() instanceof Arrow
@@ -222,7 +281,9 @@ class BukkitClassAbilityServiceTest {
         verify(performer).damage(eq(80000D), any(DamageSource.class));
         verify(damageManager, times(1)).launchProjectile(eq(source), eq(Arrow.class), any(FinalDamageCalculation.class));
         verify(damageArrow).remove();
-        assertFalse(service.activateClass(source));
+        // The native cooldown spent by the successful cast blocks an immediate recast.
+        service.activateClass(dropEvent(source));
+        verify(damageManager, times(1)).launchProjectile(eq(source), eq(Arrow.class), any(FinalDamageCalculation.class));
     }
 
     @Test
@@ -232,7 +293,7 @@ class BukkitClassAbilityServiceTest {
         Mob own = mob(1, 64, 0, true);
         when(own.getTarget()).thenReturn(previous);
         when(world.getNearbyEntities(any(Location.class), anyDouble(), anyDouble(), anyDouble())).thenReturn(List.of(own));
-        assertTrue(service.activateClass(source));
+        service.activateClass(dropEvent(source));
         verify(own).setTarget(source);
         when(own.getTarget()).thenReturn(source);
         var target = mock(EntityTargetLivingEntityEvent.class);
@@ -274,7 +335,8 @@ class BukkitClassAbilityServiceTest {
         for (Player excluded : List.of(far, ghost, foreign, otherWorld)) {
             nativeStats.verify(() -> StatsManager.healPlayerPercent(eq(excluded), anyDouble()), never());
         }
-        assertFalse(service.activateSupport(source, "dc_renewal_staff"));
+        // Direct effect calls carry no cooldown; the native ItemAbility flow gates recasts.
+        assertTrue(service.activateSupport(source, "dc_renewal_staff"));
         assertTrue(service.activateSupport(source, "dc_dawnlight_tome"));
         clock.advance(1);
         service.tick();
@@ -289,7 +351,7 @@ class BukkitClassAbilityServiceTest {
     void lifesurgeFullyHealsDistantLivingPartyMembersAndRegeneratesForTenSeconds() {
         Player distant = player(50, 64, 0, instance, PlayerLifecycleService.PlayerState.ALIVE);
         select("healer", RunPreparationService.RunState.RUNNING, List.of(source, distant));
-        assertTrue(service.activateClass(source));
+        service.activateClass(dropEvent(source));
         nativeStats.verify(() -> StatsManager.healPlayerPercent(distant, 100));
         clock.advance(1);
         service.tick();
@@ -310,7 +372,7 @@ class BukkitClassAbilityServiceTest {
         clock.advance(1);
         service.tick();
         nativeStats.verify(() -> StatsManager.healPlayerPercent(source, 7));
-        assertTrue(service.activateClass(source));
+        service.activateClass(dropEvent(source));
         nativeStats.verify(() -> StatsManager.healPlayerPercent(source, 100));
         clock.advance(1);
         service.tick();
@@ -321,7 +383,7 @@ class BukkitClassAbilityServiceTest {
     void explosiveArrowCancelsDirectDamageAndHitsOnlyOwnedMobsInsideEightBlockRoomBlast() {
         select("archer", RunPreparationService.RunState.RUNNING, List.of(source));
         Arrow arrow = arrow();
-        assertTrue(service.activateClass(source));
+        service.activateClass(dropEvent(source));
         var direct = new EntityDamageByEntityEvent(arrow, source, EntityDamageEvent.DamageCause.PROJECTILE, mock(DamageSource.class), 10);
         service.onArrowDamage(direct);
         assertTrue(direct.isCancelled());
@@ -348,7 +410,7 @@ class BukkitClassAbilityServiceTest {
     void leavingInstanceRemovesActiveArrow() {
         select("archer", RunPreparationService.RunState.RUNNING, List.of(source));
         Arrow arrow = arrow();
-        assertTrue(service.activateClass(source));
+        service.activateClass(dropEvent(source));
         when(runs.instanceFor(source.getUniqueId())).thenReturn(Optional.empty());
         service.tick();
         verify(arrow).remove();
@@ -358,7 +420,7 @@ class BukkitClassAbilityServiceTest {
     void expiredArrowIsRemovedAndCannotExplodeFromALateHit() {
         select("archer", RunPreparationService.RunState.RUNNING, List.of(source));
         Arrow arrow = arrow();
-        assertTrue(service.activateClass(source));
+        service.activateClass(dropEvent(source));
         clock.advance(10);
         service.tick();
         verify(arrow).remove();
@@ -370,7 +432,7 @@ class BukkitClassAbilityServiceTest {
 
     @Test
     void temporaryStatsCannotTransferToAnotherInstanceAndAreRefreshedOnClose() {
-        assertTrue(service.activateClass(source));
+        service.activateClass(dropEvent(source));
         runScheduled();
         UUID nextInstance = UUID.randomUUID();
         var run = runs.info(instance);
@@ -396,11 +458,20 @@ class BukkitClassAbilityServiceTest {
         when(player.getWorld()).thenReturn(world);
         when(player.getLocation()).thenAnswer(ignored -> new Location(world, x, y, z));
         when(player.getEyeLocation()).thenAnswer(ignored -> new Location(world, x, y + 1.6, z));
+        var inventory = mock(PlayerInventory.class);
+        when(player.getInventory()).thenReturn(inventory);
+        when(inventory.getItemInMainHand()).thenReturn(new ItemStack(Material.AIR));
         when(server.getPlayer(id)).thenReturn(player);
         when(runs.instanceFor(id)).thenReturn(Optional.of(instanceId));
         when(lifecycle.player(instanceId, id)).thenReturn(Optional.of(new PlayerLifecycleService.PlayerSnapshot(
                 id, state, true, null, null, 0)));
         return player;
+    }
+
+    private PlayerEvent dropEvent(Player player) {
+        var event = mock(PlayerDropItemEvent.class);
+        when(event.getPlayer()).thenReturn(player);
+        return event;
     }
 
     private void runScheduled() {

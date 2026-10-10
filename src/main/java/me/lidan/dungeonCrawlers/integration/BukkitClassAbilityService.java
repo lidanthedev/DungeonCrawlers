@@ -4,9 +4,12 @@ import me.lidan.cavecrawlers.damage.AbilityDamage;
 import me.lidan.cavecrawlers.damage.DamageCalculationEvent;
 import me.lidan.cavecrawlers.damage.DamageManager;
 import me.lidan.cavecrawlers.damage.FinalDamageCalculation;
+import me.lidan.cavecrawlers.items.abilities.ItemAbility;
+import me.lidan.cavecrawlers.stats.ActionBarManager;
 import me.lidan.cavecrawlers.stats.StatType;
 import me.lidan.cavecrawlers.stats.StatsCalculateEvent;
 import me.lidan.cavecrawlers.stats.StatsManager;
+import me.lidan.cavecrawlers.utils.MiniMessageUtils;
 import me.lidan.dungeonCrawlers.config.registry.ConfigRegistryService;
 import me.lidan.dungeonCrawlers.core.generation.GenerationService;
 import me.lidan.dungeonCrawlers.core.lifecycle.PlayerLifecycleService;
@@ -32,6 +35,7 @@ import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerEvent;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.potion.PotionEffect;
@@ -45,7 +49,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/** Main-thread, instance-scoped class abilities and party support effects. */
+/** Main-thread, instance-scoped class abilities and party support effects.
+ * Cooldowns, mana, and action-bar feedback use the normal CaveCrawlers
+ * {@link ItemAbility} flow; this service only applies dungeon effects. */
 public final class BukkitClassAbilityService implements Listener, AutoCloseable {
     private final Plugin plugin;
     private final RunPreparationService runs;
@@ -58,7 +64,7 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
     private final NamespacedKey classArrow;
     private final Clock clock;
     private final String worldName;
-    private final Map<CooldownKey, Instant> cooldowns = new HashMap<>();
+    private final Map<String, ClassAbility> classAbilities = new HashMap<>();
     private final Map<UUID, Map<String, Effect>> effects = new HashMap<>();
     private final Map<UUID, Taunt> taunts = new HashMap<>();
     private final Map<UUID, Shot> arrows = new HashMap<>();
@@ -71,6 +77,9 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
         this.config = config; this.identity = identity; this.bosses = bosses;
         this.difficulty = difficulty; this.classArrow = new NamespacedKey(plugin, "class_arrow");
         this.clock = clock; this.worldName = worldName;
+        for (String classId : List.of("berserker", "mage", "tank", "archer", "healer")) {
+            classAbilities.put(classId, new ClassAbility(classId));
+        }
     }
 
     public static String abilityName(String classId) {
@@ -112,16 +121,32 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
         // Cancel first so a failed cast or cooldown never drops the held equipment.
         event.setCancelled(true);
         if (activeInstance(event.getPlayer()) == null) return;
-        activateClass(event.getPlayer());
+        // Paper restores the held stack after the cancelled DROP event returns.
+        plugin.getServer().getScheduler().runTask(plugin, () -> activateClass(event));
     }
 
-    public boolean activateClass(Player player) {
+    /** Routes the DROP trigger through the class {@link ItemAbility} so cooldowns,
+     * mana, and action-bar feedback follow the normal CaveCrawlers flow. */
+    public void activateClass(PlayerEvent event) {
+        Player player = event.getPlayer();
+        UUID instance = activeInstance(player);
+        if (instance == null) return;
+        String selected = runs.info(instance).orElseThrow().selectedClasses().get(player.getUniqueId());
+        ClassAbility ability = classAbilities.get(selected);
+        if (ability == null) return;
+        ability.activateAbility(event);
+    }
+
+    /** Test hook for the native per-player cooldowns owned by each class ability. */
+    ItemAbility classAbility(String classId) {
+        return classAbilities.get(classId);
+    }
+
+    private boolean applyClassEffect(Player player) {
         UUID instance = activeInstance(player);
         if (instance == null) return false;
         String selected = runs.info(instance).orElseThrow().selectedClasses().get(player.getUniqueId());
         if (selected == null || cooldownSeconds(selected) == 0) return false;
-        String name = abilityName(selected);
-        if (!ready(player, "class", name)) return false;
         int level = DungeonClassScaling.dungeonLevel(player);
         List<Mob> mobs;
         switch (selected) {
@@ -168,38 +193,37 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
             }
             default -> { return false; }
         }
-        startCooldown(player, "class", cooldownSeconds(selected));
-        activated(player, name);
+        castFx(player);
         return true;
     }
 
+    /** Party effect behind each support {@link me.lidan.cavecrawlers.items.abilities.ClickAbility}.
+     * Runs inside the normal ItemAbility flow, so cooldowns and action-bar feedback
+     * belong to the base class; a false return spends no cooldown. */
     public boolean activateSupport(Player player, String abilityId) {
         UUID instance = activeInstance(player);
         if (instance == null) {
-            DungeonMessages.send(player, "<yellow>Support abilities require a living player in an active dungeon.</yellow>");
+            ActionBarManager.getInstance().showActionBar(player,
+                    MiniMessageUtils.miniMessage("<red>Support abilities require a living player in an active dungeon.</red>"));
             return false;
         }
-        String name;
-        int cooldown;
         double healing;
         double regen = 0;
         double reduction = 0;
         Map<StatType, Double> stats = Map.of();
         switch (abilityId) {
-            case "dc_aegis_standard" -> { name = "Rallying Aegis"; cooldown = 25; healing = 10; stats = Map.of(StatType.DEFENSE, .35); }
-            case "dc_bastion_horn" -> { name = "Bastion's Call"; cooldown = 35; healing = 5; reduction = .25; }
-            case "dc_renewal_staff" -> { name = "Wellspring"; cooldown = 25; healing = 30; regen = 5; }
-            case "dc_dawnlight_tome" -> { name = "Dawn's Benediction"; cooldown = 30; healing = 15; stats = Map.of(StatType.STRENGTH, .25, StatType.INTELLIGENCE, .25); }
+            case "dc_aegis_standard" -> { healing = 10; stats = Map.of(StatType.DEFENSE, .35); }
+            case "dc_bastion_horn" -> { healing = 5; reduction = .25; }
+            case "dc_renewal_staff" -> { healing = 30; regen = 5; }
+            case "dc_dawnlight_tome" -> { healing = 15; stats = Map.of(StatType.STRENGTH, .25, StatType.INTELLIGENCE, .25); }
             default -> { return false; }
         }
-        if (!ready(player, abilityId, name)) return false;
         double multiplier = healingMultiplier(player, instance);
         for (Player member : party(player, instance, 16)) {
             heal(member, healing * multiplier);
             effect(member, abilityId, instance, stats, 0, reduction, regen, multiplier);
         }
-        startCooldown(player, abilityId, cooldown);
-        activated(player, name);
+        castFx(player);
         return true;
     }
 
@@ -214,7 +238,7 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
                         double damage, double reduction, double regen, double healing) {
         effects.computeIfAbsent(player.getUniqueId(), ignored -> new HashMap<>()).put(key,
                 new Effect(instance, clock.instant().plusSeconds(10), stats, damage, reduction, regen * healing));
-        // A cancelled DROP restores the held item only after its event returns.
+        // Recalculate after ItemAbility finishes its native mana update.
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             if (instance.equals(activeInstance(player))) StatsManager.getInstance().calculateStats(player);
         });
@@ -349,25 +373,14 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
                 .filter(effect -> effect.instance().equals(instance) && clock.instant().isBefore(effect.expires())).toList();
     }
 
-    private boolean ready(Player player, String key, String name) {
-        Instant expires = cooldowns.get(new CooldownKey(player.getUniqueId(), key));
-        if (expires == null || !clock.instant().isBefore(expires)) return true;
-        long seconds = Math.max(1, (java.time.Duration.between(clock.instant(), expires).toMillis() + 999) / 1000);
-        DungeonMessages.send(player, "<yellow>" + name + " is ready in " + seconds + "s.</yellow>");
-        return false;
-    }
-
-    private void startCooldown(Player player, String key, int seconds) {
-        cooldowns.put(new CooldownKey(player.getUniqueId(), key), clock.instant().plusSeconds(seconds));
-    }
-
     private static boolean noEnemies(Player player) {
-        DungeonMessages.send(player, "<yellow>No dungeon enemies in this room.</yellow>");
+        ActionBarManager.getInstance().showActionBar(player,
+                MiniMessageUtils.miniMessage("<red>No dungeon enemies in this room.</red>"));
         return false;
     }
 
-    private static void activated(Player player, String name) {
-        DungeonMessages.send(player, "<aqua>" + name + "!</aqua>");
+    /** Cast feedback without chat; the base ability reports the cast on the action bar. */
+    private static void castFx(Player player) {
         player.getWorld().spawnParticle(Particle.ENCHANT, player.getLocation().add(0, 1, 0), 25, .5, .5, .5);
     }
 
@@ -379,7 +392,6 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
     /** Called once per second by the existing plugin task. */
     public void tick() {
         Instant now = clock.instant();
-        cooldowns.values().removeIf(expiry -> !now.isBefore(expiry));
         for (UUID playerId : new ArrayList<>(effects.keySet())) {
             Player player = plugin.getServer().getPlayer(playerId);
             UUID instance = activeInstance(player);
@@ -425,13 +437,25 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
             if (plugin.getServer().getEntity(entry.getKey()) instanceof Mob mob) restoreTarget(mob, entry.getValue());
         }
         arrows.keySet().forEach(id -> { Entity arrow = plugin.getServer().getEntity(id); if (arrow != null) arrow.remove(); });
-        taunts.clear(); arrows.clear(); effects.clear(); cooldowns.clear();
+        taunts.clear(); arrows.clear(); effects.clear();
         buffedPlayers.stream().map(plugin.getServer()::getPlayer)
                 .filter(player -> player != null && player.isOnline() && !player.isDead())
                 .forEach(player -> StatsManager.getInstance().calculateStats(player));
     }
 
-    private record CooldownKey(UUID player, String ability) { }
+    /** DROP-triggered class ability. Cooldown, mana, and action-bar feedback come
+     * from {@link ItemAbility#activateAbility}; only the dungeon effect is custom. */
+    private final class ClassAbility extends ItemAbility {
+        ClassAbility(String classId) {
+            super(abilityName(classId), abilityDescription(classId, 60), 0, cooldownSeconds(classId) * 1000L);
+        }
+
+        @Override
+        protected boolean useAbility(PlayerEvent event) {
+            return applyClassEffect(event.getPlayer());
+        }
+    }
+
     private record Effect(UUID instance, Instant expires, Map<StatType, Double> stats, double damage, double reduction, double regen) { }
     private record Taunt(UUID instance, UUID player, LivingEntity previousTarget, Instant expires) { }
     private record Shot(UUID instance, UUID player, double damage, Instant expires) { }

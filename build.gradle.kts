@@ -66,6 +66,13 @@ dependencies {
     testImplementation(libs.parties.api)
     testImplementation(libs.worldedit.bukkit)
     testImplementation(libs.gson)
+    // ByteBuddy needs these compile-only APIs present to mock the final CaveCrawlers
+    // plugin class when the native ItemAbility flow is exercised in tests.
+    testRuntimeOnly(libs.vault.api)
+    testRuntimeOnly(libs.mythic.mobs)
+    testRuntimeOnly(libs.lamp.common)
+    testRuntimeOnly(libs.lamp.bukkit)
+    testRuntimeOnly(libs.lamp.brigadier)
 }
 
 val targetJavaVersion = 21

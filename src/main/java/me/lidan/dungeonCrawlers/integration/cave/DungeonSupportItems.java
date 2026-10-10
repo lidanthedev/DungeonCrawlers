@@ -23,7 +23,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiPredicate;
 
-/** Native CaveCrawlers items; active effects and cooldowns belong to the dungeon service. */
+/** Native CaveCrawlers items. Party effects belong to the dungeon service; cooldowns,
+ * mana, and action-bar feedback use the normal {@link ClickAbility} flow. */
 public final class DungeonSupportItems implements AutoCloseable {
     private final JavaPlugin plugin;
     private final BiPredicate<Player, String> activate;
@@ -104,11 +105,6 @@ public final class DungeonSupportItems implements AutoCloseable {
 
         private DungeonSupportItems owner() {
             return DungeonSupportItems.this;
-        }
-
-        @Override
-        public void activateAbility(PlayerEvent event) {
-            useAbility(event);
         }
 
         @Override

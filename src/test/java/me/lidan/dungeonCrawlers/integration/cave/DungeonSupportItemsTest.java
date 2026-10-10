@@ -1,19 +1,27 @@
 package me.lidan.dungeonCrawlers.integration.cave;
 
 import com.google.gson.JsonObject;
+import me.lidan.cavecrawlers.CaveCrawlers;
 import me.lidan.cavecrawlers.items.ItemInfo;
 import me.lidan.cavecrawlers.items.ItemsManager;
 import me.lidan.cavecrawlers.items.abilities.AbilityManager;
 import me.lidan.cavecrawlers.items.abilities.ItemAbility;
+import me.lidan.cavecrawlers.stats.ActionBarManager;
 import me.lidan.cavecrawlers.stats.StatType;
+import org.bukkit.Material;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.mockbukkit.mockbukkit.MockBukkit;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.BiPredicate;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -21,6 +29,15 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class DungeonSupportItemsTest {
+    @BeforeAll
+    static void initializeNativeClassesWithPluginFixture() throws Exception {
+        try (var nativePlugin = mockStatic(JavaPlugin.class)) {
+            nativePlugin.when(() -> JavaPlugin.getPlugin(CaveCrawlers.class)).thenReturn(null);
+            Class.forName(me.lidan.cavecrawlers.stats.StatsManager.class.getName());
+            Class.forName(ActionBarManager.class.getName());
+        }
+    }
+
     @Test
     void persistsNativeItemsRoutesAbilitiesAndCleansUpReloadedItemsAndSettingsVariants() {
         MockBukkit.mock();
@@ -59,11 +76,29 @@ class DungeonSupportItemsTest {
             assertEquals(0, abilityRegistry.get("dc_renewal_staff").getCost());
 
             var player = mock(Player.class);
+            when(player.getUniqueId()).thenReturn(UUID.randomUUID());
+            var inventory = mock(PlayerInventory.class);
+            when(player.getInventory()).thenReturn(inventory);
+            when(inventory.getItemInMainHand()).thenReturn(new ItemStack(Material.AIR));
             var event = mock(PlayerInteractEvent.class);
             when(event.getPlayer()).thenReturn(player);
             when(activate.test(player, "dc_renewal_staff")).thenReturn(true);
-            abilityRegistry.get("dc_renewal_staff").activateAbility(event);
-            verify(activate).test(player, "dc_renewal_staff");
+            var bars = mock(ActionBarManager.class);
+            var cave = mock(CaveCrawlers.class);
+            when(cave.getConfig()).thenReturn(mock(FileConfiguration.class));
+            try (var nativeBars = mockStatic(ActionBarManager.class);
+                 var nativeCave = mockStatic(CaveCrawlers.class)) {
+                nativeBars.when(ActionBarManager::getInstance).thenReturn(bars);
+                nativeCave.when(CaveCrawlers::getInstance).thenReturn(cave);
+                abilityRegistry.get("dc_renewal_staff").activateAbility(event);
+                verify(activate).test(player, "dc_renewal_staff");
+                // The normal ItemAbility flow owns the cooldown: an immediate recast
+                // reports on the action bar without reaching the dungeon effect.
+                abilityRegistry.get("dc_renewal_staff").activateAbility(event);
+                verify(activate, times(1)).test(player, "dc_renewal_staff");
+                verify(bars, times(1)).showActionBar(eq(player),
+                        argThat((String message) -> message.contains("Still on cooldown")));
+            }
 
             itemRegistry.put("DC_RENEWAL_STAFF", itemRegistry.get("DC_RENEWAL_STAFF").clone());
             abilityRegistry.put("dc_renewal_staff{}",
