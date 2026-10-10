@@ -1,102 +1,102 @@
 # Native CaveCrawlers definitions are installed once and preserve later admin edits.
-# Right click from the main hand. Effects reach living party members within 16 blocks
-# (8 for Mending Wand) in the same active dungeon. Any class may use these items.
+# Right click from the main hand. Effects reach nearby living players within 16 blocks
+# (8 for Mending Wand). Effects have half strength outside dungeons. Any class may use these items.
 DC_AEGIS_STANDARD:
   name: Aegis Standard
   material: WHITE_BANNER
-  description: "A tank's rallying standard. Right click to shelter your dungeon party."
+  description: "A tank's rallying standard. Right click to shelter nearby players."
   stats:
     HEALTH: 100
     DEFENSE: 75
   ability: dc_aegis_standard
   ability-name: Rallying Aegis
-  ability-description: "Heal nearby party members for 10% of max health and grant +35% Defense for 10 seconds."
+  ability-description: "Heal nearby players for 10% of max health and grant +35% Defense for 10 seconds."
   cooldown-seconds: 25
 DC_BASTION_HORN:
   name: Bastion Horn
   material: GOAT_HORN
-  description: "Sound the call to hold the line. Right click to protect your dungeon party."
+  description: "Sound the call to hold the line. Right click to protect nearby players."
   stats:
     HEALTH: 150
     DEFENSE: 100
   ability: dc_bastion_horn
   ability-name: Bastion's Call
-  ability-description: "Heal nearby party members for 5% of max health and reduce incoming damage by 25% for 10 seconds."
+  ability-description: "Heal nearby players for 5% of max health and reduce incoming damage by 25% for 10 seconds."
   cooldown-seconds: 35
 DC_RENEWAL_STAFF:
   name: Renewal Staff
   material: BLAZE_ROD
-  description: "A healer's staff of renewal. Right click to restore your dungeon party."
+  description: "A healer's staff of renewal. Right click to restore nearby players."
   stats:
     HEALTH: 100
     INTELLIGENCE: 100
   ability: dc_renewal_staff
   ability-name: Wellspring
-  ability-description: "Heal nearby party members for 30% of max health and restore 5% each second for 10 seconds. Healing scales with your Healer bonus."
+  ability-description: "Heal nearby players for 30% of max health and restore 5% each second for 10 seconds. Healing scales with your Healer bonus."
   cooldown-seconds: 25
 DC_DAWNLIGHT_TOME:
   name: Dawnlight Tome
   material: ENCHANTED_BOOK
-  description: "An inspiring tome of dawn. Right click to strengthen your dungeon party."
+  description: "An inspiring tome of dawn. Right click to strengthen nearby players."
   stats:
     HEALTH: 75
     INTELLIGENCE: 150
   ability: dc_dawnlight_tome
   ability-name: Dawn's Benediction
-  ability-description: "Heal nearby party members for 15% of max health and grant +25% Strength and Intelligence for 10 seconds."
+  ability-description: "Heal nearby players for 15% of max health and grant +25% Strength and Intelligence for 10 seconds."
   cooldown-seconds: 30
 DC_WAR_STANDARD:
   name: War Standard
   material: RED_BANNER
-  description: "Raise a crimson standard. Right click to rally your dungeon party."
+  description: "Raise a crimson standard. Right click to rally nearby players."
   stats:
     STRENGTH: 75
     HEALTH: 75
   ability: dc_war_standard
   ability-name: Warcry
-  ability-description: "Grant nearby party members +35% Strength, +25% Crit Damage and +15% outgoing damage for 10 seconds."
+  ability-description: "Grant nearby players +35% Strength, +25% Crit Damage and +15% outgoing damage for 10 seconds."
   cooldown-seconds: 30
 DC_WIND_STANDARD:
   name: Wind Standard
   material: LIGHT_BLUE_BANNER
-  description: "Raise a standard of swift winds. Right click to hasten your dungeon party."
+  description: "Raise a standard of swift winds. Right click to hasten nearby players."
   stats:
     SPEED: 15
     INTELLIGENCE: 75
   ability: dc_wind_standard
   ability-name: Tailwind
-  ability-description: "Grant nearby party members +30% Speed and +25 Attack Speed for 10 seconds."
+  ability-description: "Grant nearby players +30% Speed and +25 Attack Speed for 10 seconds."
   cooldown-seconds: 25
 DC_VITALITY_TOTEM:
   name: Vitality Totem
-  material: TOTEM_OF_UNDYING
-  description: "A totem of enduring life. Right click to fortify your dungeon party."
+  material: BEACON
+  description: "A totem of enduring life. Right click to fortify nearby players."
   stats:
     HEALTH: 150
     DEFENSE: 50
   ability: dc_vitality_totem
   ability-name: Verdant Pact
-  ability-description: "Heal nearby party members for 15% of max health and grant +25% Health for 10 seconds."
+  ability-description: "Heal nearby players for 15% of max health and grant +25% Health for 10 seconds."
   cooldown-seconds: 35
 DC_FOCUS_ORB:
   name: Focus Orb
   material: AMETHYST_SHARD
-  description: "A crystal of shared focus. Right click to empower your dungeon party."
+  description: "A crystal of shared focus. Right click to empower nearby players."
   stats:
     INTELLIGENCE: 125
   ability: dc_focus_orb
   ability-name: Arcane Concord
-  ability-description: "Grant nearby party members +40% Intelligence and +500 Ability Damage for 10 seconds."
+  ability-description: "Grant nearby players +40% Intelligence and +500 Ability Damage for 10 seconds."
   cooldown-seconds: 30
 DC_MENDING_WAND:
   name: Mending Wand
   material: STICK
-  description: "A wand of communal healing. Right click to mend your dungeon party within 8 blocks."
+  description: "A wand of communal healing. Right click to mend nearby players within 8 blocks."
   stats:
     INTELLIGENCE: 100
     HEALTH: 50
   ability: dc_mending_wand
   ability-name: Mending Circle
-  ability-description: "Heal nearby party members for 100 health plus 10% of max health within 8 blocks. Healing scales with your Healer bonus."
+  ability-description: "Heal nearby players for 100 health plus 10% of max health within 8 blocks. Healing scales with your Healer bonus."
   cooldown-seconds: 8
   mana-cost: 100

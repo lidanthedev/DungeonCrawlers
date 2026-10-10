@@ -32,7 +32,8 @@ import org.bukkit.World;
 import org.bukkit.entity.Arrow;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Mob;
-import org.bukkit.entity.ItemDisplay;
+import org.bukkit.Color;
+import org.bukkit.GameMode;
 import org.bukkit.Particle;
 import org.bukkit.entity.Player;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
@@ -96,7 +97,8 @@ class BukkitClassAbilityServiceTest {
     private final World world = mock(World.class);
     private final MutableClock clock = new MutableClock();
     private final ArrayDeque<Runnable> scheduled = new ArrayDeque<>();
-    private final List<ItemDisplay> displays = new ArrayList<>();
+    private final List<BukkitSupportBanner> displays = new ArrayList<>();
+    private MockedStatic<BukkitSupportBanner> nativeBanners;
     private final StatsManager statsManager = mock(StatsManager.class);
     private final DamageManager damageManager = mock(DamageManager.class);
     private final ItemsManager itemsManager = mock(ItemsManager.class);
@@ -148,12 +150,11 @@ class BukkitClassAbilityServiceTest {
             return null;
         });
         when(world.getName()).thenReturn("dungeon_instances");
-        when(world.spawn(any(Location.class), eq(ItemDisplay.class), any(Consumer.class))).thenAnswer(call -> {
-            var display = mock(ItemDisplay.class);
+        nativeBanners = mockStatic(BukkitSupportBanner.class);
+        nativeBanners.when(() -> BukkitSupportBanner.spawn(any(Location.class), any(Material.class), any(Color.class))).thenAnswer(call -> {
+            var display = mock(BukkitSupportBanner.class);
             when(display.isValid()).thenReturn(true);
             displays.add(display);
-            Consumer<ItemDisplay> initialize = call.getArgument(2);
-            initialize.accept(display);
             return display;
         });
         var snapshot = mock(ConfigSnapshot.class);
@@ -169,6 +170,7 @@ class BukkitClassAbilityServiceTest {
     @AfterEach
     void tearDown() {
         if (service != null) service.close();
+        nativeBanners.close();
         nativeCave.close();
         nativeBars.close();
         nativeItems.close();
@@ -467,10 +469,7 @@ class BukkitClassAbilityServiceTest {
     void bannerModelsAndParticleAreasExpireReplaceAndCleanUpWithTheirCaster() {
         assertTrue(service.activateSupport(source, "dc_aegis_standard"));
         var aegis = displays.getFirst();
-        verify(aegis).setItemStack(argThat(item -> item.getType() == Material.WHITE_BANNER));
-        verify(aegis).setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
-        verify(aegis).setPersistent(false);
-        verify(aegis).setInvulnerable(true);
+        nativeBanners.verify(() -> BukkitSupportBanner.spawn(any(Location.class), eq(Material.WHITE_BANNER), eq(Color.WHITE)));
         verify(world, times(120)).spawnParticle(eq(Particle.DUST), any(Location.class), eq(1),
                 eq(0D), eq(0D), eq(0D), eq(0D), any(Particle.DustOptions.class));
         clock.advance(1);
@@ -478,21 +477,21 @@ class BukkitClassAbilityServiceTest {
         verify(world, times(240)).spawnParticle(eq(Particle.DUST), any(Location.class), eq(1),
                 eq(0D), eq(0D), eq(0D), eq(0D), any(Particle.DustOptions.class));
         assertTrue(service.activateSupport(source, "dc_aegis_standard"));
-        verify(aegis).remove();
+        verify(aegis).close();
         clock.advance(10);
         service.tick();
-        verify(displays.get(1)).remove();
+        verify(displays.get(1)).close();
 
         assertTrue(service.activateSupport(source, "dc_war_standard"));
-        verify(displays.get(2)).setItemStack(argThat(item -> item.getType() == Material.RED_BANNER));
+        nativeBanners.verify(() -> BukkitSupportBanner.spawn(any(Location.class), eq(Material.RED_BANNER), eq(Color.RED)));
         when(runs.instanceFor(source.getUniqueId())).thenReturn(Optional.empty());
         service.tick();
-        verify(displays.get(2)).remove();
+        verify(displays.get(2)).close();
         when(runs.instanceFor(source.getUniqueId())).thenReturn(Optional.of(instance));
         assertTrue(service.activateSupport(source, "dc_wind_standard"));
-        verify(displays.get(3)).setItemStack(argThat(item -> item.getType() == Material.LIGHT_BLUE_BANNER));
+        nativeBanners.verify(() -> BukkitSupportBanner.spawn(any(Location.class), eq(Material.CYAN_BANNER), eq(Color.AQUA)));
         service.close();
-        verify(displays.get(3)).remove();
+        verify(displays.get(3)).close();
     }
 
     @Test
@@ -555,6 +554,85 @@ class BukkitClassAbilityServiceTest {
         assertFalse(service.activateSupport(source, "dc_mending_wand"));
         nativeStats.verify(() -> StatsManager.healPlayer(near, 140), times(1));
         assertTrue(displays.isEmpty());
+    }
+
+    @Test
+    void overworldSupportHealsAndBuffsNearbyPlayersAtHalfPowerWithoutPartyMembership() {
+        Player near = player(5, 64, 0, UUID.randomUUID(), PlayerLifecycleService.PlayerState.ALIVE);
+        Player far = player(17, 64, 0, UUID.randomUUID(), PlayerLifecycleService.PlayerState.ALIVE);
+        Player spectator = player(2, 64, 0, UUID.randomUUID(), PlayerLifecycleService.PlayerState.ALIVE);
+        Player assigned = player(2, 64, 0, instance, PlayerLifecycleService.PlayerState.GHOST);
+        when(world.getName()).thenReturn("world");
+        for (Player member : List.of(source, near, far, spectator)) when(runs.instanceFor(member.getUniqueId())).thenReturn(Optional.empty());
+        when(spectator.getGameMode()).thenReturn(GameMode.SPECTATOR);
+        when(world.getPlayers()).thenReturn(List.of(source, near, far, spectator, assigned));
+        assertTrue(service.activateSupport(source, "dc_renewal_staff"));
+        nativeStats.verify(() -> StatsManager.healPlayerPercent(source, 15));
+        nativeStats.verify(() -> StatsManager.healPlayerPercent(near, 15));
+        for (Player excluded : List.of(far, spectator, assigned)) nativeStats.verify(() -> StatsManager.healPlayerPercent(eq(excluded), anyDouble()), never());
+        assertTrue(service.activateSupport(source, "dc_war_standard"));
+        assertTrue(service.activateSupport(source, "dc_wind_standard"));
+        assertTrue(service.activateSupport(source, "dc_focus_orb"));
+        assertTrue(service.activateSupport(source, "dc_bastion_horn"));
+        assertTrue(service.activateSupport(source, "dc_vitality_totem"));
+        assertTrue(service.activateSupport(source, "dc_dawnlight_tome"));
+        assertTrue(service.activateSupport(source, "dc_aegis_standard"));
+        Stats stats = new Stats();
+        for (StatType type : List.of(StatType.STRENGTH, StatType.INTELLIGENCE, StatType.CRIT_DAMAGE,
+                StatType.HEALTH, StatType.DEFENSE, StatType.SPEED)) stats.set(type, 100);
+        service.onStats(new StatsCalculateEvent(near, stats));
+        assertEquals(117.5 * 1.125, stats.get(StatType.STRENGTH).getValue(), .001);
+        assertEquals(120 * 1.125, stats.get(StatType.INTELLIGENCE).getValue(), .001);
+        assertEquals(112.5, stats.get(StatType.CRIT_DAMAGE).getValue(), .001);
+        assertEquals(112.5, stats.get(StatType.HEALTH).getValue(), .001);
+        assertEquals(117.5, stats.get(StatType.DEFENSE).getValue(), .001);
+        assertEquals(115, stats.get(StatType.SPEED).getValue(), .001);
+        assertEquals(12.5, stats.get(StatType.ATTACK_SPEED).getValue(), .001);
+        assertEquals(250, stats.get(StatType.ABILITY_DAMAGE).getValue(), .001);
+        var hit = new DamageCalculationEvent(near, mob(2, 64, 0, false), null, 100, false);
+        service.onOutgoing(hit);
+        assertEquals(107.5, hit.getDamage(), .001);
+        var incoming = new EntityDamageEvent(near, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 100);
+        service.onIncoming(incoming);
+        assertEquals(87.5, incoming.getDamage(), .001);
+        clock.advance(1); service.tick();
+        nativeStats.verify(() -> StatsManager.healPlayerPercent(near, 2.5), times(2));
+        assertEquals(3, displays.size());
+        clock.advance(9); service.tick();
+        displays.forEach(display -> verify(display).close());
+        stats.set(StatType.DEFENSE, 100);
+        service.onStats(new StatsCalculateEvent(near, stats));
+        assertEquals(100, stats.get(StatType.DEFENSE).getValue());
+    }
+
+    @Test
+    void overworldWandHealsHalfFlatAndPercentAndCannotTransferBuffsAcrossWorldsOrIntoDungeon() {
+        when(world.getName()).thenReturn("world");
+        when(runs.instanceFor(source.getUniqueId())).thenReturn(Optional.empty());
+        when(world.getPlayers()).thenReturn(List.of(source));
+        assertTrue(service.activateSupport(source, "dc_mending_wand"));
+        nativeStats.verify(() -> StatsManager.healPlayer(source, 50));
+        nativeStats.verify(() -> StatsManager.healPlayerPercent(source, 5));
+        assertTrue(service.activateSupport(source, "dc_aegis_standard"));
+        runScheduled();
+        World nether = mock(World.class);
+        when(nether.getName()).thenReturn("world_nether");
+        when(source.getWorld()).thenReturn(nether);
+        when(source.getLocation()).thenAnswer(ignored -> new Location(nether, 0, 64, 0));
+        Stats stats = new Stats(); stats.set(StatType.DEFENSE, 100);
+        service.onStats(new StatsCalculateEvent(source, stats));
+        assertEquals(100, stats.get(StatType.DEFENSE).getValue());
+        service.tick();
+        verify(displays.getFirst()).close();
+        when(source.getWorld()).thenReturn(world);
+        when(source.getLocation()).thenAnswer(ignored -> new Location(world, 0, 64, 0));
+        assertTrue(service.activateSupport(source, "dc_aegis_standard"));
+        when(world.getName()).thenReturn("dungeon_instances");
+        when(runs.instanceFor(source.getUniqueId())).thenReturn(Optional.of(instance));
+        service.onStats(new StatsCalculateEvent(source, stats));
+        assertEquals(100, stats.get(StatType.DEFENSE).getValue());
+        service.tick();
+        verify(displays.get(1)).close();
     }
 
     private Player player(double x, double y, double z, UUID instanceId, PlayerLifecycleService.PlayerState state) {

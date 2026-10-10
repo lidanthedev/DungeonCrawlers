@@ -1,6 +1,6 @@
 # Dungeon support items
 
-These Epic CaveCrawlers items activate by right clicking in the main hand. Their abilities affect living party members within 16 blocks in the same active dungeon, except Mending Wand, which reaches 8 blocks. Any class can use them. Healing uses the caster's Healer level bonus when applicable. Healing percentages refer to each recipient's maximum health.
+These Epic CaveCrawlers items activate by right clicking in the main hand. Their abilities affect living players within 16 blocks, except Mending Wand, which reaches 8 blocks. In a running dungeon, recipients must belong to the same run. Outside dungeons, they affect nearby players in the same world without requiring party membership. Spectators and dungeon ghosts cannot cast or receive support effects. Any class can use them. Dungeon healing uses the caster's Healer level bonus when applicable. Healing percentages refer to each recipient's maximum health.
 
 | Item ID | Item | Ability | Effect | Cooldown |
 | --- | --- | --- | --- | --- |
@@ -16,7 +16,11 @@ These Epic CaveCrawlers items activate by right clicking in the main hand. Their
 
 Mending Circle costs 100 mana. It uses CaveCrawlers' existing healing-wand approach: `ZOMBIE_SWORD_HEAL`/`InstantHealAbility` uses `StatsManager` to apply a flat heal plus a percentage of the recipient's maximum health. It consumes no mana and starts no cooldown when every eligible recipient is already at full health. The other support abilities cost no mana by default. Tailwind preserves the native Speed and Attack Speed caps. Attack Speed and Ability Damage boosts add native stat points, so they work from a zero baseline.
 
-Aegis Standard, War Standard and Wind Standard place a temporary banner model using an `ItemDisplay` at the cast location. A particle ring outlines the 16-block radius, with particles inside the area, for 10 seconds. The party receives the buff once when the standard is raised; entering the area afterward does not grant it. The display and particles end when the caster dies or leaves the run, the run ends, or the plugin shuts down. Other support items show a single area pulse when cast.
+Aegis Standard, War Standard and Wind Standard raise upright banner scenes built from `BlockDisplay` entities: a planted pedestal, pole, crossbar, colored cloth, trim and emblems on both sides. The cloth moves gently while the pole stays vertical. Particle rings outline the 16-block area for 10 seconds. Nearby recipients receive the buff once when the standard is raised; entering afterward does not grant it. The scene ends on expiry, caster death or logout, world or dungeon context change, run completion or plugin shutdown. Other support items show a single area pulse when cast.
+
+All healing, regeneration, stat bonuses and damage bonuses/reduction are half strength outside dungeons. Duration, range, mana cost and cooldown stay the same. For example, overworld Warcry grants +17.5% Strength, +12.5% Crit Damage and +7.5% damage; Mending Circle heals 50 health plus 5% maximum health. Temporary buffs do not carry across worlds or between overworld and dungeon contexts.
+
+Vitality Totem uses a Beacon item, so it cannot activate vanilla Totem of Undying resurrection. Startup migrates the old persisted item material while preserving admin stats and appearance metadata. Existing inventory copies are converted, and an exact-ID resurrection guard covers old copies retrieved from storage. Ordinary vanilla totems are unaffected.
 
 Administrators can obtain them through CaveCrawlers:
 

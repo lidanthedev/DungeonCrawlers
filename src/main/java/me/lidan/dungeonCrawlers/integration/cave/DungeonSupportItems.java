@@ -9,11 +9,21 @@ import me.lidan.cavecrawlers.items.abilities.ClickAbility;
 import me.lidan.cavecrawlers.stats.StatType;
 import me.lidan.cavecrawlers.stats.Stats;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.HandlerList;
+import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityResurrectEvent;
 import org.bukkit.event.player.PlayerEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerItemHeldEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.InputStreamReader;
@@ -23,9 +33,12 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiPredicate;
 
-/** Native CaveCrawlers items. Party effects belong to the dungeon service; cooldowns,
+/** Native CaveCrawlers items. Nearby effects belong to the support service; cooldowns,
  * mana, and action-bar feedback use the normal {@link ClickAbility} flow. */
-public final class DungeonSupportItems implements AutoCloseable {
+public final class DungeonSupportItems implements AutoCloseable, Listener {
+    private static final String VITALITY_ITEM_ID = "DC_VITALITY_TOTEM";
+    private static final NamespacedKey NATIVE_ITEM_ID = Objects.requireNonNull(
+            NamespacedKey.fromString("cavecrawlers:item_id"));
     private final JavaPlugin plugin;
     private final BiPredicate<Player, String> activate;
     private final AbilityManager abilities = AbilityManager.getInstance();
@@ -52,7 +65,8 @@ public final class DungeonSupportItems implements AutoCloseable {
                 }
                 var ability = new SupportAbility(abilityId,
                         Objects.requireNonNull(definition.getString("ability-name")),
-                        Objects.requireNonNull(definition.getString("ability-description")),
+                        Objects.requireNonNull(definition.getString("ability-description"))
+                                + " Effects have half strength outside dungeons.",
                         definition.getDouble("mana-cost", 0),
                         definition.getLong("cooldown-seconds") * 1000);
                 abilities.registerAbility(abilityId, ability);
@@ -69,8 +83,16 @@ public final class DungeonSupportItems implements AutoCloseable {
                             Rarity.EPIC, abilityId);
                     // Persist native definitions so /cc reload items keeps existing support items usable.
                     items.setItem(itemId, item);
+                } else if (VITALITY_ITEM_ID.equals(itemId)) {
+                    var item = items.getItemByID(itemId);
+                    if (item.getBaseItem().getType() == Material.TOTEM_OF_UNDYING) {
+                        item.getBaseItem().setType(Material.BEACON);
+                        items.setItem(itemId, item);
+                    }
                 }
             }
+            plugin.getServer().getPluginManager().registerEvents(this, plugin);
+            plugin.getServer().getOnlinePlayers().forEach(this::migrateInventory);
         } catch (RuntimeException exception) {
             close();
             throw exception;
@@ -79,6 +101,7 @@ public final class DungeonSupportItems implements AutoCloseable {
 
     @Override
     public void close() {
+        HandlerList.unregisterAll(this);
         for (String itemId : itemIds) {
             ItemInfo item = items.getItemByID(itemId);
             if (item != null && item.getAbility() instanceof SupportAbility ability && ability.owner() == this) {
@@ -94,6 +117,60 @@ public final class DungeonSupportItems implements AutoCloseable {
             return false;
         });
         itemIds.clear();
+    }
+
+    private boolean migrateLegacyTotem(ItemStack stack) {
+        if (stack == null || stack.getType() != Material.TOTEM_OF_UNDYING || !stack.hasItemMeta()
+                || !VITALITY_ITEM_ID.equals(stack.getItemMeta().getPersistentDataContainer()
+                .get(NATIVE_ITEM_ID, PersistentDataType.STRING))) {
+            return false;
+        }
+        // Change only material: native identity, admin metadata, enchants and quantity survive.
+        stack.setType(Material.BEACON);
+        return true;
+    }
+
+    private void migrateInventory(Player player) {
+        var inventory = player.getInventory();
+        var contents = inventory.getContents();
+        for (int slot = 0; slot < contents.length; slot++) {
+            if (migrateLegacyTotem(contents[slot])) {
+                inventory.setItem(slot, contents[slot]);
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onJoin(PlayerJoinEvent event) {
+        migrateInventory(event.getPlayer());
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onHeld(PlayerItemHeldEvent event) {
+        migrateInventory(event.getPlayer());
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onInteract(PlayerInteractEvent event) {
+        migrateInventory(event.getPlayer());
+        migrateLegacyTotem(event.getItem());
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onSwapHands(PlayerSwapHandItemsEvent event) {
+        migrateLegacyTotem(event.getMainHandItem());
+        migrateLegacyTotem(event.getOffHandItem());
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onResurrect(EntityResurrectEvent event) {
+        if (event.getEntity() instanceof Player player && event.getHand() != null) {
+            var stack = player.getInventory().getItem(event.getHand());
+            if (migrateLegacyTotem(stack)) {
+                player.getInventory().setItem(event.getHand(), stack);
+                event.setCancelled(true);
+            }
+        }
     }
 
     private final class SupportAbility extends ClickAbility {
