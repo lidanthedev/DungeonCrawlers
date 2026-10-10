@@ -25,19 +25,22 @@ Trapped chests use the existing standard-secret path; ordinary chests grant exis
 
 ## Veyra, the Chainbound Architect
 
-Veyra is a real MythicMobs actor with one persistent health pool. Health settings apply before party scaling and retain the selected difficulty's existing multiplier. The six-and-a-half-second introduction locks boss damage and AI, presents dialogue and titles, builds a rotating copper crown, and sends a cyan pulse through the arena. Players retain their cameras and controls.
+Veyra is a real MythicMobs actor with one persistent health pool. Health settings apply before party scaling and retain the selected difficulty's existing multiplier. The six-and-a-half-second introduction locks boss damage and AI, presents dialogue and titles, builds a rotating copper crown, suspends Veyra between four animated pier chains, and sends a cyan pulse through the arena. Players retain their cameras and controls.
 
 | Attack | Telegraph and response |
 | --- | --- |
 | Forge wave | Golden starting ring, then an expanding damaging ground wave. Jump its edge. |
 | Shattered brands | Marks current player locations. Spread and leave the gold circles before detonation. |
-| Cantor's lance | A fixed line targets a participant, then strikes and repositions Veyra near the party. Step sideways. |
+| Cantor's lance / reprisal | A fixed line targets a participant, then strikes and dashes Veyra along its direction. The final phase locks and strikes three separate lines, each with at least one second to react. Step sideways after each lock. |
 | Chain draw | Warns a spoke, removes its actual collision floor and animates a suspended slab toward the chain anchor. A rotating chain cut sweeps the hub. Use the diagonal paths and jump the cut. |
 | Heaven's guillotine | Cyan marks the central hub and one island. Three suspended anvil structures descend onto the other islands after a five-second default evacuation window. |
 | Rift pulse | Repeated expanding jump rings plus a separately telegraphed crosscut. |
+| Chain cage | Each alive player gets a fixed seven-block gold circle and a physical chain tether. Run outside your own circle to snap the chain. Remaining chains tighten, gently pull inward, and detonate once after the warning plus 2.2 seconds. Departed players are discarded. |
+| Clockwork requiem | Four physical chains sweep a rotating cross at shin height. Jump the chains or move with the cross; the five-block hub is clear. Final-phase casts rotate faster and add expanding rings through the hub. |
+| Counterweight verdict | Cyan floor pads appear five blocks east/west of the heart. Two or more alive players must occupy both pads; a solo survivor can hold either. Continuous occupancy for up to 1.8 seconds staggers Veyra for three seconds and tears off up to 3% max HP, respecting the cinematic threshold and leaving the killing blow to players. A missed deadline produces one arena-wide hit. Veyra pauses melee while channeling. |
 | Last weave | Final-phase chain sweep and bridge pull overlap delayed brands and falling anvils. Leave the brand, time the sweep, then reach cyan. |
 
-Normal uses the first three attacks and a faster final phase at 18% health. Impossible changes arenas at 65% and unlocks the last four attacks. Damage is capped before the transformation threshold so one burst cannot skip the cinematic. Incoming damage and outgoing attacks pause during the cinematic; the health pool is retained and no replacement boss is spawned.
+Normal rotates Forge Wave, Brands, Lance and Counterweights, with faster final-phase casts and the three-strike Reprisal at 18% health. Impossible changes arenas at 65% and rotates seven attacks, including Cage and Clockwork. Its final phase opens immediately with Last Weave, then accelerates the chain cross and adds ring pressure. Damage is capped before the transformation threshold so one burst cannot skip the cinematic. Incoming damage and outgoing attacks pause during the cinematic; the health pool is retained and no replacement boss is spawned.
 
 ## The Impossible transformation
 
@@ -52,8 +55,9 @@ At 18%, the Last Weave begins. Veyra glows, the music speeds up, attacks arrive 
 ## Ownership and configuration
 
 - `core/encounter/ChainboundEncounter` owns stages, thresholds, attack scheduling, exact-entity death acceptance and completion.
+- `CounterweightTrial` verifies uninterrupted pad occupancy, resets on missed samples and adapts to partner departure.
 - `BukkitChainboundArena` owns participant filtering, telegraphs, damage, target selection, safety teleports, sounds and the shared boss bar.
-- `BukkitFoundryScene` owns moving displays and saved original block states. It caps displays at 220 and saved states at 6,000; mutations stay within the boss arena. Restore/cleanup removes the exact owned entities and event listener.
+- `BukkitFoundryScene` owns moving displays and saved original block states. Combat uses 48 reusable chain-link displays and restores cyan floor pads after every cast. It caps displays at 220 and saved states at 6,000; mutations stay within the boss arena. Restore/cleanup removes the exact owned entities and event listener.
 - `FoundryPuzzle` owns instance-local solution progress. `BukkitFoundryRooms` derives all locations from generated placements and rotations and holds the existing combat room's clear gate. Combat cleanup also removes its clues and rotors.
 - All boss work uses the existing encounter tick. Room effects update at 5 Hz; boss display interpolation and telegraphs update at 10 Hz. There are no additional encounter scheduler tasks or global entity scans.
 - `foundry.yml` validates finite health/damage, ordered thresholds, cinematic bounds and non-overlapping attack intervals. It is read when an encounter is created. Config validation and hashing include it and `rooms_foundry.yml`.

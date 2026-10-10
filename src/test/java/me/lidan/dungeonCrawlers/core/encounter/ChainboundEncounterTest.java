@@ -76,6 +76,28 @@ class ChainboundEncounterTest {
         encounter.tick(START.plusSeconds(36)); encounter.tick(START.plusSeconds(42));
         verify(arena).cast(eq(Attack.LAST_WEAVE), any());
     }
+    @Test void rivenAndFinalCyclesIncludeCounterplayAndNeverSkipTheSignatureOpener() {
+        var encounter = encounter(true); encounter.start(); encounter.tick(START.plusSeconds(7));
+        when(arena.healthFraction()).thenReturn(.6);
+        encounter.tick(START.plusSeconds(8)); encounter.tick(START.plusSeconds(22));
+        clearInvocations(arena);
+        for (int i = 0; i < 7; i++) encounter.tick(START.plusMillis(24000 + i * 6500));
+        var order = inOrder(arena);
+        for (Attack attack : new Attack[]{Attack.CHAIN_DRAW, Attack.GUILLOTINE, Attack.RIFT_PULSE,
+                Attack.CHAIN_CAGE, Attack.CLOCKWORK_REQUIEM, Attack.COUNTERWEIGHTS, Attack.BRANDS})
+            order.verify(arena).cast(eq(attack), any());
+        when(arena.healthFraction()).thenReturn(.17);
+        encounter.tick(START.plusSeconds(65));
+        encounter.tick(START.plusSeconds(67));
+        verify(arena).cast(eq(Attack.LAST_WEAVE), eq(START.plusSeconds(67)));
+    }
+    @Test void ordinaryFloorTeachesCounterweightsWithoutImpossibleChains() {
+        var encounter = encounter(false); encounter.start(); encounter.tick(START.plusMillis(6500));
+        for (int i = 0; i < 4; i++) encounter.tick(START.plusMillis(8500 + i * 8500));
+        verify(arena).cast(eq(Attack.COUNTERWEIGHTS), any());
+        verify(arena, never()).cast(eq(Attack.CHAIN_CAGE), any());
+        verify(arena, never()).cast(eq(Attack.CLOCKWORK_REQUIEM), any());
+    }
     @Test void exactDeathWaitsForVictoryAndCannotPayTwice() {
         var encounter = encounter(false); encounter.start();
         assertFalse(encounter.onDeath(UUID.randomUUID()).accepted());

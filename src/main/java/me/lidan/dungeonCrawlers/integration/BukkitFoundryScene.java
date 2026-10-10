@@ -27,6 +27,8 @@ public final class BukkitFoundryScene implements AutoCloseable {
     private final List<List<BlockDisplay>> chains = new ArrayList<>();
     private final List<BlockDisplay> crown = new ArrayList<>();
     private final List<BlockDisplay> hammers = new ArrayList<>();
+    private final List<BlockDisplay> combatLinks = new ArrayList<>();
+    private final List<Block> counterweightPads = new ArrayList<>();
     private BlockDisplay movingBridge;
     private int bridgeAxis;
     private int detached;
@@ -218,6 +220,53 @@ public final class BukkitFoundryScene implements AutoCloseable {
         for (BlockDisplay hammer : hammers) move(hammer, 0, 32, 0, .001, .001, .001, 0);
     }
 
+    /** Six reusable chains, never per-cast entities. Extra party members retain particle telegraphs. */
+    public void combatChain(int slot, Location from, Location to, double tension) {
+        if (closed || slot < 0 || slot >= 6) return;
+        if (combatLinks.isEmpty()) {
+            Material material = Material.matchMaterial("IRON_CHAIN");
+            if (material == null) material = Material.matchMaterial("CHAIN");
+            if (material == null) throw new IllegalStateException("server has no chain material");
+            for (int i = 0; i < 48; i++) combatLinks.add(block(material, 0, 32, 0, .001, .001, .001));
+        }
+        double dx = to.getX() - from.getX(), dy = to.getY() - from.getY(), dz = to.getZ() - from.getZ();
+        double length = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        for (int i = 0; i < 8; i++) {
+            double t = (i + .5) / 8;
+            BlockDisplay display = combatLinks.get(slot * 8 + i);
+            display.setInterpolationDelay(0);
+            display.setTransformationMatrix(new Matrix4f()
+                    .translate((float) (from.getX() - center.getX() + dx * t),
+                            (float) (from.getY() - center.getY() + dy * t - Math.sin(t * Math.PI) * (1 - tension) * 1.5),
+                            (float) (from.getZ() - center.getZ() + dz * t))
+                    .rotateY((float) Math.atan2(dx, dz)).rotateX((float) -Math.atan2(dy, Math.hypot(dx, dz)))
+                    .scale(.45F, .45F, (float) Math.max(.2, length / 8))
+                    .translate(-.5F, -.5F, -.5F));
+        }
+    }
+
+    public void hideCombatChains() {
+        for (BlockDisplay display : combatLinks) move(display, 0, 32, 0, .001, .001, .001, 0);
+    }
+
+    public void counterweights(boolean lowered, boolean charged) {
+        if (closed) return;
+        int y = lowered ? -11 : -1;
+        for (int x : new int[]{-5, 5}) {
+            Block block = center.clone().add(x, y, 0).getBlock();
+            if (!counterweightPads.contains(block)) counterweightPads.add(block);
+            change(x, y, 0, charged ? Material.SEA_LANTERN : Material.CYAN_CONCRETE);
+        }
+    }
+
+    public void hideCounterweights() {
+        for (Block block : counterweightPads) {
+            BlockState original = originals.remove(block);
+            if (original != null) original.update(true, false);
+        }
+        counterweightPads.clear();
+    }
+
     public void death(double progress) {
         for (int side = 0; side < chains.size(); side++) {
             double a = side * Math.PI / 4;
@@ -245,7 +294,7 @@ public final class BukkitFoundryScene implements AutoCloseable {
         if (closed) return;
         closed = true;
         try { restore(); }
-        finally { displays.forEach(BlockDisplay::remove); displays.clear(); pieces.clear(); chains.clear(); crown.clear(); hammers.clear(); }
+        finally { displays.forEach(BlockDisplay::remove); displays.clear(); pieces.clear(); chains.clear(); crown.clear(); hammers.clear(); combatLinks.clear(); counterweightPads.clear(); }
     }
     private record Piece(BlockDisplay display, double x, double y, double z, double sx, double sy, double sz, int side) { }
 }

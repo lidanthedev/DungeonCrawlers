@@ -9,6 +9,7 @@ import me.lidan.dungeonCrawlers.core.encounter.ChainboundEncounter.Settings;
 import me.lidan.dungeonCrawlers.core.encounter.ChainboundEncounter.Stage;
 import me.lidan.dungeonCrawlers.core.encounter.EncounterFactory.EncounterContext;
 import me.lidan.dungeonCrawlers.core.encounter.FoundryGeometry;
+import me.lidan.dungeonCrawlers.core.encounter.CounterweightTrial;
 import me.lidan.dungeonCrawlers.core.generation.GenerationService;
 import me.lidan.dungeonCrawlers.core.lifecycle.PlayerLifecycleService;
 import me.lidan.dungeonCrawlers.core.protection.TeleportPermitService;
@@ -42,6 +43,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -62,6 +64,10 @@ public final class BukkitChainboundArena implements ChainboundEncounter.Arena, L
     private final Map<UUID, Long> hitTimes = new HashMap<>();
     private final Set<Player> barViewers = new HashSet<>();
     private final List<Location> brands = new ArrayList<>();
+    private final Map<UUID, Location> tethers = new LinkedHashMap<>();
+    private CounterweightTrial counterweightTrial;
+    private long staggerUntil, lanceAt;
+    private boolean counterweightResolved, cageResolved;
     private final BossBar bar = BossBar.bossBar(MiniMessageUtils.miniMessage("<aqua>Veyra · The Chainbound Architect"),
             1, BossBar.Color.BLUE, BossBar.Overlay.NOTCHED_10);
     private BukkitFoundryScene scene;
@@ -120,6 +126,7 @@ public final class BukkitChainboundArena implements ChainboundEncounter.Arena, L
     }
 
     @Override public void stage(Stage next, Instant now) {
+        clearStagger();
         cancelAttack();
         stage = next; stageAt = now.toEpochMilli(); pulses = 0;
         audience = participants();
@@ -128,13 +135,17 @@ public final class BukkitChainboundArena implements ChainboundEncounter.Arena, L
             boss().setAI(!cinematic); boss().setInvulnerable(cinematic);
             boss().setVelocity(new Vector());
         }
+        bar.name(MiniMessageUtils.miniMessage("<aqua>Veyra · The Chainbound Architect"));
         switch (next) {
             case INTRO -> {
                 title("<aqua><bold>VEYRA, THE CHAINBOUND ARCHITECT", "<gray>Every stone remembers its maker.");
                 sound(Sound.BLOCK_BELL_RESONATE, .8F, .5F);
                 notice("<aqua>Veyra: You have mistaken my prison for your passage.");
             }
-            case FIRST -> notice("<gold>Watch the golden telegraphs. Break the architect's hold.");
+            case FIRST -> {
+                boss().teleport(center); boss().setFallDistance(0);
+                notice("<gold>Watch the golden telegraphs. Cyan counterweights can break the architect's hold.");
+            }
             case TRANSFORM -> {
                 transformed = true;
                 scene.beginTransformation();
@@ -154,7 +165,7 @@ public final class BukkitChainboundArena implements ChainboundEncounter.Arena, L
                 bar.color(BossBar.Color.RED);
             }
             case FINAL -> {
-                title("<dark_red><bold>THE LAST WEAVE", "<gold>Chain pulls and falling anvils now overlap.");
+                title("<dark_red><bold>THE LAST WEAVE", "<gold>Three lances. Crossing chains. The heart demands a counterweight.");
                 notice("<red>Veyra: Then let the heart break with us!");
                 sound(Sound.BLOCK_RESPAWN_ANCHOR_DEPLETE, .85F, .65F);
                 boss().setGlowing(true);
@@ -198,6 +209,11 @@ public final class BukkitChainboundArena implements ChainboundEncounter.Arena, L
         scene.bossCrown(boss().getLocation(), stage == Stage.RIVEN || stage == Stage.FINAL ? 1.4 : 1, time);
         bar.progress((float) Math.clamp(healthFraction(), 0, 1));
         if (stage == Stage.INTRO) {
+            double rise = Math.sin(elapsed / settings.introMillis() * Math.PI) * 1.5;
+            boss().teleport(center.clone().add(0, rise, 0));
+            for (int q = 0; q < 4; q++) scene.combatChain(q,
+                    center.clone().add(q % 2 == 0 ? 18 : -18, 9, q < 2 ? 18 : -18),
+                    boss().getLocation().add(0, 2, 0), elapsed / settings.introMillis());
             ring(center, 3 + elapsed / settings.introMillis() * 24, CYAN);
             if (introCue == 0 && elapsed >= settings.introMillis() / 2D) {
                 introCue++;
@@ -225,9 +241,13 @@ public final class BukkitChainboundArena implements ChainboundEncounter.Arena, L
             return;
         }
         List<Player> fighters = audience.stream().filter(this::alive).toList();
+        if (staggerUntil > 0 && time >= staggerUntil) {
+            staggerUntil = 0; boss().setAI(true); boss().setGlowing(stage == Stage.FINAL);
+            notice("<red>Veyra: You will not turn my own chains against me twice!");
+        }
         if (time - lastPosition >= 500) {
             lastPosition = time;
-            if (boss() instanceof Mob mob) mob.setTarget(nearest(fighters, mob.getLocation()));
+            if (staggerUntil == 0 && boss() instanceof Mob mob) mob.setTarget(nearest(fighters, mob.getLocation()));
             if (horizontal(boss().getLocation(), center) > 31 * 31 || boss().getLocation().getY() < floor().getY() - 1)
                 boss().teleport(floor());
             for (Player player : fighters) {
@@ -250,18 +270,31 @@ public final class BukkitChainboundArena implements ChainboundEncounter.Arena, L
         Location at = target == null ? center : target.getLocation();
         aim = Math.atan2(at.getZ() - center.getZ(), at.getX() - center.getX());
         safeQuadrant = FoundryGeometry.quadrant(at.getX() - center.getX(), at.getZ() - center.getZ());
-        bridge = casts % 4;
+        bridge = Math.floorMod((int) Math.round(aim / (Math.PI / 2)), 4);
+        lanceAt = castAt;
+        counterweightResolved = false; cageResolved = false;
+        if (next == Attack.CHAIN_CAGE) fighters.forEach(player -> tethers.put(player.getUniqueId(), player.getLocation().clone()));
+        if (next == Attack.COUNTERWEIGHTS) {
+            counterweightTrial = new CounterweightTrial(Math.min(settings.warningMillis(), 1800));
+            scene.counterweights(lowered, false);
+            boss().setAI(false); boss().setVelocity(new Vector());
+        }
+        context.diagnostics().accept("chainbound attack=" + next + " stage=" + stage);
         if (next == Attack.BRANDS || next == Attack.LAST_WEAVE)
             fighters.forEach(player -> brands.add(player.getLocation().clone()));
         String instruction = switch (next) {
             case FORGE_WAVE -> "FORGE WAVE · Jump the expanding ring";
             case BRANDS -> "SHATTERED BRANDS · Spread, then leave your marked ground";
-            case LANCE -> "CANTOR'S LANCE · Step out of the golden line";
+            case LANCE -> stage == Stage.FINAL ? "CANTOR'S REPRISAL · Three locked lines; dodge each strike" : "CANTOR'S LANCE · Step out of the golden line";
             case CHAIN_DRAW -> "CHAIN DRAW · A spoke is retracting; take the diagonal bridges";
             case GUILLOTINE -> "HEAVEN'S GUILLOTINE · Reach the cyan hub or island";
             case RIFT_PULSE -> "RIFT PULSE · Jump the rings while avoiding the crosscut";
+            case CHAIN_CAGE -> "CHAIN CAGE · Run outside your golden circle before the chain locks";
+            case CLOCKWORK_REQUIEM -> "CLOCKWORK REQUIEM · Jump the chain cross; follow its rotation";
+            case COUNTERWEIGHTS -> fighters.size() > 1 ? "COUNTERWEIGHT VERDICT · Hold BOTH cyan pads with different players" : "COUNTERWEIGHT VERDICT · Hold either cyan pad to stagger Veyra";
             case LAST_WEAVE -> "LAST WEAVE · Leave your brand, dodge chains, then reach cyan";
         };
+        bar.name(MiniMessageUtils.miniMessage("<aqua>Veyra <gray>· <gold>" + instruction.split(" · ")[0]));
         title("<gold><bold>" + instruction.split(" · ")[0], "<white>" + instruction.split(" · ")[1]);
         sound(Sound.BLOCK_BELL_USE, .55F, next == Attack.LAST_WEAVE ? .5F : 1.2F);
     }
@@ -290,17 +323,28 @@ public final class BukkitChainboundArena implements ChainboundEncounter.Arena, L
                 if (!telegraph && pulses++ == 0) sound(Sound.ENTITY_GENERIC_EXPLODE, .7F, .8F);
             }
             case LANCE -> {
-                line(origin, aim, telegraph ? GOLD : RED);
-                if (!telegraph && pulses++ == 0) {
-                    sound(Sound.ENTITY_IRON_GOLEM_ATTACK, .8F, .6F);
+                int strikes = stage == Stage.FINAL ? 3 : 1;
+                line(origin, aim, GOLD);
+                long deadline = pulses == 0 ? castAt + warn : lanceAt + 1000;
+                if (pulses < strikes && time >= deadline) {
+                    line(origin, aim, RED);
+                    sound(Sound.ENTITY_IRON_GOLEM_ATTACK, .8F, .6F + pulses * .2F);
                     for (Player player : fighters) if (FoundryGeometry.lane(player.getX() - center.getX(),
                             player.getZ() - center.getZ(), aim, 2)) hit(player, settings.damage() * 1.35, time);
-                    if (!fighters.isEmpty()) {
-                        Location dash = fighters.get(casts % fighters.size()).getLocation().clone();
-                        if (!lowered || FoundryGeometry.lowerPlatform(dash.getX() - center.getX(), dash.getZ() - center.getZ())) boss().teleport(dash);
+                    if (cleaned) return;
+                    Location dash = origin.clone().add(Math.cos(aim) * 22, 0, Math.sin(aim) * 22);
+                    if (!lowered || FoundryGeometry.lowerPlatform(dash.getX() - center.getX(), dash.getZ() - center.getZ())) boss().teleport(dash);
+                    pulses++; lanceAt = time;
+                    if (pulses < strikes && !fighters.isEmpty()) {
+                        Player target = fighters.get((casts + pulses) % fighters.size());
+                        aim = Math.atan2(target.getZ() - center.getZ(), target.getX() - center.getX());
+                        sound(Sound.BLOCK_BELL_USE, .5F, 1.4F);
                     }
                 }
             }
+            case CHAIN_CAGE -> chainCage(time, elapsed, warn, origin, fighters);
+            case CLOCKWORK_REQUIEM -> clockwork(time, elapsed, warn, origin, fighters);
+            case COUNTERWEIGHTS -> counterweights(time, elapsed, warn, origin, fighters);
             case CHAIN_DRAW, LAST_WEAVE -> {
                 line(origin, bridge * Math.PI / 2, telegraph ? GOLD : RED);
                 if (!telegraph && !bridgeRetracted) {
@@ -347,6 +391,94 @@ public final class BukkitChainboundArena implements ChainboundEncounter.Arena, L
         if (elapsed >= warn + 3400) cancelAttack();
     }
 
+    private void chainCage(long time, long elapsed, long warn, Location origin, List<Player> fighters) {
+        if (cageResolved) return;
+        scene.hideCombatChains();
+        int slot = 0;
+        for (var tether : new ArrayList<>(tethers.entrySet())) {
+            Player player = fighters.stream().filter(p -> p.getUniqueId().equals(tether.getKey())).findFirst().orElse(null);
+            Location anchor = tether.getValue().clone(); anchor.setY(origin.getY());
+            if (player == null || horizontal(anchor, player.getLocation()) >= 49) {
+                tethers.remove(tether.getKey());
+                if (player != null) {
+                    player.playSound(player.getLocation(), Sound.BLOCK_CHAIN_BREAK, .9F, 1.4F);
+                    ring(anchor, 7, CYAN);
+                }
+                continue;
+            }
+            ring(anchor, 7, elapsed < warn ? GOLD : RED);
+            scene.combatChain(slot++, anchor.clone().add(0, .3, 0), player.getLocation().add(0, 1, 0),
+                    Math.clamp(elapsed / (double) (warn + 2200), 0, 1));
+            if (elapsed >= warn + 2200) {
+                hit(player, settings.damage() * 1.5, time);
+                if (cleaned) return;
+            } else if (elapsed >= warn + 1000) {
+                Vector pull = anchor.toVector().subtract(player.getLocation().toVector()).setY(.1);
+                if (pull.lengthSquared() > .01) player.setVelocity(pull.normalize().multiply(.18));
+            }
+        }
+        if (elapsed >= warn + 2200) {
+            cageResolved = true; sound(Sound.BLOCK_CHAIN_BREAK, .8F, .5F); scene.hideCombatChains();
+            context.diagnostics().accept("chainbound cage unresolved=" + tethers.size());
+        }
+    }
+
+    private void clockwork(long time, long elapsed, long warn, Location origin, List<Player> fighters) {
+        double rotation = elapsed < warn ? 0 : (elapsed - warn) / 3400D * Math.PI * (stage == Stage.FINAL ? 1.5 : 1);
+        double angle = aim + rotation;
+        for (int arm = 0; arm < 4; arm++) {
+            double direction = angle + arm * Math.PI / 2;
+            scene.combatChain(arm, origin.clone().add(Math.cos(direction) * 5, .6, Math.sin(direction) * 5),
+                    origin.clone().add(Math.cos(direction) * 30, .6, Math.sin(direction) * 30), 1);
+            for (int r = 6; r <= 30; r += 3) particle(origin.clone().add(Math.cos(direction) * r, .2,
+                    Math.sin(direction) * r), elapsed < warn ? GOLD : RED);
+        }
+        double radius = elapsed < warn ? 3 : ((elapsed - warn) % 1600) / 50D;
+        if (stage == Stage.FINAL) ring(origin, radius, elapsed < warn ? GOLD : RED);
+        if (elapsed >= warn) for (Player player : fighters) {
+            double x = player.getX() - center.getX(), z = player.getZ() - center.getZ();
+            boolean chains = Math.hypot(x, z) > 5 && Math.hypot(x, z) <= 30.5 && (FoundryGeometry.lane(x, z, angle, 1.1)
+                    || FoundryGeometry.lane(x, z, angle + Math.PI / 2, 1.1));
+            if (grounded(player) && (chains || stage == Stage.FINAL && FoundryGeometry.wave(x, z, radius, 1.6)))
+                hit(player, settings.damage() * 1.1, time);
+        }
+        if (elapsed >= warn && pulses++ % 5 == 0) sound(Sound.BLOCK_CHAIN_STEP, .45F, .6F);
+    }
+
+    private void counterweights(long time, long elapsed, long warn, Location origin, List<Player> fighters) {
+        if (counterweightResolved) return;
+        double progress = counterweightTrial.progress(time);
+        ring(origin.clone().add(-5, 0, 0), 1.5, CYAN);
+        ring(origin.clone().add(5, 0, 0), 1.5, CYAN);
+        bar.name(MiniMessageUtils.miniMessage("<aqua>Veyra <gray>· <gold>COUNTERWEIGHTS <white>" + Math.round(progress * 100) + "%"));
+        scene.combatChain(0, origin.clone().add(-5, .2, 0), boss().getLocation().add(0, 2, 0), progress);
+        scene.combatChain(1, origin.clone().add(5, .2, 0), boss().getLocation().add(0, 2, 0), progress);
+        var positions = fighters.stream().map(player -> new CounterweightTrial.Position(
+                grounded(player) && player.getY() >= origin.getY() - .2 ? player.getX() - center.getX() : Double.MAX_VALUE, player.getZ() - center.getZ())).toList();
+        boolean success = counterweightTrial.update(time, positions);
+        if (success || elapsed >= warn + 2800) {
+            counterweightResolved = true;
+            if (success) {
+                scene.counterweights(lowered, true);
+                boss().setAI(false); boss().setVelocity(new Vector()); boss().setGlowing(true);
+                staggerUntil = time + 3000;
+                bar.name(MiniMessageUtils.miniMessage("<aqua>Veyra <gray>· <white>STAGGERED"));
+                MythicBukkit.inst().getMobManager().getActiveMob(bossId).ifPresent(active -> {
+                    double health = active.getEntity().getHealth();
+                    double wound = Math.min(active.getEntity().getMaxHealth() * .03, allowedDamage());
+                    active.getEntity().setHealth(Math.max(1, health - wound));
+                });
+                title("<aqua><bold>THE ARCHITECT STAGGERS", "<white>The chains wound Veyra. Strike while she is staggered!");
+                sound(Sound.BLOCK_ANVIL_LAND, 1, .5F);
+            } else {
+                boss().setAI(true);
+                ring(origin, 32, RED); sound(Sound.ENTITY_GENERIC_EXPLODE, .8F, .6F);
+                for (Player player : fighters) hit(player, settings.damage() * 1.3, time);
+            }
+            context.diagnostics().accept("chainbound counterweights=" + (success ? "broken" : "failed"));
+        }
+    }
+
     private void guillotine(Location origin, long elapsed, long deadline, List<Player> fighters, long time) {
         int sx = safeQuadrant % 2 == 0 ? 1 : -1, sz = safeQuadrant < 2 ? 1 : -1;
         Location refuge = origin.clone().add(sx * 17, 0, sz * 17);
@@ -368,8 +500,16 @@ public final class BukkitChainboundArena implements ChainboundEncounter.Arena, L
     private Location floor() { return center.clone().add(0, lowered ? -FoundryGeometry.DROP : 0, 0); }
     private void cancelAttack() {
         if (bridgeRetracted && scene != null) scene.drawBridge(bridge, false);
-        bridgeRetracted = false; attack = null; brands.clear();
-        if (scene != null) scene.hideHammers();
+        if (attack == Attack.COUNTERWEIGHTS && staggerUntil == 0 && bossId != null
+                && plugin.getServer().getEntity(bossId) instanceof LivingEntity actor) actor.setAI(true);
+        bridgeRetracted = false; attack = null; brands.clear(); tethers.clear(); counterweightTrial = null;
+        if (scene != null) { scene.hideHammers(); scene.hideCombatChains(); scene.hideCounterweights(); }
+    }
+    private void clearStagger() {
+        if (staggerUntil > 0 && bossId != null && plugin.getServer().getEntity(bossId) instanceof LivingEntity actor) {
+            actor.setAI(true); actor.setGlowing(stage == Stage.FINAL);
+        }
+        staggerUntil = 0;
     }
     private void hit(Player player, double damage, long now) {
         if (cleaned || !alive(player) || now - hitTimes.getOrDefault(player.getUniqueId(), Long.MIN_VALUE / 2) < 650) return;
@@ -459,7 +599,7 @@ public final class BukkitChainboundArena implements ChainboundEncounter.Arena, L
         finally {
             barViewers.forEach(p -> p.hideBossBar(bar)); barViewers.clear();
             if (registered) HandlerList.unregisterAll(this);
-            registered = false; hitTimes.clear(); brands.clear(); audience = List.of();
+            registered = false; hitTimes.clear(); brands.clear(); tethers.clear(); counterweightTrial = null; audience = List.of();
         }
     }
 }

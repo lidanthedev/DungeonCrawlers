@@ -40,7 +40,12 @@ class BukkitFoundrySceneTest {
         scene.transform(.5); assertTrue(scene.changedBlockCount() > 1000);
         scene.reveal();
         scene.drawBridge(0, true); scene.drawBridge(0, false);
-        scene.guillotine(2, .5, true); scene.death(.5);
+        scene.guillotine(2, .5, true);
+        for (int i = 0; i < 100; i++) scene.combatChain(i % 6,
+                new Location(world, 35, 66, 40), new Location(world, 60, 68, 40), .5);
+        assertEquals(190, scene.displayCount(), "combat chains reuse a fixed entity pool");
+        scene.counterweights(true, false); scene.counterweights(true, true); scene.hideCounterweights();
+        scene.hideCombatChains(); scene.death(.5);
         assertTrue(scene.changedBlockCount() > 3500, "the actual arena changes, not only the decoration");
         assertTrue(scene.displayCount() < BukkitFoundryScene.DISPLAY_CAP);
         assertTrue(scene.changedBlockCount() < BukkitFoundryScene.BLOCK_CAP);

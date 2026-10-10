@@ -10,7 +10,7 @@ import java.util.UUID;
 public final class ChainboundEncounter implements EncounterFactory.Encounter {
     public static final String ID = "chainbound";
     public enum Stage { NEW, INTRO, FIRST, TRANSFORM, RIVEN, FINAL, DYING, COMPLETE, FAILED, CLEANED }
-    public enum Attack { FORGE_WAVE, BRANDS, LANCE, CHAIN_DRAW, GUILLOTINE, RIFT_PULSE, LAST_WEAVE }
+    public enum Attack { FORGE_WAVE, BRANDS, LANCE, CHAIN_DRAW, GUILLOTINE, RIFT_PULSE, LAST_WEAVE, CHAIN_CAGE, CLOCKWORK_REQUIEM, COUNTERWEIGHTS }
 
     public record Settings(double health, double damage, double transformThreshold, double finalThreshold,
                            long introMillis, long transformMillis, long warningMillis,
@@ -100,15 +100,19 @@ public final class ChainboundEncounter implements EncounterFactory.Encounter {
             }
             if ((stage == Stage.FIRST || stage == Stage.RIVEN) && health <= settings.finalThreshold()) enter(Stage.FINAL, now);
             if (!now.isBefore(nextAttack)) {
-                Attack attack = stage == Stage.FIRST || !impossible ? switch (pattern++ % 3) {
+                Attack attack = stage == Stage.FIRST || !impossible ? switch (pattern++ % 4) {
                     case 0 -> Attack.FORGE_WAVE;
                     case 1 -> Attack.BRANDS;
-                    default -> Attack.LANCE;
-                } : switch (pattern++ % 4) {
-                    case 0 -> Attack.CHAIN_DRAW;
+                    case 2 -> Attack.LANCE;
+                    default -> Attack.COUNTERWEIGHTS;
+                } : switch (pattern++ % 7) {
+                    case 0 -> stage == Stage.FINAL ? Attack.LAST_WEAVE : Attack.CHAIN_DRAW;
                     case 1 -> Attack.GUILLOTINE;
                     case 2 -> Attack.RIFT_PULSE;
-                    default -> stage == Stage.FINAL ? Attack.LAST_WEAVE : Attack.BRANDS;
+                    case 3 -> Attack.CHAIN_CAGE;
+                    case 4 -> Attack.CLOCKWORK_REQUIEM;
+                    case 5 -> Attack.COUNTERWEIGHTS;
+                    default -> stage == Stage.FINAL ? Attack.LANCE : Attack.BRANDS;
                 };
                 arena.cast(attack, now);
                 nextAttack = now.plusMillis(stage == Stage.FINAL ? settings.finalIntervalMillis()

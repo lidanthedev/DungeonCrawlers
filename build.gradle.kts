@@ -62,6 +62,7 @@ dependencies {
     testImplementation(libs.paper.api)
     testImplementation(libs.cave.crawlers)
     testImplementation("me.lidan:CaveCrawlAddon:1.0")
+    testImplementation(libs.mythic.mobs)
     testImplementation(libs.parties.api)
     testImplementation(libs.worldedit.bukkit)
     testImplementation(libs.gson)
