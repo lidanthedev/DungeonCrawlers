@@ -120,3 +120,56 @@ before the party killed the encore.
   active instances/reservations, recovery Idle, starts Enabled and no blockers.
 - Updated speed and movement are regression-tested and deployed. A live fight
   with the new timing and client visual readability remain unverified.
+
+
+## Damage calibration against live Floor 1, 2026-10-10
+
+The live `floor_1.yml` uses CryptZombie, CryptSkeleton and CryptSpider, each
+configured at 400,000 base damage in `plugins/MythicMobs/Mobs/dungeon_mobs.yml`.
+LostAdventurer and AngryArchaeologist are the minibosses, each at 1,000,000.
+The unused CryptGuardian definition is 1,250,000. Ringmaster Act I previously
+matched a normal mob, and the encore and most hazards were below a miniboss.
+
+| Attack | Previous base damage | New base damage |
+| --- | ---: | ---: |
+| Act I melee | 400,000 | 2,000,000 |
+| Encore melee | 900,000 | 3,000,000 |
+| Balloon fan / box shrapnel | 500,000 | 1,500,000 |
+| Card fan / card ring | 650,000 | 2,000,000 |
+| Jack-in-the-box blast | 700,000 | 2,500,000 |
+| Carousel arm | 800,000 | 2,400,000 |
+| Spotlight pulse | 1,100,000 | 3,500,000 |
+| Falling scythe | 1,400,000 | 4,500,000 |
+
+These are base values before player defense and existing difficulty modifiers.
+CaveCrawlers' `DamageEntityListener.onPlayerDamaged` applies defense reduction
+at HIGHEST priority, after `BukkitDifficultyService.incoming` at HIGH. Hazards
+still use `player.damage(amount, boss)` and keep the boss as the damage source.
+No defense bypass or extra difficulty multiplier was introduced. The live
+Spigot attack-damage cap is 1e12, above every new value. Mythic's Damage field
+sets melee damage; Java hazard values must be changed separately. See the
+[official mob configuration reference](https://wiki.mythiccraft.io/mythicmobs/Mobs/Mobs).
+Warnings, attack timing, hit cooldowns, boss health, and performer damage retain
+their previous values.
+
+Validation used an isolated checkout of committed `47ef6f0` to exclude another
+active chat's unfinished Foundry changes. Java 21 `clean build --no-daemon`
+passed all 354 tests, zero failures/errors/skips, and external API shading checks.
+The carousel adapter regression now checks zero damage during the warning,
+2,400,000 damage with boss attribution on contact, and no repeat within the
+900ms hit cooldown. Graphify AST updates succeeded in both checkouts.
+
+Built and uploaded JAR SHA-256:
+`f787eedcea5aa6f3ae72d33eafae7451754b2017fee81a76852e2c51329154e9`.
+The live Mythic file was backed up as
+`plugins/MythicMobs/Mobs/ringmaster.yml.before-damage-20261010` and only the two
+boss melee fields were changed. `mm reload` finished at 01:23:15 UTC, loading
+133 mobs; unrelated existing skill/targeter errors appeared, with no Ringmaster
+error. Live file readback matched the intended change. Instances were zero
+before `cc reload all`; actual DungeonCrawlers reload completed 01:23:27 UTC.
+Configuration validated at 01:23:59 UTC. Operations at 01:24:02 UTC reported zero
+instances/reservations, recovery Idle, starts Enabled, and no blockers.
+
+No live post-defense hit measurements or solo/five-player fight were performed.
+The comparison establishes the damage increase relative to live enemies; final
+gear-specific difficulty remains subject to gameplay feedback.

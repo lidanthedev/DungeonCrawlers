@@ -3,7 +3,7 @@ MadRingmaster:
   Type: ZOMBIE
   Display: '&8[Floor I] &dThe Mad Ringmaster'
   Health: 55000000
-  Damage: 400000
+  Damage: 2000000
   Equipment:
   - LEATHER_HELMET{color=PURPLE} HEAD
   - LEATHER_CHESTPLATE{color=PURPLE} CHEST
@@ -34,7 +34,7 @@ MadRingmasterEncore:
   Type: WITHER_SKELETON
   Display: '&8[Floor I] &5The Mad Ringmaster &dEncore'
   Health: 75000000
-  Damage: 900000
+  Damage: 3000000
   Equipment:
   - LEATHER_HELMET{color=PURPLE} HEAD
   - LEATHER_CHESTPLATE{color=BLUE} CHEST

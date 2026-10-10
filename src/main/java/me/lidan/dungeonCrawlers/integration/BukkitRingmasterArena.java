@@ -218,12 +218,12 @@ public final class BukkitRingmasterArena implements RingmasterEncounter.Arena, L
                     }
                     if (!box.hit && elapsed >= 3000) {
                         box.hit = true; box.rig.close();
-                        pulse(box.at, 3.5, 700000, players);
+                        pulse(box.at, 3.5, 2500000, players);
                         if (cleaned) return;
                         for (int i = 0; i < 8; i++) {
                             double a = i * Math.PI / 4;
                             bullet(box.at.clone().add(Math.cos(a), 1.1, Math.sin(a)),
-                                    new Vector(Math.cos(a), 0, Math.sin(a)).multiply(11), false, i, 500000, time);
+                                    new Vector(Math.cos(a), 0, Math.sin(a)).multiply(11), false, i, 1500000, time);
                         }
                         burst(box.at.clone().add(0, 1, 0), Particle.FIREWORK, 30);
                     }
@@ -251,7 +251,7 @@ public final class BukkitRingmasterArena implements RingmasterEncounter.Arena, L
                     double x = at.getX() - center.getX(), z = at.getZ() - center.getZ();
                     if (onFloor(at) && (RingmasterGeometry.inSweep(x, z, angle) || RingmasterGeometry.inSweep(x, z, angle + Math.PI))
                             && time - sweepHits.getOrDefault(player.getUniqueId(), 0L) >= 900) {
-                        sweepHits.put(player.getUniqueId(), time); hit(player, 800000);
+                        sweepHits.put(player.getUniqueId(), time); hit(player, 2400000);
                     }
                 }
                 if (elapsed >= 10000) finishAttack();
@@ -262,7 +262,7 @@ public final class BukkitRingmasterArena implements RingmasterEncounter.Arena, L
                     for (Player player : players) {
                         Location at = player.getLocation();
                         if (onFloor(at) && RingmasterGeometry.sector(at.getX() - center.getX(), at.getZ() - center.getZ()) == spotlight)
-                            hit(player, 1100000);
+                            hit(player, 3500000);
                     }
                     for (int i = 0; i < 8; i++) {
                         double a = spotlight * Math.PI / 2 + (i - 3.5) * .15;
@@ -294,7 +294,7 @@ public final class BukkitRingmasterArena implements RingmasterEncounter.Arena, L
                     }
                     if (age >= 2200) {
                         drop.hit = true; drop.rig.close();
-                        pulse(drop.at, 4, 1400000, players);
+                        pulse(drop.at, 4, 4500000, players);
                         if (cleaned) return;
                         burst(drop.at.clone().add(0, .5, 0), Particle.EXPLOSION, 4);
                         sound(Sound.ENTITY_IRON_GOLEM_ATTACK, .7F, .5F);
@@ -401,7 +401,7 @@ public final class BukkitRingmasterArena implements RingmasterEncounter.Arena, L
         int count = cards ? 7 : 5;
         for (int i = 0; i < count; i++)
             bullet(origin.clone(), aim.clone().rotateAroundY((i - (count - 1) / 2D) * .19).multiply(cards ? 18 : 15),
-                    cards, i + volley, cards ? 650000 : 500000, time);
+                    cards, i + volley, cards ? 2000000 : 1500000, time);
         sound(cards ? Sound.ENTITY_PLAYER_ATTACK_SWEEP : Sound.ENTITY_FIREWORK_ROCKET_LAUNCH, .6F, 1.5F);
     }
 
@@ -410,7 +410,7 @@ public final class BukkitRingmasterArena implements RingmasterEncounter.Arena, L
             double angle = i * Math.PI / 12;
             if (RingmasterGeometry.inDeckGap(angle, gap)) continue;
             bullet(origin.clone().add(2 * Math.cos(angle), 0, 2 * Math.sin(angle)),
-                    new Vector(Math.cos(angle), 0, Math.sin(angle)).multiply(13), true, i, 650000, time);
+                    new Vector(Math.cos(angle), 0, Math.sin(angle)).multiply(13), true, i, 2000000, time);
         }
         sound(Sound.ENTITY_EVOKER_CAST_SPELL, .65F, .8F);
     }

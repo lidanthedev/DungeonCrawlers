@@ -2,6 +2,7 @@ package me.lidan.dungeonCrawlers.integration;
 
 import me.lidan.dungeonCrawlers.core.encounter.EncounterFactory.EncounterContext;
 import me.lidan.dungeonCrawlers.core.encounter.RingmasterEncounter;
+import me.lidan.dungeonCrawlers.core.encounter.RingmasterGeometry;
 import me.lidan.dungeonCrawlers.core.lifecycle.PlayerLifecycleService;
 import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
 import org.bukkit.entity.Entity;
@@ -67,8 +68,14 @@ class BukkitRingmasterArenaTest {
         verify(boss).setAI(true);
         assertTrue(arena.busy());
         arena.tick(started.plusSeconds(1));
+        verify(player, never()).damage(anyDouble(), any(Entity.class));
+        double angle = RingmasterGeometry.carouselAngle(Math.PI / 3, 3000);
+        when(player.getLocation()).thenAnswer(ignored -> center.clone().add(10 * Math.cos(angle), 0, 10 * Math.sin(angle)));
         arena.tick(started.plusSeconds(3));
-        verify(boss, times(2)).setTarget(player);
+        verify(player).damage(2400000D, boss);
+        arena.tick(started.plusMillis(3050));
+        verify(player, times(1)).damage(anyDouble(), any(Entity.class));
+        verify(boss, times(3)).setTarget(player);
         verify(boss, never()).setAI(false);
         verify(boss, never()).setInvulnerable(anyBoolean());
         arena.tick(started.plusMillis(9999));
