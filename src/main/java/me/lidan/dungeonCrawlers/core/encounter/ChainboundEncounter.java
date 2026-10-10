@@ -6,20 +6,19 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
-/** One boss, one health pool, and one irreversible phase progression per instance. */
+/** Impossible's first defeat starts a second life; only its last defeat completes the run. */
 public final class ChainboundEncounter implements EncounterFactory.Encounter {
     public static final String ID = "chainbound";
     public enum Stage { NEW, INTRO, FIRST, TRANSFORM, RIVEN, FINAL, DYING, COMPLETE, FAILED, CLEANED }
     public enum Attack { FORGE_WAVE, BRANDS, LANCE, CHAIN_DRAW, GUILLOTINE, RIFT_PULSE, LAST_WEAVE, CHAIN_CAGE, CLOCKWORK_REQUIEM, COUNTERWEIGHTS }
 
-    public record Settings(double health, double damage, double transformThreshold, double finalThreshold,
+    public record Settings(double health, double damage, double finalThreshold,
                            long introMillis, long transformMillis, long warningMillis,
                            long normalIntervalMillis, long rivenIntervalMillis, long finalIntervalMillis,
                            long deathMillis) {
         public Settings {
             if (!Double.isFinite(health) || health <= 0 || !Double.isFinite(damage) || damage <= 0
-                    || !Double.isFinite(transformThreshold) || !Double.isFinite(finalThreshold)
-                    || transformThreshold >= 1 || transformThreshold <= finalThreshold || finalThreshold <= 0
+                    || !Double.isFinite(finalThreshold) || finalThreshold >= 1 || finalThreshold <= 0
                     || introMillis < 1000 || introMillis > 30000 || transformMillis < 8000 || transformMillis > 30000
                     || warningMillis < 1000 || warningMillis > 5000 || deathMillis < 1000 || deathMillis > 15000
                     || normalIntervalMillis < warningMillis + 3500 || normalIntervalMillis > 60000
@@ -29,7 +28,7 @@ public final class ChainboundEncounter implements EncounterFactory.Encounter {
             }
         }
         public static Settings defaults() {
-            return new Settings(200_000_000, 3_500_000, .65, .18, 6500, 14000, 2000, 8500, 6500, 5500, 5000);
+            return new Settings(200_000_000, 3_500_000, .18, 6500, 14000, 2000, 8500, 6500, 5500, 5000);
         }
     }
 
@@ -94,11 +93,8 @@ public final class ChainboundEncounter implements EncounterFactory.Encounter {
                 enter(stage == Stage.INTRO ? Stage.FIRST : Stage.RIVEN, now);
             }
             double health = arena.healthFraction();
-            if (impossible && stage == Stage.FIRST && health <= settings.transformThreshold()) {
-                enter(Stage.TRANSFORM, now);
-                return EncounterFactory.TickResult.running("the cathedral is being torn apart");
-            }
-            if ((stage == Stage.FIRST || stage == Stage.RIVEN) && health <= settings.finalThreshold()) enter(Stage.FINAL, now);
+            if ((stage == Stage.RIVEN || !impossible && stage == Stage.FIRST)
+                    && health <= settings.finalThreshold()) enter(Stage.FINAL, now);
             if (!now.isBefore(nextAttack)) {
                 Attack attack = stage == Stage.FIRST || !impossible ? switch (pattern++ % 4) {
                     case 0 -> Attack.FORGE_WAVE;
@@ -143,6 +139,21 @@ public final class ChainboundEncounter implements EncounterFactory.Encounter {
             return EncounterFactory.DeathResult.ignored("not the active chainbound architect");
         entity = null;
         try {
+            if (impossible && (stage == Stage.INTRO || stage == Stage.FIRST)) {
+                var spawned = context.entities().spawn(context.instanceId(), context.bossMob(), context.bossSpawn());
+                if (!spawned.successful()) {
+                    fail("second life spawn failed: " + spawned.detail());
+                    return EncounterFactory.DeathResult.accepted(false, failure);
+                }
+                entity = spawned.entityId();
+                arena.begin(entity, settings);
+                enter(Stage.TRANSFORM, clock.instant());
+                return EncounterFactory.DeathResult.accepted(false, "first form defeated; the crucible is awakening");
+            }
+            if (stage == Stage.TRANSFORM) {
+                fail("second form died during the protected transformation");
+                return EncounterFactory.DeathResult.accepted(false, failure);
+            }
             enter(Stage.DYING, clock.instant());
             return EncounterFactory.DeathResult.accepted(false, "architect defeated; victory sequence pending");
         } catch (RuntimeException exception) {

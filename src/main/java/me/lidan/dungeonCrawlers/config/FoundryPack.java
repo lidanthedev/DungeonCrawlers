@@ -45,10 +45,12 @@ public final class FoundryPack {
     public static Settings load(BoostedConfigFactory factory, Path file) throws IOException {
         try {
             Map<String, Object> root = factory.read(file);
-            if (!(root.get("schema-version") instanceof Number version) || version.doubleValue() != 1)
-                throw new IllegalArgumentException("foundry.yml schema-version must be 1");
+            // Schema 1's transform threshold is obsolete; preserve its administrator tuning when reading it.
+            if (!(root.get("schema-version") instanceof Number version)
+                    || version.doubleValue() != 1 && version.doubleValue() != 2)
+                throw new IllegalArgumentException("foundry.yml schema-version must be 1 or 2");
             if (!(root.get("boss") instanceof Map<?, ?> boss)) throw new IllegalArgumentException("foundry.yml boss must be a map");
-            return new Settings(number(boss, "health"), number(boss, "damage"), number(boss, "transform-threshold"),
+            return new Settings(number(boss, "health"), number(boss, "damage"),
                     number(boss, "final-threshold"), millis(boss, "intro-millis"), millis(boss, "transform-millis"),
                     millis(boss, "warning-millis"), millis(boss, "normal-interval-millis"),
                     millis(boss, "riven-interval-millis"), millis(boss, "final-interval-millis"), millis(boss, "death-millis"));

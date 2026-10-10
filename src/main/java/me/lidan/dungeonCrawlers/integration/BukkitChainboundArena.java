@@ -60,7 +60,6 @@ public final class BukkitChainboundArena implements ChainboundEncounter.Arena, L
     private final PlayerLifecycleService lifecycle;
     private final TeleportPermitService permits;
     private final Clock clock;
-    private final boolean impossible;
     private final Map<UUID, Long> hitTimes = new HashMap<>();
     private final Set<Player> barViewers = new HashSet<>();
     private final List<Location> brands = new ArrayList<>();
@@ -80,21 +79,25 @@ public final class BukkitChainboundArena implements ChainboundEncounter.Arena, L
     private long stageAt, castAt, lastVisual, lastMusic, lastPosition;
     private int casts, pulses, safeQuadrant, bridge, introCue, transformCue, beat;
     private double aim;
-    private boolean transformed, lowered, bridgeRetracted, victoryRestored, cleaned, registered, guillotineHit;
+    private boolean lowered, bridgeRetracted, victoryRestored, cleaned, registered, guillotineHit;
 
     public BukkitChainboundArena(EncounterContext context, Plugin plugin, GenerationService generation,
                                 RunPreparationService runs, PlayerLifecycleService lifecycle,
-                                TeleportPermitService permits, Clock clock, boolean impossible) {
+                                TeleportPermitService permits, Clock clock) {
         this.context = context; this.plugin = plugin; this.generation = generation; this.runs = runs;
-        this.lifecycle = lifecycle; this.permits = permits; this.clock = clock; this.impossible = impossible;
+        this.lifecycle = lifecycle; this.permits = permits; this.clock = clock;
     }
 
     @Override public void begin(UUID boss, Settings settings) {
         this.bossId = boss; this.settings = settings;
         LivingEntity actor = boss();
-        Point origin = context.arenaCenter();
-        center = new Location(actor.getWorld(), origin.x() + .5, origin.y(), origin.z() + .5);
-        scene = new BukkitFoundryScene(center, context.instanceId());
+        if (scene == null) {
+            Point origin = context.arenaCenter();
+            center = new Location(actor.getWorld(), origin.x() + .5, origin.y(), origin.z() + .5);
+            scene = new BukkitFoundryScene(center, context.instanceId());
+        }
+        actor.setInvulnerable(true);
+        actor.setAI(false);
         var active = MythicBukkit.inst().getMobManager().getActiveMob(boss).orElseThrow();
         double existingMultiplier = active.getEntity().getMaxHealth() / Settings.defaults().health();
         int party = runs.info(context.instanceId()).orElseThrow().participants().size();
@@ -102,8 +105,10 @@ public final class BukkitChainboundArena implements ChainboundEncounter.Arena, L
         actor.setRemoveWhenFarAway(false);
         actor.addScoreboardTag("foundry_boss");
         if (actor.getAttribute(Attribute.SCALE) != null) actor.getAttribute(Attribute.SCALE).setBaseValue(1.6);
-        plugin.getServer().getPluginManager().registerEvents(this, plugin);
-        registered = true;
+        if (!registered) {
+            plugin.getServer().getPluginManager().registerEvents(this, plugin);
+            registered = true;
+        }
     }
 
     private LivingEntity boss() {
@@ -147,7 +152,6 @@ public final class BukkitChainboundArena implements ChainboundEncounter.Arena, L
                 notice("<gold>Watch the golden telegraphs. Cyan counterweights can break the architect's hold.");
             }
             case TRANSFORM -> {
-                transformed = true;
                 scene.beginTransformation();
                 title("<dark_red><bold>THE WORLD WILL KNEEL", "<gold>Brace at the heart. The cathedral is coming apart.");
                 notice("<red>Veyra: I built this heaven. I can unmake it.");
@@ -565,9 +569,7 @@ public final class BukkitChainboundArena implements ChainboundEncounter.Arena, L
 
     private double allowedDamage() {
         if (stage == Stage.INTRO || stage == Stage.TRANSFORM || stage == Stage.DYING) return 0;
-        if (!impossible || transformed || stage != Stage.FIRST) return Double.MAX_VALUE;
-        return MythicBukkit.inst().getMobManager().getActiveMob(bossId).map(active -> Math.max(0,
-                active.getEntity().getHealth() - active.getEntity().getMaxHealth() * (settings.transformThreshold() - .00001))).orElse(0D);
+        return Double.MAX_VALUE;
     }
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void damage(EntityDamageEvent event) {

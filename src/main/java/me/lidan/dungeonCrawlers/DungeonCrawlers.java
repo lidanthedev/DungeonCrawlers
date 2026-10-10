@@ -315,7 +315,7 @@ public final class DungeonCrawlers extends JavaPlugin {
                         getDataFolder().toPath().resolve("foundry.yml"));
                 return new me.lidan.dungeonCrawlers.core.encounter.ChainboundEncounter(context,
                         new me.lidan.dungeonCrawlers.integration.BukkitChainboundArena(context, this, generation,
-                                runPreparation, lifecycle, teleportPermits, phaseClock(), impossible), settings, impossible, phaseClock());
+                                runPreparation, lifecycle, teleportPermits, phaseClock()), settings, impossible, phaseClock());
             } catch (IOException exception) { throw new IllegalStateException(exception); }
         });
         phaseNine = new PortalEncounterService(centralUpdates, runPreparation,

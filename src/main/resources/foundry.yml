@@ -1,9 +1,9 @@
-schema-version: 1
-# Health is multiplied by the selected dungeon difficulty and party scaling.
+schema-version: 2
+# Health applies to each life and is multiplied by dungeon difficulty and party scaling.
+# Impossible transforms after the first life is defeated.
 boss:
   health: 200000000
   damage: 3500000
-  transform-threshold: 0.65
   final-threshold: 0.18
   intro-millis: 6500
   transform-millis: 14000

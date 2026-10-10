@@ -25,7 +25,7 @@ Trapped chests use the existing standard-secret path; ordinary chests grant exis
 
 ## Veyra, the Chainbound Architect
 
-Veyra is a real MythicMobs actor with one persistent health pool. Health settings apply before party scaling and retain the selected difficulty's existing multiplier. The six-and-a-half-second introduction locks boss damage and AI, presents dialogue and titles, builds a rotating copper crown, suspends Veyra between four animated pier chains, and sends a cyan pulse through the arena. Players retain their cameras and controls.
+Veyra is a real MythicMobs actor. Impossible has two separate lives; defeating the first form starts the transformation and spawns the second form at full health. Each life uses the configured health, selected difficulty multiplier and party scaling once. Normal retains one life. The six-and-a-half-second introduction locks boss damage and AI, presents dialogue and titles, builds a rotating copper crown, suspends Veyra between four animated pier chains, and sends a cyan pulse through the arena. Players retain their cameras and controls.
 
 | Attack | Telegraph and response |
 | --- | --- |
@@ -37,10 +37,10 @@ Veyra is a real MythicMobs actor with one persistent health pool. Health setting
 | Rift pulse | Repeated expanding jump rings plus a separately telegraphed crosscut. |
 | Chain cage | Each alive player gets a fixed seven-block gold circle and a physical chain tether. Run outside your own circle to snap the chain. Remaining chains tighten, gently pull inward, and detonate once after the warning plus 2.2 seconds. Departed players are discarded. |
 | Clockwork requiem | Four physical chains sweep a rotating cross at shin height. Jump the chains or move with the cross; the five-block hub is clear. Final-phase casts rotate faster and add expanding rings through the hub. |
-| Counterweight verdict | Cyan floor pads appear five blocks east/west of the heart. Two or more alive players must occupy both pads; a solo survivor can hold either. Continuous occupancy for up to 1.8 seconds staggers Veyra for three seconds and tears off up to 3% max HP, respecting the cinematic threshold and leaving the killing blow to players. A missed deadline produces one arena-wide hit. Veyra pauses melee while channeling. |
+| Counterweight verdict | Cyan floor pads appear five blocks east/west of the heart. Two or more alive players must occupy both pads; a solo survivor can hold either. Continuous occupancy for up to 1.8 seconds staggers Veyra for three seconds and tears off up to 3% max HP, leaving at least one HP for the killing blow by players. A missed deadline produces one arena-wide hit. Veyra pauses melee while channeling. |
 | Last weave | Final-phase chain sweep and bridge pull overlap delayed brands and falling anvils. Leave the brand, time the sweep, then reach cyan. |
 
-Normal rotates Forge Wave, Brands, Lance and Counterweights, with faster final-phase casts and the three-strike Reprisal at 18% health. Impossible changes arenas at 65% and rotates seven attacks, including Cage and Clockwork. Its final phase opens immediately with Last Weave, then accelerates the chain cross and adds ring pressure. Damage is capped before the transformation threshold so one burst cannot skip the cinematic. Incoming damage and outgoing attacks pause during the cinematic; the health pool is retained and no replacement boss is spawned.
+Normal rotates Forge Wave, Brands, Lance and Counterweights, with faster final-phase casts and the three-strike Reprisal at 18% health. Impossible changes arenas when the first form dies, including a single lethal hit. The second form remains invulnerable with AI paused throughout the full transformation, then rotates seven attacks, including Cage and Clockwork. At 18% of its own health, it opens the final phase with Last Weave, accelerates the chain cross and adds ring pressure. Damage to the first form cannot carry into the second life. Only the second defeat runs the victory sequence. Repeated death events for the first actor are ignored; losing the protected second actor fails and cleans the run without rewards.
 
 ## The Impossible transformation
 
@@ -60,7 +60,7 @@ At 18%, the Last Weave begins. Veyra glows, the music speeds up, attacks arrive 
 - `BukkitFoundryScene` owns moving displays and saved original block states. Combat uses 48 reusable chain-link displays and restores cyan floor pads after every cast. It caps displays at 220 and saved states at 6,000; mutations stay within the boss arena. Restore/cleanup removes the exact owned entities and event listener.
 - `FoundryPuzzle` owns instance-local solution progress. `BukkitFoundryRooms` derives all locations from generated placements and rotations and holds the existing combat room's clear gate. Combat cleanup also removes its clues and rotors.
 - All boss work uses the existing encounter tick. Room effects update at 5 Hz; boss display interpolation and telegraphs update at 10 Hz. There are no additional encounter scheduler tasks or global entity scans.
-- `foundry.yml` validates finite health/damage, ordered thresholds, cinematic bounds and non-overlapping attack intervals. It is read when an encounter is created. Config validation and hashing include it and `rooms_foundry.yml`.
+- `foundry.yml` validates finite health/damage, a final threshold between zero and one, cinematic bounds and non-overlapping attack intervals. It is read when an encounter is created. Config validation and hashing include it and `rooms_foundry.yml`. Schema 2 removes `transform-threshold`; schema 1 remains readable and keeps administrator tuning without rewriting the file. Its retired threshold is ignored.
 - Floor schema 4 adds `generation.room-pool`. Migration backs up schemas 1–3 and preserves configured values. An empty pool keeps the previous unrestricted planner behavior.
 - On first installation, bundled templates and Foundry MythicMobs files are copied only if missing. Administrator-edited files are preserved. Run `mm reload` after initial installation to activate the new mob and skill definitions.
 - `python3 scripts/build_foundry_floor.py` reproduces all schematics. `python3 scripts/test_foundry_floor.py` independently decodes their NBT/block data and checks supported routes, accessible secrets and crucible connectivity.
@@ -81,4 +81,4 @@ The 2026-10-10 balance revision uses live Floor I MythicMobs as its baseline. Cr
 | Last Chainkeeper | 60M | 1.8M | Hammer 1.2M |
 | Veyra | 200M | 3.5M | Arena attacks use configured boss damage |
 
-Existing difficulty and party multipliers still apply. Solo Impossible Veyra has 1B HP. The arena normalizes Mythic's spawn health against the bundled default before applying `foundry.yml`, so raising the base does not multiply health twice. Existing installations need their Foundry Mythic definitions and `foundry.yml` updated explicitly; the installer preserves existing files.
+Existing difficulty and party multipliers still apply. Solo Impossible Veyra has 1B HP per life. The arena normalizes Mythic's spawn health against the bundled default before applying `foundry.yml`, so raising the base does not multiply health twice. Existing installations need their Foundry Mythic definitions and `foundry.yml` updated explicitly; the installer preserves existing files.

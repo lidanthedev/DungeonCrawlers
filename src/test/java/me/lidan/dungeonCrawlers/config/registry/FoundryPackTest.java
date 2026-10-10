@@ -2,6 +2,7 @@ package me.lidan.dungeonCrawlers.config.registry;
 
 import me.lidan.dungeonCrawlers.config.BoostedConfigFactory;
 import me.lidan.dungeonCrawlers.config.FoundryPack;
+import me.lidan.dungeonCrawlers.core.encounter.ChainboundEncounter.Settings;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
@@ -41,7 +42,7 @@ class FoundryPackTest {
         Path settings = directory.resolve("foundry.yml");
         Files.writeString(settings, Files.readString(settings).replace("damage: 3500000", "damage: 4000000"));
         assertNotEquals(hash, loader.load(directory).snapshot().hash());
-        Files.writeString(settings, Files.readString(settings).replace("final-threshold: 0.18", "final-threshold: 0.8"));
+        Files.writeString(settings, Files.readString(settings).replace("final-threshold: 0.18", "final-threshold: 1.0"));
         assertFalse(loader.load(directory).successful());
         Path floor = directory.resolve("floors/floor_3.yml");
         Files.writeString(floor, Files.readString(floor).replace("room-pool: [foundry_resonance", "room-pool: [missing_room"));
@@ -58,5 +59,25 @@ class FoundryPackTest {
         assertEquals(12, config.getInt("generation.rooms"));
         assertTrue(config.getList("generation.room-pool").isEmpty());
         assertTrue(Files.isRegularFile(directory.resolve("backups/floors-v3/custom.yml")));
+    }
+    @Test void schemaOneKeepsAdministratorTuningWhileIgnoringTheRetiredThreshold() throws Exception {
+        Path file = directory.resolve("foundry.yml");
+        String defaults;
+        try (var input = getClass().getResourceAsStream("/foundry.yml")) {
+            defaults = new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        }
+        Files.writeString(file, defaults);
+        assertEquals(Settings.defaults(), FoundryPack.load(new TestBoostedConfigFactory(), file));
+        String legacy = defaults.replace("schema-version: 2", "schema-version: 1")
+                .replace("health: 200000000", "health: 345000000")
+                .replace("boss:\n", "boss:\n  transform-threshold: 0.65\n");
+        Files.writeString(file, legacy);
+        var settings = FoundryPack.load(new TestBoostedConfigFactory(), file);
+        assertEquals(345_000_000, settings.health());
+        assertEquals(Settings.defaults().transformMillis(), settings.transformMillis());
+        assertEquals(Settings.defaults().finalThreshold(), settings.finalThreshold());
+        assertEquals(legacy, Files.readString(file));
+        Files.writeString(file, legacy.replace("schema-version: 1", "schema-version: 3"));
+        assertThrows(java.io.IOException.class, () -> FoundryPack.load(new TestBoostedConfigFactory(), file));
     }
 }

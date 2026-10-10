@@ -16,6 +16,9 @@ import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.Test;
+import io.lumine.mythic.bukkit.MythicBukkit;
+import io.lumine.mythic.core.mobs.ActiveMob;
+import org.bukkit.event.entity.EntityDamageEvent;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -54,7 +57,7 @@ class BukkitChainboundArenaTest {
         when(state.online()).thenReturn(true); when(state.state()).thenReturn(PlayerLifecycleService.PlayerState.ALIVE);
         when(lifecycle.player(instance, playerId)).thenReturn(Optional.of(state));
         var arena = new BukkitChainboundArena(context, plugin, mock(GenerationService.class), runs, lifecycle,
-                mock(TeleportPermitService.class), Clock.fixed(START, java.time.ZoneOffset.UTC), true);
+                mock(TeleportPermitService.class), Clock.fixed(START, java.time.ZoneOffset.UTC));
         set(arena, "bossId", bossId); set(arena, "center", new Location(world, 0, 76, 0));
         set(arena, "lowered", true); set(arena, "stage", stage); set(arena, "scene", scene);
         set(arena, "settings", ChainboundEncounter.Settings.defaults());
@@ -62,6 +65,9 @@ class BukkitChainboundArenaTest {
     }
     private static void set(BukkitChainboundArena arena, String name, Object value) throws Exception {
         var field = BukkitChainboundArena.class.getDeclaredField(name); field.setAccessible(true); field.set(arena, value);
+    }
+    private static Object get(BukkitChainboundArena arena, String name) throws Exception {
+        var field = BukkitChainboundArena.class.getDeclaredField(name); field.setAccessible(true); return field.get(arena);
     }
     private void sample(BukkitChainboundArena arena, long elapsed) throws Exception {
         var method = BukkitChainboundArena.class.getDeclaredMethod("tickAttack", long.class, List.class);
@@ -97,5 +103,45 @@ class BukkitChainboundArenaTest {
         var arena = arena(Stage.RIVEN); arena.cast(Attack.CHAIN_CAGE, START);
         when(player.isOnline()).thenReturn(false); sample(arena, 4200);
         verify(player, never()).damage(anyDouble(), any(Entity.class));
+    }
+    @Test void lethalFirstFormDamageIsAllowedButCinematicDamageIsCancelled() throws Exception {
+        var arena = arena(Stage.FIRST);
+        when(boss.getUniqueId()).thenReturn((UUID) get(arena, "bossId"));
+        var hit = mock(EntityDamageEvent.class);
+        when(hit.getEntity()).thenReturn(boss); when(hit.getDamage()).thenReturn(2_000_000_000D);
+        arena.damage(hit);
+        verify(hit, never()).setCancelled(true); verify(hit, never()).setDamage(anyDouble());
+        set(arena, "stage", Stage.TRANSFORM);
+        arena.damage(hit); verify(hit).setCancelled(true);
+    }
+    @Test void secondActorReusesTheSceneAndListenerWithoutCompoundingPartyScaling() throws Exception {
+        var arena = arena(Stage.FIRST);
+        Plugin plugin = (Plugin) get(arena, "plugin");
+        var manager = mock(org.bukkit.plugin.PluginManager.class);
+        when(plugin.getServer().getPluginManager()).thenReturn(manager);
+        var run = ((RunPreparationService) get(arena, "runs"))
+                .info(((EncounterContext) get(arena, "context")).instanceId()).orElseThrow();
+        when(run.participants()).thenReturn(List.of(UUID.randomUUID(), UUID.randomUUID()));
+        UUID first = (UUID) get(arena, "bossId"), second = UUID.randomUUID();
+        Mob replacement = mock(Mob.class);
+        when(plugin.getServer().getEntity(second)).thenReturn(replacement); when(replacement.isValid()).thenReturn(true);
+        ActiveMob firstActive = mock(ActiveMob.class, RETURNS_DEEP_STUBS);
+        ActiveMob secondActive = mock(ActiveMob.class, RETURNS_DEEP_STUBS);
+        when(firstActive.getEntity().getMaxHealth()).thenReturn(1_000_000_000D);
+        when(secondActive.getEntity().getMaxHealth()).thenReturn(1_000_000_000D);
+        MythicBukkit mythic = mock(MythicBukkit.class, RETURNS_DEEP_STUBS);
+        when(mythic.getMobManager().getActiveMob(first)).thenReturn(Optional.of(firstActive));
+        when(mythic.getMobManager().getActiveMob(second)).thenReturn(Optional.of(secondActive));
+        try (var ignored = mockStatic(MythicBukkit.class)) {
+            ignored.when(MythicBukkit::inst).thenReturn(mythic);
+            arena.begin(first, ChainboundEncounter.Settings.defaults());
+            arena.begin(second, ChainboundEncounter.Settings.defaults());
+        }
+        verify(firstActive.getEntity()).setHealthAndMax(1_450_000_000D);
+        verify(secondActive.getEntity()).setHealthAndMax(1_450_000_000D);
+        verify(manager, times(1)).registerEvents(arena, plugin);
+        org.junit.jupiter.api.Assertions.assertSame(scene, get(arena, "scene"));
+        org.junit.jupiter.api.Assertions.assertEquals(second, get(arena, "bossId"));
+        verify(replacement).setInvulnerable(true); verify(replacement).setAI(false);
     }
 }

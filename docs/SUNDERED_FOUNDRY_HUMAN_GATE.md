@@ -2,6 +2,23 @@
 
 Date: 2026-10-10, Asia/Jerusalem. Target development server: Modern Cave Crawl, Pterodactyl `fa696721`.
 
+## First-form defeat transition fix, 2026-10-10
+
+This revision supersedes the original shared-health, 65% transformation described in the historical evidence below. Impossible now has two lives. First-form death, including a burst kill or an administrative death during INTRO, starts the full transformation and binds a freshly spawned actor. Its separate health pool receives difficulty and party scaling once. Only the second defeat can start victory. Normal retains its single-life encounter. The scene and listener survive actor replacement without duplication.
+
+Java 21 `./gradlew clean build --no-daemon` passed all **393 tests**, including external-plugin shading verification. Regressions cover near-lethal first-life damage, actual first defeat, INTRO defeat, full cinematic duration, no early final phase or reward, stale/duplicate death events, second-life victory timing, spawn/animation failures, wipe cleanup and a protected actor's forced removal. Adapter checks allow lethal first-form damage, reject cinematic damage, and verify two-player health scaling stays 1.45 billion on each separately spawned actor. Foundry schema 2 removes the retired transformation threshold; schema 1 still loads administrator tuning without overwriting the file.
+
+JAR SHA-256: `ec6850610de7bbcd96c4049daa906bcd712a65f43559b3f920bdf194e51eae3a`. `python3 deploy.py` reported successful upload. Zero active dungeons preceded `cc reload all` at **09:24:33 UTC**; DungeonCrawlers loaded three floors, 26 rooms and three encounters at 09:24:38. `dungeon config validate` passed against the existing schema-1 server configuration.
+
+Live solo Impossible run `5c787c0a-4fc0-4576-8fa5-8d688ca9d5eb`, seed 3003, used the authorized player `LidanTheGamer` without changing game mode:
+
+- INTRO at 09:25:22, FIRST at 09:25:29 and Forge Wave at 09:25:31.
+- A vanilla **two-billion-damage** hit killed the first actor at **09:25:34** and immediately entered TRANSFORM. The replacement's health read **one billion** at 09:25:36. Another two-billion hit at 09:25:38 was refused as invulnerable.
+- RIVEN began at **09:25:48**, fourteen seconds after the first defeat. Chain Draw cast at 09:25:50 and Guillotine at 09:25:56. The sampled upper deck at `(5058,75,8040)` was air, and the replacement actor was on the crucible at **Y=66**.
+- The run failed during Riven at 09:26:01 and cleanup completed at 09:26:13. Active instances were zero at 09:26:22; both the exact scene-ownership selector and `foundry_boss` selector were empty at 09:26:27–29.
+
+The lethal-hit transition, cinematic protection, fresh health, transformed collision floor, second-phase attacks and failure cleanup were verified live. Second-life victory and duplicate-death behavior passed automated tests; a complete survival victory and client visual review were not repeated during this fix.
+
 ## Automated evidence
 
 - Java 21 `./gradlew clean build --no-daemon` passed 374 tests with no failures; the final `./gradlew build --no-daemon` passed all 375 tests, including external-plugin shading verification. A prior run hit the existing `FileDurableRepositoryTest.reservedTerminalLaneBypassesNormalSaturation` timing race. Its isolated retry and the next full clean build passed. No persistence code was changed.
