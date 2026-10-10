@@ -32,6 +32,8 @@ import org.bukkit.World;
 import org.bukkit.entity.Arrow;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Mob;
+import org.bukkit.entity.ItemDisplay;
+import org.bukkit.Particle;
 import org.bukkit.entity.Player;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
@@ -59,6 +61,8 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.function.Consumer;
 import java.util.ArrayDeque;
 import java.util.Map;
 import java.util.Optional;
@@ -92,6 +96,7 @@ class BukkitClassAbilityServiceTest {
     private final World world = mock(World.class);
     private final MutableClock clock = new MutableClock();
     private final ArrayDeque<Runnable> scheduled = new ArrayDeque<>();
+    private final List<ItemDisplay> displays = new ArrayList<>();
     private final StatsManager statsManager = mock(StatsManager.class);
     private final DamageManager damageManager = mock(DamageManager.class);
     private final ItemsManager itemsManager = mock(ItemsManager.class);
@@ -112,6 +117,7 @@ class BukkitClassAbilityServiceTest {
         MockBukkit.mock();
         nativeStats = mockStatic(StatsManager.class);
         nativeStats.when(StatsManager::getInstance).thenReturn(statsManager);
+        nativeStats.when(() -> StatsManager.getMaxHealth(any())).thenReturn(1000D);
         when(statsManager.getStats(any(Player.class))).thenAnswer(ignored -> {
             var stats = new Stats();
             stats.set(StatType.INTELLIGENCE, 100);
@@ -142,6 +148,14 @@ class BukkitClassAbilityServiceTest {
             return null;
         });
         when(world.getName()).thenReturn("dungeon_instances");
+        when(world.spawn(any(Location.class), eq(ItemDisplay.class), any(Consumer.class))).thenAnswer(call -> {
+            var display = mock(ItemDisplay.class);
+            when(display.isValid()).thenReturn(true);
+            displays.add(display);
+            Consumer<ItemDisplay> initialize = call.getArgument(2);
+            initialize.accept(display);
+            return display;
+        });
         var snapshot = mock(ConfigSnapshot.class);
         when(config.snapshot()).thenReturn(snapshot);
         when(snapshot.classes()).thenReturn(Map.of());
@@ -449,11 +463,106 @@ class BukkitClassAbilityServiceTest {
         verify(statsManager, times(2)).calculateStats(source);
     }
 
+    @Test
+    void bannerModelsAndParticleAreasExpireReplaceAndCleanUpWithTheirCaster() {
+        assertTrue(service.activateSupport(source, "dc_aegis_standard"));
+        var aegis = displays.getFirst();
+        verify(aegis).setItemStack(argThat(item -> item.getType() == Material.WHITE_BANNER));
+        verify(aegis).setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
+        verify(aegis).setPersistent(false);
+        verify(aegis).setInvulnerable(true);
+        verify(world, times(120)).spawnParticle(eq(Particle.DUST), any(Location.class), eq(1),
+                eq(0D), eq(0D), eq(0D), eq(0D), any(Particle.DustOptions.class));
+        clock.advance(1);
+        service.tick();
+        verify(world, times(240)).spawnParticle(eq(Particle.DUST), any(Location.class), eq(1),
+                eq(0D), eq(0D), eq(0D), eq(0D), any(Particle.DustOptions.class));
+        assertTrue(service.activateSupport(source, "dc_aegis_standard"));
+        verify(aegis).remove();
+        clock.advance(10);
+        service.tick();
+        verify(displays.get(1)).remove();
+
+        assertTrue(service.activateSupport(source, "dc_war_standard"));
+        verify(displays.get(2)).setItemStack(argThat(item -> item.getType() == Material.RED_BANNER));
+        when(runs.instanceFor(source.getUniqueId())).thenReturn(Optional.empty());
+        service.tick();
+        verify(displays.get(2)).remove();
+        when(runs.instanceFor(source.getUniqueId())).thenReturn(Optional.of(instance));
+        assertTrue(service.activateSupport(source, "dc_wind_standard"));
+        verify(displays.get(3)).setItemStack(argThat(item -> item.getType() == Material.LIGHT_BLUE_BANNER));
+        service.close();
+        verify(displays.get(3)).remove();
+    }
+
+    @Test
+    void newBuffItemsAffectNearbyPartyStatsAndOwnedEnemyDamage() {
+        Player near = player(15, 64, 0, instance, PlayerLifecycleService.PlayerState.ALIVE);
+        Player far = player(17, 64, 0, instance, PlayerLifecycleService.PlayerState.ALIVE);
+        select("mage", RunPreparationService.RunState.RUNNING, List.of(source, near, far));
+        for (String id : List.of("dc_war_standard", "dc_wind_standard", "dc_focus_orb", "dc_vitality_totem")) {
+            assertTrue(service.activateSupport(source, id));
+        }
+        Stats stats = new Stats();
+        for (StatType type : List.of(StatType.STRENGTH, StatType.CRIT_DAMAGE, StatType.SPEED,
+                StatType.INTELLIGENCE, StatType.HEALTH)) stats.set(type, 100);
+        service.onStats(new StatsCalculateEvent(near, stats));
+        assertEquals(135, stats.get(StatType.STRENGTH).getValue(), .001);
+        assertEquals(125, stats.get(StatType.CRIT_DAMAGE).getValue(), .001);
+        assertEquals(130, stats.get(StatType.SPEED).getValue(), .001);
+        assertEquals(25, stats.get(StatType.ATTACK_SPEED).getValue(), .001);
+        assertEquals(140, stats.get(StatType.INTELLIGENCE).getValue(), .001);
+        assertEquals(500, stats.get(StatType.ABILITY_DAMAGE).getValue(), .001);
+        assertEquals(125, stats.get(StatType.HEALTH).getValue(), .001);
+        Stats capped = new Stats();
+        capped.set(StatType.SPEED, StatsManager.SPEED_LIMIT);
+        capped.set(StatType.ATTACK_SPEED, StatsManager.ATTACK_SPEED_LIMIT);
+        service.onStats(new StatsCalculateEvent(near, capped));
+        assertEquals(StatsManager.SPEED_LIMIT, capped.get(StatType.SPEED).getValue());
+        assertEquals(StatsManager.ATTACK_SPEED_LIMIT, capped.get(StatType.ATTACK_SPEED).getValue());
+        Stats distant = new Stats(); distant.set(StatType.STRENGTH, 100);
+        service.onStats(new StatsCalculateEvent(far, distant));
+        assertEquals(100, distant.get(StatType.STRENGTH).getValue());
+        var hit = new DamageCalculationEvent(near, mob(1, 64, 0, true), null, 100, false);
+        service.onOutgoing(hit);
+        assertEquals(115, hit.getDamage(), .001);
+        nativeStats.verify(() -> StatsManager.healPlayerPercent(near, 15));
+        clock.advance(10); service.tick();
+        stats.set(StatType.HEALTH, 100);
+        service.onStats(new StatsCalculateEvent(near, stats));
+        assertEquals(100, stats.get(StatType.HEALTH).getValue());
+    }
+
+    @Test
+    void mendingWandUsesZombieSwordFlatAndPercentFormulaForInjuredLivingPartyOnly() {
+        Player near = player(7, 64, 0, instance, PlayerLifecycleService.PlayerState.ALIVE);
+        Player far = player(9, 64, 0, instance, PlayerLifecycleService.PlayerState.ALIVE);
+        Player ghost = player(1, 64, 0, instance, PlayerLifecycleService.PlayerState.GHOST);
+        Player foreign = player(1, 64, 0, UUID.randomUUID(), PlayerLifecycleService.PlayerState.ALIVE);
+        when(source.getHealth()).thenReturn(1000D);
+        select("healer", RunPreparationService.RunState.RUNNING, List.of(source, near, far, ghost, foreign));
+        var healer = mock(ClassDefinition.class);
+        when(healer.healingPercentPerLevel()).thenReturn(2D);
+        when(config.snapshot().classes()).thenReturn(Map.of("healer", healer));
+        assertTrue(service.activateSupport(source, "dc_mending_wand"));
+        nativeStats.verify(() -> StatsManager.healPlayer(near, 140));
+        nativeStats.verify(() -> StatsManager.healPlayerPercent(near, 14));
+        for (Player excluded : List.of(source, far, ghost, foreign)) {
+            nativeStats.verify(() -> StatsManager.healPlayer(eq(excluded), anyDouble()), never());
+            nativeStats.verify(() -> StatsManager.healPlayerPercent(eq(excluded), anyDouble()), never());
+        }
+        when(near.getHealth()).thenReturn(1000D);
+        assertFalse(service.activateSupport(source, "dc_mending_wand"));
+        nativeStats.verify(() -> StatsManager.healPlayer(near, 140), times(1));
+        assertTrue(displays.isEmpty());
+    }
+
     private Player player(double x, double y, double z, UUID instanceId, PlayerLifecycleService.PlayerState state) {
         Player player = mock(Player.class);
         UUID id = UUID.randomUUID();
         when(player.getUniqueId()).thenReturn(id);
         when(player.isOnline()).thenReturn(true);
+        when(player.getHealth()).thenReturn(500D);
         when(player.isValid()).thenReturn(true);
         when(player.getWorld()).thenReturn(world);
         when(player.getLocation()).thenAnswer(ignored -> new Location(world, x, y, z));

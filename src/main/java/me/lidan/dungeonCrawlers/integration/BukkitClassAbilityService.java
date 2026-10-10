@@ -17,6 +17,8 @@ import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Bounds;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
 import org.bukkit.Location;
+import org.bukkit.Color;
+import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
@@ -25,6 +27,7 @@ import org.bukkit.damage.DamageType;
 import org.bukkit.entity.Arrow;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -37,6 +40,8 @@ import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerEvent;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.inventory.ItemStack;
+import org.joml.Matrix4f;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
@@ -68,6 +73,7 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
     private final Map<UUID, Map<String, Effect>> effects = new HashMap<>();
     private final Map<UUID, Taunt> taunts = new HashMap<>();
     private final Map<UUID, Shot> arrows = new HashMap<>();
+    private final Map<BannerKey, BannerField> banners = new HashMap<>();
 
     public BukkitClassAbilityService(Plugin plugin, RunPreparationService runs, PlayerLifecycleService lifecycle,
                                      GenerationService generation, ConfigRegistryService config,
@@ -152,7 +158,7 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
         switch (selected) {
             case "berserker" -> {
                 double bonus = (25 + level) / 100D;
-                effect(player, "bloodrage", instance, Map.of(StatType.STRENGTH, bonus), bonus, 0, 0, 1);
+                effect(player, "bloodrage", instance, Map.of(StatType.STRENGTH, bonus), Map.of(), bonus, 0, 0, 1);
             }
             case "mage" -> {
                 mobs = roomMobs(player, instance);
@@ -166,7 +172,7 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
             case "tank" -> {
                 mobs = roomMobs(player, instance);
                 if (mobs.isEmpty()) return noEnemies(player);
-                effect(player, "iron_challenge", instance, Map.of(), 0, .5, 0, 1);
+                effect(player, "iron_challenge", instance, Map.of(), Map.of(), 0, .5, 0, 1);
                 for (Mob mob : mobs) {
                     Taunt previous = taunts.get(mob.getUniqueId());
                     taunts.put(mob.getUniqueId(), new Taunt(instance, player.getUniqueId(),
@@ -188,7 +194,7 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
                 double healing = healingMultiplier(player, instance);
                 for (Player member : party(player, instance, 0)) {
                     heal(member, 100);
-                    effect(member, "lifesurge", instance, Map.of(), 0, 0, 8, healing);
+                    effect(member, "lifesurge", instance, Map.of(), Map.of(), 0, 0, 8, healing);
                 }
             }
             default -> { return false; }
@@ -210,21 +216,77 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
         double healing;
         double regen = 0;
         double reduction = 0;
+        double damage = 0;
+        double radius = 16;
+        Material banner = null;
+        Color color = Color.LIME;
         Map<StatType, Double> stats = Map.of();
+        Map<StatType, Double> statAdd = Map.of();
         switch (abilityId) {
-            case "dc_aegis_standard" -> { healing = 10; stats = Map.of(StatType.DEFENSE, .35); }
+            case "dc_aegis_standard" -> { healing = 10; stats = Map.of(StatType.DEFENSE, .35); banner = Material.WHITE_BANNER; color = Color.WHITE; }
             case "dc_bastion_horn" -> { healing = 5; reduction = .25; }
             case "dc_renewal_staff" -> { healing = 30; regen = 5; }
             case "dc_dawnlight_tome" -> { healing = 15; stats = Map.of(StatType.STRENGTH, .25, StatType.INTELLIGENCE, .25); }
+            case "dc_war_standard" -> { healing = 0; stats = Map.of(StatType.STRENGTH, .35, StatType.CRIT_DAMAGE, .25); damage = .15; banner = Material.RED_BANNER; color = Color.RED; }
+            case "dc_wind_standard" -> { healing = 0; stats = Map.of(StatType.SPEED, .30); statAdd = Map.of(StatType.ATTACK_SPEED, 25D); banner = Material.LIGHT_BLUE_BANNER; color = Color.AQUA; }
+            case "dc_vitality_totem" -> { healing = 15; stats = Map.of(StatType.HEALTH, .25); }
+            case "dc_focus_orb" -> { healing = 0; stats = Map.of(StatType.INTELLIGENCE, .40); statAdd = Map.of(StatType.ABILITY_DAMAGE, 500D); color = Color.PURPLE; }
+            case "dc_mending_wand" -> { healing = 10; radius = 8; }
             default -> { return false; }
         }
         double multiplier = healingMultiplier(player, instance);
-        for (Player member : party(player, instance, 16)) {
-            heal(member, healing * multiplier);
-            effect(member, abilityId, instance, stats, 0, reduction, regen, multiplier);
+        List<Player> members = party(player, instance, radius);
+        if (abilityId.equals("dc_mending_wand")) {
+            members = members.stream().filter(member -> member.getHealth() < StatsManager.getMaxHealth(member)).toList();
+            if (members.isEmpty()) {
+                ActionBarManager.getInstance().showActionBar(player,
+                        MiniMessageUtils.miniMessage("<red>Nearby party members are already at full health.</red>"));
+                return false;
+            }
         }
+        for (Player member : members) {
+            // Match ZOMBIE_SWORD_HEAL's flat heal followed by recipient-max-health percentage.
+            if (abilityId.equals("dc_mending_wand")) StatsManager.healPlayer(member, 100 * multiplier);
+            if (healing > 0) heal(member, healing * multiplier);
+            if (!stats.isEmpty() || !statAdd.isEmpty() || damage > 0 || reduction > 0 || regen > 0) {
+                effect(member, abilityId, instance, stats, statAdd, damage, reduction, regen, multiplier);
+            }
+        }
+        Location center = player.getLocation().clone();
+        areaFx(center, radius, color);
+        if (banner != null) banner(player, abilityId, instance, center, banner, color);
         castFx(player);
         return true;
+    }
+
+    private void banner(Player player, String abilityId, UUID instance, Location center, Material material, Color color) {
+        BannerKey key = new BannerKey(player.getUniqueId(), abilityId);
+        BannerField previous = banners.remove(key);
+        if (previous != null) previous.display().remove();
+        // Banners use Minecraft's special item renderer; BlockDisplay cannot render their cloth/pole.
+        ItemDisplay display = center.getWorld().spawn(center.clone().add(0, 1, 0), ItemDisplay.class, entity -> {
+            entity.setItemStack(new ItemStack(material));
+            entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
+            entity.setTransformationMatrix(new Matrix4f().rotateY((float) Math.toRadians(-player.getLocation().getYaw())).scale(2));
+            entity.setPersistent(false);
+            entity.setInvulnerable(true);
+        });
+        banners.put(key, new BannerField(instance, center, display, color, clock.instant().plusSeconds(10)));
+    }
+
+    private static void areaFx(Location center, double radius, Color color) {
+        Particle.DustOptions dust = new Particle.DustOptions(color, 1.2F);
+        // Three great circles mark the same spherical range used for recipient selection.
+        for (int i = 0; i < 48; i++) {
+            double angle = i * Math.PI / 24;
+            double a = Math.cos(angle) * radius, b = Math.sin(angle) * radius;
+            center.getWorld().spawnParticle(Particle.DUST, center.clone().add(a, .15, b), 1, 0, 0, 0, 0, dust);
+            if (i % 2 == 0) {
+                center.getWorld().spawnParticle(Particle.DUST, center.clone().add(a, b, 0), 1, 0, 0, 0, 0, dust);
+                center.getWorld().spawnParticle(Particle.DUST, center.clone().add(0, b, a), 1, 0, 0, 0, 0, dust);
+                center.getWorld().spawnParticle(Particle.DUST, center.clone().add(a * .5, .4, b * .5), 1, 0, 0, 0, 0, dust);
+            }
+        }
     }
 
     private double healingMultiplier(Player source, UUID instance) {
@@ -234,10 +296,10 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
                 * DungeonClassScaling.dungeonLevel(source) / 100D;
     }
 
-    private void effect(Player player, String key, UUID instance, Map<StatType, Double> stats,
+    private void effect(Player player, String key, UUID instance, Map<StatType, Double> stats, Map<StatType, Double> statAdd,
                         double damage, double reduction, double regen, double healing) {
         effects.computeIfAbsent(player.getUniqueId(), ignored -> new HashMap<>()).put(key,
-                new Effect(instance, clock.instant().plusSeconds(10), stats, damage, reduction, regen * healing));
+                new Effect(instance, clock.instant().plusSeconds(10), stats, statAdd, damage, reduction, regen * healing));
         // Recalculate after ItemAbility finishes its native mana update.
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             if (instance.equals(activeInstance(player))) StatsManager.getInstance().calculateStats(player);
@@ -246,8 +308,15 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onStats(StatsCalculateEvent event) {
-        for (Effect effect : activeEffects(event.getPlayer())) {
+        List<Effect> active = activeEffects(event.getPlayer());
+        for (Effect effect : active) {
+            effect.statAdd().forEach((type, amount) -> event.getStats().get(type).add(amount));
             effect.stats().forEach((type, percent) -> event.getStats().get(type).multiply(1 + percent));
+        }
+        if (active.stream().anyMatch(effect -> effect.stats().containsKey(StatType.SPEED))) {
+            // Cave clamps before StatsCalculateEvent; Tailwind must preserve those native caps.
+            event.getStats().get(StatType.SPEED).setValue(Math.min(StatsManager.SPEED_LIMIT, event.getStats().get(StatType.SPEED).getValue()));
+            event.getStats().get(StatType.ATTACK_SPEED).setValue(Math.min(StatsManager.ATTACK_SPEED_LIMIT, event.getStats().get(StatType.ATTACK_SPEED).getValue()));
         }
     }
 
@@ -392,6 +461,16 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
     /** Called once per second by the existing plugin task. */
     public void tick() {
         Instant now = clock.instant();
+        banners.entrySet().removeIf(entry -> {
+            BannerField field = entry.getValue();
+            Player caster = plugin.getServer().getPlayer(entry.getKey().player());
+            if (!field.instance().equals(activeInstance(caster)) || !now.isBefore(field.expires()) || !field.display().isValid()) {
+                field.display().remove();
+                return true;
+            }
+            areaFx(field.center(), 16, field.color());
+            return false;
+        });
         for (UUID playerId : new ArrayList<>(effects.keySet())) {
             Player player = plugin.getServer().getPlayer(playerId);
             UUID instance = activeInstance(player);
@@ -437,6 +516,8 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
             if (plugin.getServer().getEntity(entry.getKey()) instanceof Mob mob) restoreTarget(mob, entry.getValue());
         }
         arrows.keySet().forEach(id -> { Entity arrow = plugin.getServer().getEntity(id); if (arrow != null) arrow.remove(); });
+        banners.values().forEach(field -> field.display().remove());
+        banners.clear();
         taunts.clear(); arrows.clear(); effects.clear();
         buffedPlayers.stream().map(plugin.getServer()::getPlayer)
                 .filter(player -> player != null && player.isOnline() && !player.isDead())
@@ -456,7 +537,9 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
         }
     }
 
-    private record Effect(UUID instance, Instant expires, Map<StatType, Double> stats, double damage, double reduction, double regen) { }
+    private record Effect(UUID instance, Instant expires, Map<StatType, Double> stats, Map<StatType, Double> statAdd, double damage, double reduction, double regen) { }
     private record Taunt(UUID instance, UUID player, LivingEntity previousTarget, Instant expires) { }
     private record Shot(UUID instance, UUID player, double damage, Instant expires) { }
+    private record BannerKey(UUID player, String ability) { }
+    private record BannerField(UUID instance, Location center, ItemDisplay display, Color color, Instant expires) { }
 }

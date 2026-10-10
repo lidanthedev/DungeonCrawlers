@@ -8,6 +8,8 @@ import me.lidan.cavecrawlers.items.abilities.AbilityManager;
 import me.lidan.cavecrawlers.items.abilities.ItemAbility;
 import me.lidan.cavecrawlers.stats.ActionBarManager;
 import me.lidan.cavecrawlers.stats.StatType;
+import me.lidan.cavecrawlers.stats.Stats;
+import me.lidan.cavecrawlers.stats.StatsManager;
 import org.bukkit.Material;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
@@ -68,12 +70,14 @@ class DungeonSupportItemsTest {
             var support = new DungeonSupportItems(plugin, activate);
             support.register();
             support.register();
-            assertEquals(4, itemRegistry.size());
-            verify(items, times(4)).setItem(anyString(), any());
+            assertEquals(9, itemRegistry.size());
+            verify(items, times(9)).setItem(anyString(), any());
             assertEquals(75, itemRegistry.get("DC_AEGIS_STANDARD").getStats().get(StatType.DEFENSE).getValue());
             assertEquals(150, itemRegistry.get("DC_DAWNLIGHT_TOME").getStats().get(StatType.INTELLIGENCE).getValue());
             assertEquals(25_000, abilityRegistry.get("dc_renewal_staff").getCooldown());
             assertEquals(0, abilityRegistry.get("dc_renewal_staff").getCost());
+            assertEquals(8_000, abilityRegistry.get("dc_mending_wand").getCooldown());
+            assertEquals(100, abilityRegistry.get("dc_mending_wand").getCost());
 
             var player = mock(Player.class);
             when(player.getUniqueId()).thenReturn(UUID.randomUUID());
@@ -98,6 +102,29 @@ class DungeonSupportItemsTest {
                 verify(activate, times(1)).test(player, "dc_renewal_staff");
                 verify(bars, times(1)).showActionBar(eq(player),
                         argThat((String message) -> message.contains("Still on cooldown")));
+            }
+
+            var stats = new Stats();
+            stats.set(StatType.MANA, 200);
+            var manager = mock(StatsManager.class);
+            when(manager.getStats(player)).thenReturn(stats);
+            try (var nativeStats = mockStatic(StatsManager.class);
+                 var nativeBars = mockStatic(ActionBarManager.class);
+                 var nativeCave = mockStatic(CaveCrawlers.class)) {
+                nativeStats.when(StatsManager::getInstance).thenReturn(manager);
+                nativeBars.when(ActionBarManager::getInstance).thenReturn(bars);
+                nativeCave.when(CaveCrawlers::getInstance).thenReturn(cave);
+                var wand = abilityRegistry.get("dc_mending_wand");
+                when(activate.test(player, "dc_mending_wand")).thenReturn(false);
+                wand.activateAbility(event);
+                assertEquals(200, stats.get(StatType.MANA).getValue());
+                assertEquals(0, wand.getAbilityCooldown().getCooldown(player.getUniqueId()));
+                when(activate.test(player, "dc_mending_wand")).thenReturn(true);
+                wand.activateAbility(event);
+                assertEquals(100, stats.get(StatType.MANA).getValue());
+                wand.activateAbility(event);
+                verify(activate, times(2)).test(player, "dc_mending_wand");
+                assertEquals(100, stats.get(StatType.MANA).getValue());
             }
 
             itemRegistry.put("DC_RENEWAL_STAFF", itemRegistry.get("DC_RENEWAL_STAFF").clone());

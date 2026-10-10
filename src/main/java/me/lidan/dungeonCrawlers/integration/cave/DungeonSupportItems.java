@@ -53,6 +53,7 @@ public final class DungeonSupportItems implements AutoCloseable {
                 var ability = new SupportAbility(abilityId,
                         Objects.requireNonNull(definition.getString("ability-name")),
                         Objects.requireNonNull(definition.getString("ability-description")),
+                        definition.getDouble("mana-cost", 0),
                         definition.getLong("cooldown-seconds") * 1000);
                 abilities.registerAbility(abilityId, ability);
                 itemIds.add(itemId);
@@ -98,8 +99,8 @@ public final class DungeonSupportItems implements AutoCloseable {
     private final class SupportAbility extends ClickAbility {
         private final String id;
 
-        private SupportAbility(String id, String name, String description, long cooldown) {
-            super(name, description, 0, cooldown);
+        private SupportAbility(String id, String name, String description, double cost, long cooldown) {
+            super(name, description, cost, cooldown);
             this.id = id;
         }
 

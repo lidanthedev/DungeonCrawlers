@@ -1,6 +1,6 @@
 # Native CaveCrawlers definitions are installed once and preserve later admin edits.
 # Right click from the main hand. Effects reach living party members within 16 blocks
-# in the same active dungeon. Any class may use these items.
+# (8 for Mending Wand) in the same active dungeon. Any class may use these items.
 DC_AEGIS_STANDARD:
   name: Aegis Standard
   material: WHITE_BANNER
@@ -45,3 +45,58 @@ DC_DAWNLIGHT_TOME:
   ability-name: Dawn's Benediction
   ability-description: "Heal nearby party members for 15% of max health and grant +25% Strength and Intelligence for 10 seconds."
   cooldown-seconds: 30
+DC_WAR_STANDARD:
+  name: War Standard
+  material: RED_BANNER
+  description: "Raise a crimson standard. Right click to rally your dungeon party."
+  stats:
+    STRENGTH: 75
+    HEALTH: 75
+  ability: dc_war_standard
+  ability-name: Warcry
+  ability-description: "Grant nearby party members +35% Strength, +25% Crit Damage and +15% outgoing damage for 10 seconds."
+  cooldown-seconds: 30
+DC_WIND_STANDARD:
+  name: Wind Standard
+  material: LIGHT_BLUE_BANNER
+  description: "Raise a standard of swift winds. Right click to hasten your dungeon party."
+  stats:
+    SPEED: 15
+    INTELLIGENCE: 75
+  ability: dc_wind_standard
+  ability-name: Tailwind
+  ability-description: "Grant nearby party members +30% Speed and +25 Attack Speed for 10 seconds."
+  cooldown-seconds: 25
+DC_VITALITY_TOTEM:
+  name: Vitality Totem
+  material: TOTEM_OF_UNDYING
+  description: "A totem of enduring life. Right click to fortify your dungeon party."
+  stats:
+    HEALTH: 150
+    DEFENSE: 50
+  ability: dc_vitality_totem
+  ability-name: Verdant Pact
+  ability-description: "Heal nearby party members for 15% of max health and grant +25% Health for 10 seconds."
+  cooldown-seconds: 35
+DC_FOCUS_ORB:
+  name: Focus Orb
+  material: AMETHYST_SHARD
+  description: "A crystal of shared focus. Right click to empower your dungeon party."
+  stats:
+    INTELLIGENCE: 125
+  ability: dc_focus_orb
+  ability-name: Arcane Concord
+  ability-description: "Grant nearby party members +40% Intelligence and +500 Ability Damage for 10 seconds."
+  cooldown-seconds: 30
+DC_MENDING_WAND:
+  name: Mending Wand
+  material: STICK
+  description: "A wand of communal healing. Right click to mend your dungeon party within 8 blocks."
+  stats:
+    INTELLIGENCE: 100
+    HEALTH: 50
+  ability: dc_mending_wand
+  ability-name: Mending Circle
+  ability-description: "Heal nearby party members for 100 health plus 10% of max health within 8 blocks. Healing scales with your Healer bonus."
+  cooldown-seconds: 8
+  mana-cost: 100
