@@ -186,14 +186,20 @@ public final class BukkitFoundryRooms implements Listener {
         }
     }
     private TextDisplay clue(UUID instance, Room room, Player player) {
-        int centerZ = room.placement.templateId().equals("foundry_resonance") ? 24 : 28;
-        return player.getWorld().spawn(at(room.local(24, 7, centerZ), player), TextDisplay.class, display -> {
+        boolean resonance = room.placement.templateId().equals("foundry_resonance");
+        if (resonance) for (int i = 0; i < RUNES.length; i++)
+            room.runeLabels.add(hologram(instance, player, room.local(24 + PADS[i][0], 4, 26 + PADS[i][1]),
+                    "<aqua><bold>" + RUNES[i] + "</bold>\n<gray>Right-click the rune or bell"));
+        String text = resonance ? "<aqua><bold>The remembered verse</bold>\n<gold>"
+                + RUNES[room.puzzle.sequence().getFirst()] + " speaks first. Its opposite answers.\n"
+                + "Then the next clockwise from the first.\nThe final bell closes the verse."
+                : "<aqua>Two souls hold the engine in balance.\n<gold>Hold opposite plates for three seconds.\n<gray>Alone: engage the maintenance latch.";
+        return hologram(instance, player, room.local(24, 7, resonance ? 24 : 28), text);
+    }
+    private TextDisplay hologram(UUID instance, Player player, Point point, String text) {
+        return player.getWorld().spawn(at(point, player), TextDisplay.class, display -> {
             display.setPersistent(false); display.addScoreboardTag("foundry:" + instance);
             display.setBillboard(org.bukkit.entity.Display.Billboard.CENTER);
-            String text = room.placement.templateId().equals("foundry_resonance") ? "<aqua><bold>The remembered verse</bold>\n<gold>"
-                    + RUNES[room.puzzle.sequence().getFirst()] + " speaks first. Its opposite answers.\n"
-                    + "Then the next clockwise from the first.\nThe final bell closes the verse."
-                    : "<aqua>Two souls hold the engine in balance.\n<gold>Hold opposite plates for three seconds.\n<gray>Alone: engage the maintenance latch.";
             display.text(MiniMessageUtils.miniMessage(text));
             display.setViewRange(.8F);
         });
@@ -216,6 +222,7 @@ public final class BukkitFoundryRooms implements Listener {
         Map<Integer, Room> state = rooms.remove(instance);
         if (state != null) state.values().forEach(room -> {
             if (room.clue != null) room.clue.remove(); room.rotors.forEach(BlockDisplay::remove);
+            room.runeLabels.forEach(TextDisplay::remove);
         });
     }
     private static final class Room {
@@ -223,6 +230,7 @@ public final class BukkitFoundryRooms implements Listener {
         private final FoundryPuzzle puzzle;
         private final Map<UUID, Point> checkpoints = new HashMap<>();
         private final List<BlockDisplay> rotors = new ArrayList<>();
+        private final List<TextDisplay> runeLabels = new ArrayList<>();
         private TextDisplay clue;
         private boolean latch, announced;
         private long lastAmbient;

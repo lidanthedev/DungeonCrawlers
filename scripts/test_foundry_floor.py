@@ -56,6 +56,7 @@ class FloorAssetsTest(unittest.TestCase):
                 width, height, length, kind = dimensions
                 room = Room(name, width, height, length, kind)
                 boss(room) if kind == "boss" else chamber(room)
+                room.seal()
                 room.validate()
                 reader = NbtReader(gzip.decompress((ROOT / f"{name}.schem").read_bytes()))
                 self.assertEqual(10, reader.number(">B"))
@@ -66,6 +67,8 @@ class FloorAssetsTest(unittest.TestCase):
                 self.assertEqual(3, nbt["Version"])
                 self.assertEqual((width, height, length), (nbt["Width"], nbt["Height"], nbt["Length"]))
                 blocks = nbt["Blocks"]
+                self.assertFalse(any("sign" in block.split("[")[0] for block in blocks["Palette"]), name)
+                self.assertTrue(all(entity["Id"] == "minecraft:jigsaw" for entity in blocks["BlockEntities"]), name)
                 palette = {value: key for key, value in blocks["Palette"].items()}
                 data, position = blocks["Data"], 0
                 for y in range(height):
@@ -108,9 +111,9 @@ class FloorAssetsTest(unittest.TestCase):
     def test_normal_rooms_have_supported_routes_and_reachable_secrets(self):
         for name, dimensions in ROOMS.items():
             width, height, length, kind = dimensions
-            if kind in ("boss", "start", "portal", "parkour"):
+            if kind == "boss":
                 continue
-            room = Room(name, width, height, length, kind); chamber(room)
+            room = Room(name, width, height, length, kind); chamber(room); room.seal()
             markers = {p[:3] for p in room.markers} | set(room.connectors)
 
             def clear(x, y, z):
@@ -130,10 +133,49 @@ class FloorAssetsTest(unittest.TestCase):
                             continue
                         if standable(*point):
                             visited.add(point); queue.append(point)
-            self.assertIn((room.cx, 3, length - 2), visited, name)
+            if kind not in ("start", "portal"):
+                self.assertIn((room.cx, 3, length - 2), visited, name)
             for x, y, z in room.secrets:
                 self.assertTrue(any((x + dx, y, z + dz) in visited for dx, dz in [(1, 0), (-1, 0), (0, 1), (0, -1)]),
                                 (name, "unreachable secret", x, y, z))
+            for x, y, z, material in room.markers:
+                if material in ("gray_concrete_powder", "yellow_concrete_powder"):
+                    self.assertTrue((x, y, z) in visited, (name, "unreachable mob", x, y, z))
+
+    def test_every_exterior_face_is_solid_except_authored_connectors(self):
+        for name, (width, height, length, kind) in ROOMS.items():
+            room = Room(name, width, height, length, kind)
+            boss(room) if kind == "boss" else chamber(room)
+            room.seal()
+            portals = {(cx + dx, cy + dy, cz) for cx, cy, cz in room.connectors
+                       for dx in (-1, 0, 1) for dy in (-1, 0, 1)}
+            boundary = {(x, y, z) for x in range(width) for y in range(height) for z in range(length)
+                        if x in (0, width - 1) or y in (0, height - 1) or z in (0, length - 1)}
+            holes = {p for p in boundary if room.blocks.get(p, "minecraft:air") == "minecraft:air"}
+            self.assertFalse(holes - portals, (name, "unintended exterior holes", sorted(holes - portals)[:10]))
+            for cx, cy, cz in room.connectors:
+                for dx in (-1, 0, 1):
+                    for dy in (-1, 0, 1):
+                        if dx or dy:
+                            self.assertEqual("minecraft:air", room.blocks[cx + dx, cy + dy, cz])
+            for x, y, z, material in room.markers:
+                self.assertEqual("minecraft:" + material, room.blocks[x, y, z], (name, "overwritten marker"))
+            for x, y, z in room.secrets:
+                self.assertTrue(room.blocks[x, y, z].startswith(("minecraft:chest[", "minecraft:trapped_chest[")),
+                                (name, "overwritten secret", x, y, z))
+
+    def test_more_secrets_and_enemies_have_bounded_supported_spawns(self):
+        for name, (width, height, length, kind) in ROOMS.items():
+            if kind == "boss":
+                continue
+            room = Room(name, width, height, length, kind); chamber(room); room.seal(); room.validate()
+            self.assertEqual(2 if kind in ("start", "portal") else 4, len(room.secrets), name)
+            mobs = [p for p in room.markers if p[3] in ("gray_concrete_powder", "yellow_concrete_powder")]
+            self.assertEqual(2 if kind == "warden" else 0 if kind in ("start", "portal") else
+                             9 if kind in ("forge", "turbine") else 8 if kind == "archive" else 7, len(mobs), name)
+            self.assertEqual(len(mobs), len({p[:3] for p in mobs}), name)
+            for x, y, z, _ in mobs:
+                self.assertTrue(1 < x < width - 2 and 1 < z < length - 2, (name, "spawn at outer wall"))
 
 
 if __name__ == "__main__":

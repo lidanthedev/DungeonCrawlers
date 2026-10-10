@@ -6,8 +6,10 @@
       33
     ],
     "kind": "start",
-    "sha256": "d23ecf3589f2923875b8da0699a1471e2b196167301c7b15be3795455bda4184",
-    "blocks": 4281
+    "sha256": "c5df46089c05bc4dec84a8f80af4e14dde0e577aaa758fa68062d927bf79228a",
+    "blocks": 19856,
+    "secrets": 2,
+    "mobs": 0
   },
   "foundry_resonance": {
     "size": [
@@ -16,8 +18,10 @@
       49
     ],
     "kind": "bell",
-    "sha256": "34a491b14a83e1ef2383fcc35eb863d4ec07b99c74d37894f333a0b597be8d3f",
-    "blocks": 5878
+    "sha256": "f9abecb9b9a5d8fb8087efd157689eb47adccfa65858747c4f7d249e7ae81bf3",
+    "blocks": 47834,
+    "secrets": 4,
+    "mobs": 7
   },
   "foundry_counterweight": {
     "size": [
@@ -26,8 +30,10 @@
       57
     ],
     "kind": "balance",
-    "sha256": "6b44b5f685abcb783204b7512423a5e3e94bea9df8cc26287bfcb117f215f2bb",
-    "blocks": 7846
+    "sha256": "4bf0217769f0114c35c86650dc75aa25bce190595f5687b6040dbe4393837a9f",
+    "blocks": 59153,
+    "secrets": 4,
+    "mobs": 7
   },
   "foundry_splitforge": {
     "size": [
@@ -36,8 +42,10 @@
       49
     ],
     "kind": "forge",
-    "sha256": "97e6db2b48302efc27b0696a39e70eb1073004395c605e575e6e078e4577c347",
-    "blocks": 7775
+    "sha256": "4ae0d221478c750645d635ab74fba155cf5cdc9ba002d9471098a278735bff13",
+    "blocks": 52184,
+    "secrets": 4,
+    "mobs": 9
   },
   "foundry_archives": {
     "size": [
@@ -46,8 +54,10 @@
       57
     ],
     "kind": "archive",
-    "sha256": "90b16715e2f3fe9a452c40dfbf61aa13bffb3ee5cfbf67bf1d7168d859161fdc",
-    "blocks": 7884
+    "sha256": "f4e56b67a04824c28f43d0984e3e4f9d806ce3ddd0a5f283cd127f3c71dd1708",
+    "blocks": 54274,
+    "secrets": 4,
+    "mobs": 8
   },
   "foundry_turbine": {
     "size": [
@@ -56,8 +66,10 @@
       57
     ],
     "kind": "turbine",
-    "sha256": "1e057b8e98ab817be1541672c7a48ed62082090c347325b6f2dc1eb31d126f52",
-    "blocks": 9032
+    "sha256": "14aa1e9f5b7ab8d93cb9117ed9043709cbce3d03e4fa5e6942bfffc17235deb6",
+    "blocks": 91819,
+    "secrets": 4,
+    "mobs": 9
   },
   "foundry_catwalk": {
     "size": [
@@ -66,8 +78,10 @@
       65
     ],
     "kind": "parkour",
-    "sha256": "a385e16d83327bd97a03c7337be430c748c2a843f88da585af6067962d39c19c",
-    "blocks": 7885
+    "sha256": "c7c554c14b3f71de345e73fdd1204de9bec111a3288ed59777ecf6fe9225f3c2",
+    "blocks": 67807,
+    "secrets": 4,
+    "mobs": 7
   },
   "foundry_warden": {
     "size": [
@@ -76,8 +90,10 @@
       49
     ],
     "kind": "warden",
-    "sha256": "b35ebe427beaf21c083e1b3f2fc4db0470e49b43a65124b04d3710434a5d09fb",
-    "blocks": 7393
+    "sha256": "7b517345c909f2a471694889261e266b2f1e1c638ce3e535d53161e762c238e2",
+    "blocks": 73392,
+    "secrets": 4,
+    "mobs": 2
   },
   "foundry_portal": {
     "size": [
@@ -86,8 +102,10 @@
       41
     ],
     "kind": "portal",
-    "sha256": "909879d92ee9f3217b934c502d9c9051caa336101567e2f029a3a43a2089d076",
-    "blocks": 4286
+    "sha256": "e783b1b2b89f90638ad205db46c6638217485d5a09eb60e07b00e042f2bd1cca",
+    "blocks": 36561,
+    "secrets": 2,
+    "mobs": 0
   },
   "foundry_heart": {
     "size": [
@@ -96,7 +114,9 @@
       81
     ],
     "kind": "boss",
-    "sha256": "30218a6047dac8348b87a2dea3eec5ded626db1e1f752af96ae82440bde31839",
-    "blocks": 41837
+    "sha256": "de05933cc7eb6c4bc1ab31dee333fdc1b88673c026107b5caa49826af29a31b3",
+    "blocks": 65485,
+    "secrets": 0,
+    "mobs": 0
   }
 }

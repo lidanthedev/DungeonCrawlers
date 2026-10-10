@@ -10,18 +10,22 @@ Every generated run includes six different exploration/combat rooms and the fina
 
 | Room | Architecture | Gameplay |
 | --- | --- | --- |
-| Foundry vestibule | Ribbed entry hall, copper windows, class-selection station | Party preparation and first door |
-| Resonance vault | Circular bell chamber, four compass runes, hanging bells | Interpret a seeded verse: first bell, opposite, next clockwise, remaining bell. Wrong inputs reset it. Mob kills alone cannot clear it. |
-| Counterweight engine | Elongated machinery hall, suspended chains, opposing copper pads | Two distinct alive players hold opposite plates continuously for three seconds. Solo survivors use a maintenance latch plus one plate. Leaving a pad resets the timer. |
-| Split forge | Cross-shaped workshop, twin raised furnaces, chimneys and service aisles | Four distributed enemies and concealed maintenance cache |
-| Ashen archives | Tall library aisles and stepped mezzanine | Three enemies, environmental testimony and a blessing chest above the shelves |
-| Storm turbine | Circular gallery, radial elevated blades, hanging spindle | Four enemies, rotating display rotors and projected blade traces |
-| Broken skyway | Long trench, copper jump landings, ascending secret route | Running jumps, saved safe footing and upper blessing cache; falls return to the last landing |
-| Last Warden | Cruciform vault, heavy anvils and raised copper dais | Chainkeeper miniboss; opens the heart gate after defeat |
-| Heart gate | Round antechamber, framed portal and warning inscriptions | Existing synchronized portal transition |
+| Foundry vestibule | Ribbed entry hall, monumental copper arches, class station and outfitter lockers | Party preparation, two secrets and first door |
+| Resonance vault | Circular bell chamber, compass mosaics, suspended bells and amethyst resonators | Seven enemies, four secrets and a seeded verse puzzle. Wrong inputs reset it. Mob kills alone cannot clear it. |
+| Counterweight engine | Elongated machinery hall, suspended copper weights and raised anvil control deck | Seven enemies and four secrets. Two alive players hold opposite plates for three seconds; solo survivors use the latch plus one plate. |
+| Split forge | Cross-shaped workshop, glowing blast-furnace banks, raised smelters, smithing bays and chimneys | Nine enemies around the workshops and gallery, four secrets including the smuggler's kiln |
+| Ashen archives | Tall capped bookcases, reading desks, two inspection levels and the sealed index | Eight enemies, four secrets and relics hidden above and below the shelves |
+| Storm turbine | Circular gallery, eight lit governor housings, caged spindle and elevated blades | Nine enemies, four secrets, rotating display rotors and projected blade traces |
+| Broken skyway | Long lit trench, chain-suspended supports, copper jump landings and elevated inspection route | Seven enemies, four secrets, running jumps and saved safe footing; falls return to the last landing |
+| Last Warden | Cruciform vault, anvil monuments, soul lanterns, stepped copper dais and reliquaries | Two required Chainkeeper minibosses and four secrets; both must fall to open the heart gate |
+| Heart gate | Round antechamber, crying-obsidian pylons, framed portal and last-watch vaults | Two secrets and the existing synchronized portal transition |
 | Heart cathedral | 81 × 49 × 81 arena, stained roof ribs, four structural piers and chained crystal | Boss introduction and first fight; conceals the crucible below |
 
 Trapped chests use the existing standard-secret path; ordinary chests grant existing configured blessings. Hidden caches have reachable entrances. Rewards reuse configured CaveItems IDs `UNDEAD_ESSENCE` and `CRYPT_FRAGMENT`, with larger Floor III quantities and an additional score-gated obsidian offer.
+
+The renovated pack contains **32 secrets and 49 required enemies** across a complete run. Each combat room has an original cache, two enclosed side vaults with sightline baffles and a staircase-accessed inspection cache. The archives and skyway keep their original upper blessing cache; the other combat rooms gain one gallery blessing cache. Start and portal each have two standard secrets. All enemy placements use normal/miniboss schematic markers and existing combat clear gates.
+
+All ten templates have a continuous foundation, solid outer walls and a closed roof. Chamber vaults have solid masonry above each roof step, and unused space around their irregular footprints is filled before secret passages are deliberately excavated. The only exterior apertures are the authored three-by-three connectors used by the existing dungeon door system. Skyway falls and crucible gaps remain deliberate internal challenges enclosed by the foundation and walls.
 
 ## Veyra, the Chainbound Architect
 
@@ -58,12 +62,12 @@ At 18%, the Last Weave begins. Veyra glows, the music speeds up, attacks arrive 
 - `CounterweightTrial` verifies uninterrupted pad occupancy, resets on missed samples and adapts to partner departure.
 - `BukkitChainboundArena` owns participant filtering, telegraphs, damage, target selection, safety teleports, sounds and the shared boss bar.
 - `BukkitFoundryScene` owns moving displays and saved original block states. Combat uses 48 reusable chain-link displays and restores cyan floor pads after every cast. It caps displays at 220 and saved states at 6,000; mutations stay within the boss arena. Restore/cleanup removes the exact owned entities and event listener.
-- `FoundryPuzzle` owns instance-local solution progress. `BukkitFoundryRooms` derives all locations from generated placements and rotations and holds the existing combat room's clear gate. Combat cleanup also removes its clues and rotors.
+- `FoundryPuzzle` owns instance-local solution progress. `BukkitFoundryRooms` derives all locations from generated placements and rotations and holds the existing combat room's clear gate. Puzzle instructions remain holograms; Resonance has four floating rune labels in place of physical signs. Combat cleanup removes its clues, labels and rotors.
 - All boss work uses the existing encounter tick. Room effects update at 5 Hz; boss display interpolation and telegraphs update at 10 Hz. There are no additional encounter scheduler tasks or global entity scans.
 - `foundry.yml` validates finite health/damage, a final threshold between zero and one, cinematic bounds and non-overlapping attack intervals. It is read when an encounter is created. Config validation and hashing include it and `rooms_foundry.yml`. Schema 2 removes `transform-threshold`; schema 1 remains readable and keeps administrator tuning without rewriting the file. Its retired threshold is ignored.
 - Floor schema 4 adds `generation.room-pool`. Migration backs up schemas 1–3 and preserves configured values. An empty pool keeps the previous unrestricted planner behavior.
 - On first installation, bundled templates and Foundry MythicMobs files are copied only if missing. Administrator-edited files are preserved. Run `mm reload` after initial installation to activate the new mob and skill definitions.
-- `python3 scripts/build_foundry_floor.py` reproduces all schematics. `python3 scripts/test_foundry_floor.py` independently decodes their NBT/block data and checks supported routes, accessible secrets and crucible connectivity.
+- `python3 scripts/build_foundry_floor.py` reproduces all schematics. `python3 scripts/test_foundry_floor.py` independently decodes their NBT/block data, rejects physical sign blocks/entities, checks every exterior face for unintended holes, verifies intact connectors/markers, walks supported routes to all secrets and enemy spawns, and checks crucible connectivity.
 
 ## Verification
 
