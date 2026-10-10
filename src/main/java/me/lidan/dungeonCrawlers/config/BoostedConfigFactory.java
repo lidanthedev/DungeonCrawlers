@@ -110,14 +110,15 @@ public class BoostedConfigFactory {
 
     public void migrateFloor(Path path) throws IOException {
         BoostedCustomConfig config = open(path);
-        if (schemaVersion(config) != 1) return;
-        Path backup = path.getParent().getParent().resolve("backups/floors-v1").resolve(path.getFileName());
+        int version = schemaVersion(config);
+        if (version != 1 && version != 2) return;
+        Path backup = path.getParent().getParent().resolve("backups/floors-v" + version).resolve(path.getFileName());
         Files.createDirectories(backup.getParent());
         if (!Files.exists(backup)) Files.copy(path, backup, StandardCopyOption.COPY_ATTRIBUTES);
         int number = config.getInt("number", 1);
         if (!config.contains("dungeon-xp.completion", true)) config.set("dungeon-xp.completion", 100.0 * number * number);
         if (!config.contains("dungeon-xp.failure-factor", true)) config.set("dungeon-xp.failure-factor", .10);
-        config.set(VERSION_ROUTE, 2);
+        config.set(VERSION_ROUTE, 3);
         if (!config.save()) throw new IOException("failed to migrate floor " + path.getFileName());
     }
 

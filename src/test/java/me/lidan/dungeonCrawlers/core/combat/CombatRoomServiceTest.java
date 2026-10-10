@@ -75,7 +75,7 @@ class CombatRoomServiceTest {
     }
 
     @Test
-    void unexpectedRemovalRetriesAndExhaustionFailsRoom() {
+    void unexpectedRemovalWithoutRecoveryBudgetReleasesOnlyMissingEnemy() {
         UUID instance = UUID.randomUUID();
         FakeMobs mobs = new FakeMobs();
         FakeChunks chunks = new FakeChunks();
@@ -85,9 +85,13 @@ class CombatRoomServiceTest {
         UUID entity = mobs.entities.getFirst();
         mobs.failNext = true;
         assertTrue(service.onRemoved(instance, 1, entity).accepted());
-        assertEquals(CombatRoomService.MobState.FAILED,
+        assertEquals(CombatRoomService.MobState.DEAD,
                 service.info(instance).orElseThrow().rooms().getFirst().requiredMobs().getFirst().state());
-        assertEquals(CombatRoomService.RoomState.FAILED, service.info(instance).orElseThrow().rooms().getFirst().state());
+        assertEquals(CombatRoomService.RoomState.ACTIVE, service.info(instance).orElseThrow().rooms().getFirst().state());
+        assertTrue(service.onDeath(instance, 1, mobs.entities.getLast()).accepted());
+        assertEquals(CombatRoomService.RoomState.CLEARED, service.info(instance).orElseThrow().rooms().getFirst().state());
+        assertEquals(CombatRoomService.RoomState.READY, service.rooms(instance).get(1).state());
+        assertFalse(service.onDeath(instance, 1, entity).accepted(), "late events cannot consume the requirement twice");
     }
 
     @Test
@@ -104,8 +108,74 @@ class CombatRoomServiceTest {
         assertTrue(service.onRemoved(instance, 1, second).accepted());
         UUID third = service.info(instance).orElseThrow().rooms().getFirst().requiredMobs().getFirst().entityId();
         assertTrue(service.onRemoved(instance, 1, third).accepted());
-        assertEquals(CombatRoomService.RoomState.FAILED,
+        assertEquals(CombatRoomService.RoomState.ACTIVE,
                 service.info(instance).orElseThrow().rooms().getFirst().state());
+        assertEquals(CombatRoomService.MobState.DEAD, service.rooms(instance).getFirst().requiredMobs().getFirst().state());
+    }
+
+    @Test
+    void watchdogRepairsMissedRemovalEventsAndUnlocksAfterExhaustion() {
+        UUID instance = UUID.randomUUID();
+        FakeMobs mobs = new FakeMobs();
+        CombatRoomService service = new CombatRoomService(mobs, new FakeChunks(), ignored -> { });
+        service.register(plan(instance, 1));
+        service.activateFirst(instance);
+        mobs.valid.clear();
+        service.reconcileAll();
+        assertEquals(2, mobs.valid.size(), "both lost enemies must be replaced");
+        mobs.valid.clear();
+        service.reconcileAll();
+        assertEquals(CombatRoomService.RoomState.CLEARED, service.rooms(instance).getFirst().state());
+        assertEquals(CombatRoomService.RoomState.READY, service.rooms(instance).get(1).state());
+        assertEquals(4, mobs.entities.size(), "recovery remains bounded");
+        service.cleanupAll();
+        service.reconcileAll();
+        assertTrue(service.instances().isEmpty());
+    }
+
+    @Test
+    void watchdogDoesNotDuplicateMobsWhileRoomChunksAreUnloaded() {
+        UUID instance = UUID.randomUUID();
+        FakeMobs mobs = new FakeMobs();
+        FakeChunks chunks = new FakeChunks();
+        CombatRoomService service = new CombatRoomService(mobs, chunks, ignored -> { });
+        service.register(plan(instance, 1));
+        service.activateFirst(instance);
+        mobs.valid.clear();
+        chunks.loaded = false;
+        assertFalse(service.onRemoved(instance, 1, mobs.entities.getFirst()).accepted());
+        service.reconcileAll();
+        assertEquals(2, mobs.entities.size());
+        assertEquals(CombatRoomService.RoomState.ACTIVE, service.rooms(instance).getFirst().state());
+        chunks.loaded = true;
+        service.reconcileAll();
+        assertEquals(4, mobs.entities.size());
+    }
+
+    @Test
+    void initialSpawnFailureStillFailsSafelyWithoutUnlockingNextRoom() {
+        UUID instance = UUID.randomUUID();
+        FakeMobs mobs = new FakeMobs();
+        CombatRoomService service = new CombatRoomService(mobs, new FakeChunks(), ignored -> { });
+        service.register(plan(instance, 0));
+        mobs.failNext = true;
+        assertFalse(service.activateFirst(instance).successful());
+        assertEquals(CombatRoomService.RoomState.FAILED, service.rooms(instance).getFirst().state());
+        assertEquals(CombatRoomService.RoomState.LOCKED, service.rooms(instance).get(1).state());
+    }
+
+    @Test
+    void administrativeClearSuppressesSynchronousRemovalEventsBeforeRemovingEntities() {
+        UUID instance = UUID.randomUUID();
+        FakeMobs mobs = new FakeMobs();
+        CombatRoomService service = new CombatRoomService(mobs, new FakeChunks(), ignored -> { });
+        service.register(plan(instance, 2));
+        service.activateFirst(instance);
+        mobs.removed = entity -> service.onRemoved(instance, 1, entity);
+        service.clear(instance, 1);
+        assertTrue(mobs.valid.isEmpty());
+        assertEquals(2, mobs.entities.size(), "a removal callback must not respawn during administrative clear");
+        assertEquals(CombatRoomService.RoomState.CLEARED, service.rooms(instance).getFirst().state());
     }
 
     @Test
@@ -189,6 +259,7 @@ class CombatRoomServiceTest {
         private final List<UUID> entities = new ArrayList<>();
         private final Deque<UUID> valid = new ArrayDeque<>();
         private boolean failNext;
+        private java.util.function.Consumer<UUID> removed = ignored -> { };
 
         @Override
         public SpawnResult spawn(UUID instanceId, int roomIndex, String mobId, Point point) {
@@ -203,13 +274,20 @@ class CombatRoomServiceTest {
         }
 
         @Override
-        public boolean remove(UUID entityId) { return valid.remove(entityId); }
+        public boolean remove(UUID entityId) {
+            boolean result = valid.remove(entityId);
+            if (result) removed.accept(entityId);
+            return result;
+        }
 
         @Override
         public boolean isValid(UUID entityId) { return valid.contains(entityId); }
     }
 
     private static final class FakeChunks implements CombatChunkGateway {
+        private boolean loaded = true;
+        @Override
+        public boolean isLoaded(Bounds bounds) { return loaded; }
         @Override
         public boolean acquire(UUID instanceId, Bounds bounds) { return true; }
 

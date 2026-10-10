@@ -2,6 +2,7 @@ package me.lidan.dungeonCrawlers.integration;
 
 import me.lidan.cavecrawlers.stats.StatType;
 import me.lidan.cavecrawlers.stats.StatsCalculateEvent;
+import me.lidan.cavecrawlers.stats.StatsManager;
 import me.lidan.cavecrawlers.utils.MiniMessageUtils;
 import me.lidan.dungeonCrawlers.commands.DungeonPhaseFiveCommand;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.ClassDefinition;
@@ -80,6 +81,7 @@ public final class BukkitDungeonRunListener implements Listener {
         if (material != org.bukkit.Material.CHEST && material != org.bukkit.Material.TRAPPED_CHEST) return;
         UUID instanceId = runs.instanceFor(event.getPlayer().getUniqueId()).orElse(null);
         if (instanceId == null) return;
+        if (!phaseFive.canOpenDungeonDoor(event.getPlayer().getUniqueId())) return;
         Point point = new Point(event.getClickedBlock().getX(), event.getClickedBlock().getY(),
                 event.getClickedBlock().getZ());
         var result = phaseSeven.discover(instanceId, event.getPlayer().getUniqueId(), point);
@@ -90,7 +92,14 @@ public final class BukkitDungeonRunListener implements Listener {
             return;
         }
         if (result.blessingId() == null) {
-            DungeonMessages.send(event.getPlayer(), "<green>Secret discovered.</green>");
+            if (material == org.bukkit.Material.TRAPPED_CHEST) {
+                StatsManager.healPlayerPercent(event.getPlayer(), 100D);
+                var stats = StatsManager.getInstance().getStats(event.getPlayer());
+                stats.get(StatType.MANA).setValue(stats.get(StatType.INTELLIGENCE).getValue());
+                DungeonMessages.send(event.getPlayer(), "<green>Secret discovered! Health and mana fully restored.</green>");
+            } else {
+                DungeonMessages.send(event.getPlayer(), "<green>Secret discovered.</green>");
+            }
         } else {
             var discovery = result.blessing();
             String displayName = phaseSeven.blessingDisplayName(instanceId, result.blessingId())

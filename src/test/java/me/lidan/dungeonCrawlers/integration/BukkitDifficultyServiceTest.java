@@ -68,6 +68,7 @@ class BukkitDifficultyServiceTest {
         claims = mock(RewardClaimService.class);
         service = new BukkitDifficultyService(MockBukkit.createMockPlugin(), generation, runs, lifecycle, claims);
         when(enemy.getUniqueId()).thenReturn(UUID.randomUUID());
+        when(enemy.getPersistentDataContainer()).thenReturn(mock(org.bukkit.persistence.PersistentDataContainer.class));
         when(enemy.getLocation()).thenReturn(new Location(world, 0, 64, 0));
         when(enemy.getNearbyEntities(8, 8, 8)).thenReturn(List.of());
         track(enemy, false, false, instance);
@@ -166,6 +167,18 @@ class BukkitDifficultyServiceTest {
         when(context.progressionEnabled()).thenReturn(false);
         track(enemy, true, true, instance);
         service.death(event);
+        verifyNoInteractions(claims);
+    }
+
+    @Test void ringmasterFakeDeathRetainsRunicStatusButGivesNoFragments() throws Exception {
+        when(enemy.getKiller()).thenReturn(player);
+        when(enemy.getPersistentDataContainer().get(any(org.bukkit.NamespacedKey.class),
+                eq(org.bukkit.persistence.PersistentDataType.BYTE))).thenReturn((byte) 1);
+        var event = mock(EntityDeathEvent.class);
+        when(event.getEntity()).thenReturn(enemy);
+        track(enemy, true, true, instance);
+        service.death(event);
+        assertTrue(service.runicBoss(instance));
         verifyNoInteractions(claims);
     }
     private double outgoingDamage() {

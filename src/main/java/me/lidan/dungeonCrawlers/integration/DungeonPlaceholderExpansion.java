@@ -34,6 +34,37 @@ public final class DungeonPlaceholderExpansion extends PlaceholderExpansion {
     private final DebugSettings debug;
     private final Function<UUID, Integer> legacyScoreLookup;
     private final Function<UUID, ScoreService.FinalScoreSnapshot> scoreLookup;
+    private volatile Map<UUID, GenerationService.LayoutContext> publishedLayouts = Map.of();
+    private volatile Map<UUID, GenerationService.InstanceSnapshot> publishedInstances = Map.of();
+    private volatile Map<UUID, String> playerNames = Map.of();
+    private volatile Map<UUID, String> playerHealth = Map.of();
+
+    /** TAB evaluates PAPI asynchronously; publish generation data from the server thread. */
+    public void refreshSnapshots() {
+        if (!Bukkit.isPrimaryThread()) throw new IllegalStateException("snapshot publication requires the server thread");
+        Map<UUID, GenerationService.LayoutContext> layouts = new java.util.HashMap<>();
+        Map<UUID, GenerationService.InstanceSnapshot> instances = new java.util.HashMap<>();
+        Map<UUID, String> names = new java.util.HashMap<>();
+        Map<UUID, String> health = new java.util.HashMap<>();
+        for (var run : runs.snapshots()) {
+            generation.layoutContext(run.instanceId()).ifPresent(value -> layouts.put(run.instanceId(), value));
+            generation.info(run.instanceId()).ifPresent(value -> instances.put(run.instanceId(), value));
+            for (UUID participant : run.participants()) {
+                String name = plugin.getServer().getOfflinePlayer(participant).getName();
+                names.put(participant, name == null ? "Player" : name);
+                var online = plugin.getServer().getPlayer(participant);
+                if (online != null) {
+                    double current = online.getHealth();
+                    health.put(participant, online.isDead() || current <= 0 ? " §c☠"
+                            : " §a" + String.format(Locale.US, "%,.0f", Math.ceil(current)) + "❤");
+                }
+            }
+        }
+        publishedLayouts = Map.copyOf(layouts);
+        publishedInstances = Map.copyOf(instances);
+        playerNames = Map.copyOf(names);
+        playerHealth = Map.copyOf(health);
+    }
 
     /** Compatibility constructor for callers that only have a total score lookup. */
     public DungeonPlaceholderExpansion(JavaPlugin plugin, GenerationService generation,
@@ -188,7 +219,7 @@ public final class DungeonPlaceholderExpansion extends PlaceholderExpansion {
     }
 
     private GenerationService.InstanceSnapshot safeGenerationInfo(UUID instanceId) {
-        if (!Bukkit.isPrimaryThread()) return null;
+        if (!Bukkit.isPrimaryThread()) return publishedInstances.get(instanceId);
         try {
             return generation.info(instanceId).orElse(null);
         } catch (RuntimeException ignored) {
@@ -197,7 +228,7 @@ public final class DungeonPlaceholderExpansion extends PlaceholderExpansion {
     }
 
     private GenerationService.LayoutContext safeLayoutContext(UUID instanceId) {
-        if (!Bukkit.isPrimaryThread()) return null;
+        if (!Bukkit.isPrimaryThread()) return publishedLayouts.get(instanceId);
         try {
             return generation.layoutContext(instanceId).orElse(null);
         } catch (RuntimeException ignored) {
@@ -276,6 +307,7 @@ public final class DungeonPlaceholderExpansion extends PlaceholderExpansion {
 
     private String playerValue(String key, Context context) {
         PlayerLifecycleService.PlayerSnapshot player = context.player();
+        if (key.matches("sidebar_party_[1-5]")) return partyLine(context, Integer.parseInt(key.substring(14)) - 1);
         return switch (key) {
             case "in_dungeon", "player_in_dungeon" -> "true";
             case "instance", "instance_id", "player_instance", "player_instance_id" ->
@@ -315,8 +347,51 @@ public final class DungeonPlaceholderExpansion extends PlaceholderExpansion {
                             context.selectedClass().displayName()));
             case "player_class_locked" -> Boolean.toString(
                     !RunPreparationService.classSelectionOpen(context.run().state()));
+            case "rooms_total" -> Integer.toString(roomCount(context, false));
+            case "rooms_cleared" -> Integer.toString(roomCount(context, true));
+            case "clear_percent" -> Integer.toString(roomCount(context, false) == 0 ? 0
+                    : 100 * roomCount(context, true) / roomCount(context, false));
+            case "sidebar_floor" -> context.layout() == null ? "Dungeon"
+                    : plain(context.layout().floor().displayName()) + " §8• §c"
+                    + context.layout().difficulty().tier().displayName();
+            case "sidebar_phase" -> switch (context.run().state()) {
+                case PREPARING -> "§eChoose classes §7(" + context.run().selectedClasses().size()
+                        + "/" + context.run().participants().size() + ")";
+                case RUNNING -> roomCount(context, true) == roomCount(context, false)
+                        ? "§dEnter the boss portal" : "§eClear the dungeon";
+                case BOSS -> "§cDefeat the boss";
+                case COMPLETION_PENDING -> "§eFinalizing rewards";
+                case COMPLETED -> "§aClaim your rewards";
+                case FAILED -> "§cDungeon failed";
+            };
+            case "sidebar_deaths" -> Integer.toString(totalDeaths(context.lifecycle()));
+            case "sidebar_score" -> context.score() == null ? ""
+                    : "§fScore: §a" + scoreTotal(context) + " §7(" + scoreRank(context) + ")";
             default -> "";
         };
+    }
+
+    private String partyLine(Context context, int index) {
+        if (context.run().participants().size() <= index) return "";
+        UUID id = context.run().participants().get(index);
+        var participant = context.lifecycle() == null ? null : context.lifecycle().players().stream()
+                .filter(value -> value.playerId().equals(id)).findFirst().orElse(null);
+        String selected = context.run().selectedClasses().get(id);
+        String label = selected == null || selected.isBlank() ? "?" : selected.substring(0, 1).toUpperCase(Locale.ROOT);
+        String status = participant == null ? ""
+                : participant.state() == PlayerLifecycleService.PlayerState.GHOST ? " §c☠"
+                : participant.state() == PlayerLifecycleService.PlayerState.REMOVED ? " §8LEFT"
+                : !participant.online() ? " §8OFFLINE" : playerHealth.getOrDefault(id, "");
+        return "§b[" + label + "] §f" + playerNames.getOrDefault(id, "Player") + status;
+    }
+
+    private static int roomCount(Context context, boolean cleared) {
+        return context.combat() == null ? 0 : (int) context.combat().rooms().stream()
+                .filter(room -> !cleared || room.state() == CombatRoomService.RoomState.CLEARED).count();
+    }
+
+    private static String plain(String text) {
+        return MiniMessageUtils.componentToString(MiniMessageUtils.miniMessage(text));
     }
 
     private String floorId(Context context) {
@@ -437,6 +512,7 @@ public final class DungeonPlaceholderExpansion extends PlaceholderExpansion {
                  "player_current_room_secrets_total", "player_elapsed_seconds", "score", "player_score",
                  "player_skill_score", "player_time_score", "player_exploration_score",
                  "player_bonus_score" -> "0";
+            case "rooms_total", "rooms_cleared", "clear_percent", "sidebar_deaths" -> "0";
             case "secrets", "player_secrets" -> "0/0";
             case "current_room", "player_current_room" -> "0";
             default -> "";

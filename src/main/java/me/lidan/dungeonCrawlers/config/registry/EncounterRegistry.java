@@ -8,6 +8,10 @@ import java.util.Set;
 public final class EncounterRegistry {
     private final Set<String> ids = new LinkedHashSet<>(EncounterFactoryRegistry.withBasic().ids());
 
+    public EncounterRegistry() {
+        ids.add(me.lidan.dungeonCrawlers.core.encounter.RingmasterEncounter.ID);
+    }
+
     public synchronized boolean register(String id) {
         if (id == null || !id.matches("^[a-z0-9][a-z0-9_-]{0,63}$")) {
             throw new IllegalArgumentException("invalid encounter id");

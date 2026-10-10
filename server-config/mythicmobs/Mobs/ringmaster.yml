@@ -1,0 +1,106 @@
+# Attacks, targets, performers and both lives are owned by the DungeonCrawlers ringmaster encounter.
+MadRingmaster:
+  Type: ZOMBIE
+  Display: '&8[Floor I] &dThe Mad Ringmaster'
+  Health: 55000000
+  Damage: 400000
+  Equipment:
+  - LEATHER_HELMET{color=PURPLE} HEAD
+  - LEATHER_CHESTPLATE{color=PURPLE} CHEST
+  - LEATHER_LEGGINGS{color=BLUE} LEGS
+  - LEATHER_BOOTS{color=PURPLE} FEET
+  - BLAZE_ROD HAND
+  Options:
+    Silent: true
+    PreventSunburn: true
+    PreventOtherDrops: true
+    Despawn: false
+    KnockbackResistance: 1
+    FollowRange: 32
+  AIGoalSelectors:
+  - clear
+  - meleeattack
+  AITargetSelectors:
+  - clear
+  BossBar:
+    Enabled: true
+    Title: '&6&lTHE MAD RINGMASTER &7| &dAct I: Midnight Carnival'
+    Range: 96
+    Color: PURPLE
+    Style: SOLID
+  Drops: []
+
+MadRingmasterEncore:
+  Type: WITHER_SKELETON
+  Display: '&8[Floor I] &5The Mad Ringmaster &dEncore'
+  Health: 75000000
+  Damage: 900000
+  Equipment:
+  - LEATHER_HELMET{color=PURPLE} HEAD
+  - LEATHER_CHESTPLATE{color=BLUE} CHEST
+  - LEATHER_LEGGINGS{color=PURPLE} LEGS
+  - LEATHER_BOOTS{color=BLUE} FEET
+  - IRON_HOE HAND
+  Options:
+    Silent: true
+    PreventOtherDrops: true
+    Despawn: false
+    KnockbackResistance: 1
+    FollowRange: 32
+  AIGoalSelectors:
+  - clear
+  - meleeattack
+  AITargetSelectors:
+  - clear
+  BossBar:
+    Enabled: true
+    Title: '&5&lTHE MAD RINGMASTER &7| &dAct II: The World Revolves'
+    Range: 96
+    Color: PURPLE
+    Style: SOLID
+  Drops: []
+
+RingmasterPerformer:
+  Type: ZOMBIE
+  Display: '&8[Floor I] &dUndead Performer'
+  Health: 2500000
+  Damage: 200000
+  Equipment:
+  - LEATHER_HELMET{color=PURPLE} HEAD
+  - LEATHER_CHESTPLATE{color=BLUE} CHEST
+  - STICK HAND
+  Options:
+    PreventSunburn: true
+    PreventOtherDrops: true
+    Despawn: false
+    MovementSpeed: 0.28
+    FollowRange: 32
+  AIGoalSelectors:
+  - clear
+  - meleeattack
+  AITargetSelectors:
+  - clear
+  Drops: []
+
+RingmasterAcrobat:
+  Type: ZOMBIE
+  Display: '&8[Floor I] &bSomersault Imp'
+  Health: 1800000
+  Damage: 170000
+  Equipment:
+  - LEATHER_HELMET{color=YELLOW} HEAD
+  - LEATHER_CHESTPLATE{color=BLUE} CHEST
+  - GOLDEN_AXE HAND
+  Options:
+    Baby: true
+    PreventSunburn: true
+    PreventOtherDrops: true
+    Despawn: false
+    MovementSpeed: 0.34
+    FollowRange: 64
+  AIGoalSelectors:
+  - clear
+  - meleeattack
+  AITargetSelectors:
+  - clear
+  Drops: []

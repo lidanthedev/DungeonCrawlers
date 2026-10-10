@@ -29,6 +29,60 @@ class RunPreparationServiceTest {
     private static final Instant START = Instant.parse("2026-01-01T00:00:00Z");
 
     @Test
+    void remembersSuccessfulSelectionAndAppliesAllPartyPreferencesAfterSnapshotAck() {
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        UUID instance = UUID.randomUUID();
+        var saved = new java.util.HashMap<UUID, String>();
+        saved.put(second, "mage");
+        var classes = Map.of("tank", classDefinition("tank"), "mage", classDefinition("mage"));
+        var party = new PartySnapshot(first, List.of(first, second), false);
+        var service = service(new AtomicInteger());
+        service.configureClassPreferences(id -> java.util.Optional.ofNullable(saved.get(id)), saved::put);
+        service.registerGenerated(instance, party, List.of("tank", "mage"), classes, new Point(0, 64, 0), Facing.NORTH);
+        assertTrue(service.info(instance).orElseThrow().selectedClasses().isEmpty());
+        service.markSnapshotsReady(instance);
+        assertEquals(Map.of(second, "mage"), service.info(instance).orElseThrow().selectedClasses());
+        assertFalse(service.selectClass(instance, first, "unknown").successful());
+        assertFalse(saved.containsKey(first));
+        assertTrue(service.selectClass(instance, first, "tank").successful());
+        assertEquals("tank", saved.get(first));
+        service.cleanup(instance);
+
+        var next = service(new AtomicInteger());
+        next.configureClassPreferences(id -> java.util.Optional.ofNullable(saved.get(id)), saved::put);
+        UUID nextId = UUID.randomUUID();
+        next.registerGenerated(nextId, party, List.of("tank", "mage"), classes, new Point(0, 64, 0), Facing.NORTH);
+        var prepared = next.markSnapshotsReady(nextId).snapshot();
+        assertEquals(saved, prepared.selectedClasses());
+        assertEquals(DoorService.DoorState.READY, prepared.door().state());
+        assertTrue(next.selectClass(nextId, first, "mage").successful());
+        assertEquals("mage", saved.get(first));
+        next.openDoor(nextId, first);
+        assertFalse(next.selectClass(nextId, first, "tank").successful());
+        assertEquals("mage", saved.get(first), "locked or failed selection must not replace the preference");
+    }
+
+    @Test
+    void invalidSavedClassLeavesManualSelectionGateAndPreferenceReadFailureIsSafe() {
+        UUID player = UUID.randomUUID();
+        UUID instance = UUID.randomUUID();
+        var service = service(new AtomicInteger());
+        service.configureClassPreferences(id -> java.util.Optional.of("mage"), (id, selected) -> { });
+        service.registerGenerated(instance, new PartySnapshot(player, List.of(player), true), List.of("tank"),
+                Map.of("tank", classDefinition("tank")), new Point(0, 64, 0), Facing.NORTH);
+        service.markSnapshotsReady(instance);
+        assertTrue(service.info(instance).orElseThrow().selectedClasses().isEmpty());
+        assertFalse(service.openDoor(instance, player).successful());
+        service.cleanup(instance);
+        service.configureClassPreferences(id -> { throw new IllegalStateException("unavailable"); }, (id, selected) -> { });
+        service.registerGenerated(instance, new PartySnapshot(player, List.of(player), true), List.of("tank"),
+                Map.of("tank", classDefinition("tank")), new Point(0, 64, 0), Facing.NORTH);
+        assertTrue(service.markSnapshotsReady(instance).successful());
+        assertTrue(service.selectClass(instance, player, "tank").successful());
+    }
+
+    @Test
     void classSelectionIsOpenOnlyBeforeTheRunStarts() {
         for (RunPreparationService.RunState state : RunPreparationService.RunState.values()) {
             assertEquals(state == RunPreparationService.RunState.PREPARING,

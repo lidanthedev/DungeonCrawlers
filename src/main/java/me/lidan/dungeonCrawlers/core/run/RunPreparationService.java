@@ -49,6 +49,14 @@ public final class RunPreparationService {
     private Consumer<DeadlineNotice> deadlineNotices = ignored -> { };
     private final Map<UUID, MutableRun> runs = new LinkedHashMap<>();
     private boolean frozen;
+    private java.util.function.Function<UUID, Optional<String>> rememberedClass = ignored -> Optional.empty();
+    private java.util.function.BiConsumer<UUID, String> rememberClass = (player, classId) -> { };
+
+    public synchronized void configureClassPreferences(java.util.function.Function<UUID, Optional<String>> read,
+                                                       java.util.function.BiConsumer<UUID, String> write) {
+        rememberedClass = Objects.requireNonNull(read);
+        rememberClass = Objects.requireNonNull(write);
+    }
 
     public RunPreparationService(DoorService doors, CentralUpdateService updates,
                                  StateTransitionService transitions, Clock clock,
@@ -136,6 +144,14 @@ public final class RunPreparationService {
         if (run.state != RunState.PREPARING) return PreparationResult.failure("run is already " + run.state);
         if (run.snapshotsReady) return PreparationResult.success("snapshots already acknowledged", run.snapshot());
         run.snapshotsReady = true;
+        for (UUID playerId : run.participants) {
+            try {
+                rememberedClass.apply(playerId).filter(run.allowedClasses::contains)
+                        .filter(run.classes::containsKey).ifPresent(classId -> selectClass(instanceId, playerId, classId));
+            } catch (RuntimeException exception) {
+                diagnose("Auto Class unavailable for " + playerId + ": " + message(exception));
+            }
+        }
         return PreparationResult.success("recovery snapshots acknowledged", run.snapshot());
     }
 
@@ -154,6 +170,11 @@ public final class RunPreparationService {
         DoorService.DoorSnapshot door = allClassesSelected
                 ? doors.setReady(instanceId) : doors.info(instanceId).orElseThrow();
         run.door = door;
+        try {
+            rememberClass.accept(playerId, classId);
+        } catch (RuntimeException exception) {
+            diagnose("Could not remember dungeon class for " + playerId + ": " + message(exception));
+        }
         return ClassSelectionResult.success(allClassesSelected
                 ? "class selected; start door is ready" : "class selected", run.snapshot(), door);
     }

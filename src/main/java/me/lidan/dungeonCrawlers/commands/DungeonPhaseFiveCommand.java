@@ -731,10 +731,12 @@ public final class DungeonPhaseFiveCommand {
     }
 
     private void finishPreparation(UUID instanceId, me.lidan.dungeonCrawlers.core.party.PartySnapshot party) {
-        if (!runs.markSnapshotsReady(instanceId).successful()) {
+        var prepared = runs.markSnapshotsReady(instanceId);
+        if (!prepared.successful()) {
             abort(instanceId, "preparation was no longer active");
             return;
         }
+        render(prepared.snapshot().door());
         GenerationService.PlayerSpawn spawn = generation.playerSpawn(instanceId)
                 .orElse(null);
         if (spawn == null) {
@@ -758,8 +760,16 @@ public final class DungeonPhaseFiveCommand {
                 abort(instanceId, "teleport rejected for " + playerId);
                 return;
             }
-            actionBar.show(player, MiniMessageUtils.miniMessage(
-                    "<yellow>Choose your dungeon class, then open the coal door</yellow>"));
+            String selected = prepared.snapshot().selectedClasses().get(playerId);
+            if (selected != null) {
+                var definition = configRegistry.snapshot().classes().get(selected);
+                DungeonMessages.send(player, DungeonMessages.success("Auto Class: <white>"
+                        + (definition == null ? selected : definition.displayName())
+                        + "</white>. You can change it before opening the start door."));
+            }
+            actionBar.show(player, MiniMessageUtils.miniMessage(selected == null
+                    ? "<yellow>Choose your dungeon class, then open the coal door</yellow>"
+                    : "<green>Auto Class selected. Open the coal door when your party is ready.</green>"));
         }
     }
 

@@ -1,0 +1,22 @@
+# Insert first under scoreboard.scoreboards in TAB/config.yml.
+# TAB and PlaceholderAPI must be enabled. The existing fallback boards stay in place.
+# https://github.com/NEZNAMY/TAB/wiki/Feature-guide:-Scoreboard
+dungeons:
+  title: '&e&lDUNGEON CRAWLERS'
+  display-condition: '%dungeoncrawlers_in_dungeon%=true'
+  lines:
+  - '&7%dungeoncrawlers_sidebar_floor%'
+  - '%dungeoncrawlers_sidebar_phase%'
+  - ''
+  - '&fCleared: &a%dungeoncrawlers_rooms_cleared%/%dungeoncrawlers_rooms_total% &7(&a%dungeoncrawlers_clear_percent%%&7)'
+  - '&fSecrets: &b%dungeoncrawlers_player_secrets%'
+  - '&fTime Elapsed: &a%dungeoncrawlers_player_elapsed_time%'
+  - '&fDeaths: &c%dungeoncrawlers_sidebar_deaths%'
+  - '%dungeoncrawlers_sidebar_score%'
+  - ''
+  - '%dungeoncrawlers_sidebar_party_1%'
+  - '%dungeoncrawlers_sidebar_party_2%'
+  - '%dungeoncrawlers_sidebar_party_3%'
+  - '%dungeoncrawlers_sidebar_party_4%'
+  - '%dungeoncrawlers_sidebar_party_5%'
+  - '&eᴄᴀᴠᴇᴄʀᴀᴡʟ.ᴍɪɴᴇʜᴜᴛ.ɢɢ'

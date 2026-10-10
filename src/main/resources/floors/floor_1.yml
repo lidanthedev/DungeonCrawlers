@@ -1,4 +1,4 @@
-schema-version: 2
+schema-version: 3
 id: floor_1
 number: 1
 display-name: "<gold>Floor I"
@@ -17,8 +17,8 @@ mobs:
   normal: [CryptZombie, CryptSkeleton, CryptSpider]
   miniboss: [LostAdventurer, AngryArchaeologist]
 boss:
-  mob: CryptGuardian
-  encounter: basic
+  mob: MadRingmaster
+  encounter: ringmaster
 classes:
   allowed: [berserker, mage, tank, healer, archer]
 blessings:

@@ -295,12 +295,19 @@ public final class DungeonCrawlers extends JavaPlugin {
                 }, getLogger()::warning, instanceId -> {
                     cancelDeadlineInstance(instanceId);
                 }, true, timings);
+        var classPreferences = new me.lidan.dungeonCrawlers.integration.BukkitClassPreferences(this);
+        runPreparation.configureClassPreferences(classPreferences::read, classPreferences::write);
         phaseSeven = new SecretDiscoveryService(configRegistry::snapshot);
         lifecycle = new PlayerLifecycleService(centralUpdates, phaseClock(), this::handleLifecycleNotice, timings);
         bossIdentity = new BukkitBossIdentity(this);
         var bossGateway = new BukkitBossGateway(getServer(), this::generationWorld, mythicMobs, bossIdentity);
+        var encounterFactories = EncounterFactoryRegistry.withBasic();
+        encounterFactories.register(me.lidan.dungeonCrawlers.core.encounter.RingmasterEncounter.ID, context ->
+                new me.lidan.dungeonCrawlers.core.encounter.RingmasterEncounter(context,
+                        new me.lidan.dungeonCrawlers.integration.BukkitRingmasterArena(context, this,
+                                runPreparation, lifecycle, mythicMobs, difficultyService), phaseClock()));
         phaseNine = new PortalEncounterService(centralUpdates, runPreparation,
-                EncounterFactoryRegistry.withBasic(),
+                encounterFactories,
                 bossGateway,
                 new BukkitPortalParticipantGateway(getServer(), this::generationWorld, generationWorldName,
                         runPreparation, lifecycle, combat, teleportPermits, phaseClock(), timings.teleportPermit()),
@@ -568,7 +575,9 @@ public final class DungeonCrawlers extends JavaPlugin {
         BukkitRewardMailboxListener rewardMailboxListener = new BukkitRewardMailboxListener(claims);
         registerEvent(new BukkitWorldProtectionListener(protectionPolicy,
                 () -> generation.protectionRegions().stream().map(WorldProtectionService.InstanceRegion::from).toList(),
-                teleportPermits, phaseClock()));
+                teleportPermits, phaseClock(), (instance, point) -> runPreparation.doorAt(point).isPresent()
+                        || combat.isDoorAt(point) || phaseNine.rewardAt(point).isPresent()
+                        || phaseSeven.secrets(instance).stream().anyMatch(secret -> secret.worldPoint().equals(point))));
         registerEvent(new BukkitDungeonRunListener(phaseFiveCommand, runPreparation, generationWorldName, phaseSeven));
         registerEvent(difficultyService);
         registerEvent(new BukkitDungeonLifecycleListener(lifecycle, runPreparation, this, phaseClock(),
@@ -907,7 +916,12 @@ public final class DungeonCrawlers extends JavaPlugin {
             centralUpdates.tick();
             generation.checkCleanupDeadlines();
         }, 1L, 1L);
-        getServer().getScheduler().runTaskTimer(this, () -> { difficultyService.tick(); deliverDungeonXp(); }, 20L, 20L);
+        getServer().getScheduler().runTaskTimer(this, () -> {
+            combat.reconcileAll();
+            if (placeholderExpansion != null) placeholderExpansion.refreshSnapshots();
+            difficultyService.tick();
+            deliverDungeonXp();
+        }, 20L, 20L);
     }
 
     @Override

@@ -86,7 +86,7 @@ class ConfigLoaderTest {
     void unknownEncounterWarnsAndUsesRegisteredBasicFallback() throws Exception {
         copyDefaults();
         Path floor = directory.resolve("floors/floor_1.yml");
-        Files.writeString(floor, Files.readString(floor).replace("encounter: basic", "encounter: future_boss"));
+        Files.writeString(floor, Files.readString(floor).replace("encounter: ringmaster", "encounter: future_boss"));
 
         ConfigLoadResult result = loader().load(directory);
 
@@ -213,7 +213,7 @@ class ConfigLoaderTest {
     @Test void difficultyConfigAndCustomFloorMigrationAreValidated() throws Exception {
         copyDefaults();
         Path floor = directory.resolve("floors/floor_1.yml");
-        String old = Files.readString(floor).replace("schema-version: 2", "schema-version: 1")
+        String old = Files.readString(floor).replace("schema-version: 3", "schema-version: 1")
                 .replace("number: 1", "number: 3").replaceAll("(?m)^dungeon-xp:\n(?:  .*\n)*", "");
         Files.writeString(floor, old);
         var loaded = loader().load(directory);

@@ -187,7 +187,7 @@ public final class ConfigLoader {
             try { configFactory.migrateFloor(file); }
             catch (IOException exception) { p.error("floor migration failed: " + exception.getMessage()); }
             Map<String, Object> root = p.file(file);
-            p.schema(root, file, 2);
+            p.schema(root, file, 3);
             String prefix = "floors/" + file.getFileName() + ":";
             String id = p.id(p.string(root.get("id"), prefix + "id"), prefix);
             int number = p.integer(root.get("number"), prefix + "number", 1, 10_000);

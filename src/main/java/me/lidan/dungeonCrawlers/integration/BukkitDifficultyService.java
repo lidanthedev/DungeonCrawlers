@@ -144,6 +144,9 @@ public final class BukkitDifficultyService implements Listener, AutoCloseable {
         glow.removeEntry(event.getEntity().getUniqueId().toString());
         if (enemy == null || !enemy.runic()) return;
         if (enemy.boss()) runicBossInstances.add(enemy.instance());
+        if (Byte.valueOf((byte) 1).equals(event.getEntity().getPersistentDataContainer().get(
+                new org.bukkit.NamespacedKey(plugin, "ringmaster_first_life"),
+                org.bukkit.persistence.PersistentDataType.BYTE))) return;
         var context = generation.layoutContext(enemy.instance()).orElse(null);
         Player killer = event.getEntity().getKiller();
         var run = runs.info(enemy.instance()).orElse(null);

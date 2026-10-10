@@ -155,4 +155,25 @@ class BoostedConfigMigrationTest {
         mocked.when(() -> JavaPlugin.getProvidingPlugin(BoostedCustomConfig.class)).thenReturn(plugin);
         return mocked;
     }
+
+    @Test
+    void floorTwoMigratesToThreeWithBackupAndPreservesCustomBossAndRewards() throws Exception {
+        Path floors = directory.resolve("floors");
+        Files.createDirectories(floors);
+        Path floor = floors.resolve("floor_custom.yml");
+        String original = "schema-version: 2\nnumber: 7\nboss: { mob: CustomBoss, encounter: basic }\n"
+                + "rewards: { special: { price: 12345 } }\ndungeon-xp: { completion: 999, failure-factor: 0.2 }\n";
+        Files.writeString(floor, original);
+        try (MockedStatic<JavaPlugin> ignored = providingPlugin()) {
+            BoostedConfigFactory factory = new BoostedConfigFactory();
+            factory.migrateFloor(floor);
+            factory.migrateFloor(floor);
+            var config = factory.open(floor);
+            assertEquals(3, BoostedConfigFactory.schemaVersion(config));
+            assertEquals("CustomBoss", config.getString("boss.mob"));
+            assertEquals(12345, config.getInt("rewards.special.price"));
+            assertEquals(999, config.getInt("dungeon-xp.completion"));
+        }
+        assertEquals(original, Files.readString(directory.resolve("backups/floors-v2/floor_custom.yml")));
+    }
 }

@@ -17,8 +17,8 @@ import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
- * Main-thread combat lifecycle. The service owns required mob sets and never
- * advances a room from an unobserved or administratively removed entity.
+ * Main-thread combat lifecycle. The service owns required mob sets and
+ * repairs missing enemies without requiring an administrator to unlock a room.
  */
 public final class CombatRoomService {
     private final CombatMobGateway mobs;
@@ -171,6 +171,9 @@ public final class CombatRoomService {
         if (instance == null) return EventResult.ignored("unknown combat instance");
         MutableRoom room = room(instance, roomIndex).orElse(null);
         if (room == null) return EventResult.ignored("unknown combat room");
+        if (kind == EventKind.REMOVED && !chunks.isLoaded(room.room.bounds())) {
+            return EventResult.ignored("room chunks are unloading; defer recovery");
+        }
         MobRequirement requirement = room.byEntity.remove(entityId);
         if (requirement == null) return EventResult.ignored("entity is not a required mob");
         requirement.entityId = null;
@@ -185,11 +188,7 @@ public final class CombatRoomService {
         if (room.state != RoomState.ACTIVE) return EventResult.ignored("room is not active");
         requirement.state = MobState.MISSING;
         if (!recover(instance, room, requirement)) {
-            room.state = RoomState.FAILED;
-            room.detail = "room " + room.room.index() + " respawn exhausted: " + requirement.detail;
-            releaseEntities(room);
-            releaseTickets(instance, room);
-            diagnose(instance, room.detail);
+            resolveMissing(instance, room, requirement);
             return EventResult.accepted(room.detail, snapshot(instance));
         }
         room.detail = "required mob respawned";
@@ -240,9 +239,9 @@ public final class CombatRoomService {
         MutableRoom room = room(instance, roomIndex).orElse(null);
         if (room == null) return ClearResult.failure("unknown combat room " + roomIndex);
         room.requirements.forEach(requirement -> {
+            requirement.adminSuppressed = true;
             if (requirement.entityId != null) mobs.remove(requirement.entityId);
             requirement.entityId = null;
-            requirement.adminSuppressed = true;
             requirement.state = MobState.DEAD;
         });
         room.byEntity.clear();
@@ -310,26 +309,33 @@ public final class CombatRoomService {
         if (instance == null) return ReconcileResult.failure("unknown combat instance " + instanceId);
         int repaired = 0;
         for (MutableRoom room : instance.rooms) {
-            if (room.state != RoomState.ACTIVE) continue;
+            if (room.state != RoomState.ACTIVE || !chunks.isLoaded(room.room.bounds())) continue;
             for (MobRequirement requirement : room.requirements) {
                 if (requirement.entityId == null || requirement.adminSuppressed || mobs.isValid(requirement.entityId)) continue;
-                UUID missing = requirement.entityId;
-                room.byEntity.remove(missing);
+                room.byEntity.remove(requirement.entityId);
                 requirement.entityId = null;
                 requirement.state = MobState.MISSING;
                 if (recover(instance, room, requirement)) repaired++;
                 else {
-                    room.state = RoomState.FAILED;
-                    room.detail = "room " + room.room.index() + " respawn exhausted: " + requirement.detail;
-                    releaseEntities(room);
-                    releaseTickets(instance, room);
-                    diagnose(instance, room.detail);
-                    return ReconcileResult.success("reconciliation exhausted on " + missing, repaired,
-                            snapshot(instance));
+                    resolveMissing(instance, room, requirement);
                 }
             }
         }
         return ReconcileResult.success("reconciled missing required mobs=" + repaired, repaired, snapshot(instance));
+    }
+
+    public synchronized void reconcileAll() {
+        new ArrayList<>(instances.keySet()).forEach(this::reconcile);
+    }
+
+    private void resolveMissing(MutableInstance instance, MutableRoom room, MobRequirement requirement) {
+        diagnose(instance, "room " + room.room.index() + " released missing mob " + requirement.mobId
+                + " after bounded recovery: " + requirement.detail);
+        // No death event or loot is awarded for an enemy that disappeared.
+        requirement.state = MobState.DEAD;
+        requirement.detail = "missing mob released after recovery exhausted";
+        room.detail = requirement.detail;
+        maybeClear(instance, room);
     }
 
     public synchronized List<RoomSnapshot> rooms(UUID instanceId) {
