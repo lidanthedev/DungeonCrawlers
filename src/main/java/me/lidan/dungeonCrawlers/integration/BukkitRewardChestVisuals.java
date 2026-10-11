@@ -6,6 +6,8 @@ import org.bukkit.Material;
 import org.bukkit.Particle;
 import org.bukkit.entity.BlockDisplay;
 import org.bukkit.entity.Display;
+import org.bukkit.entity.ItemDisplay;
+import org.bukkit.inventory.ItemStack;
 import org.joml.Matrix4f;
 
 import java.util.ArrayList;
@@ -35,9 +37,21 @@ public final class BukkitRewardChestVisuals implements AutoCloseable {
             block(visual, Material.BEACON, -.25, .05, -.25, .5, .5, .5);
             block(visual, Material.YELLOW_STAINED_GLASS, -.16, .55, -.16, .32, height, .32);
             block(visual, Material.WHITE_STAINED_GLASS, -.06, .55, -.06, .12, height, .12);
+            ItemDisplay chestDisplay = center.getWorld().spawn(center.clone().add(0, -.5, 0), ItemDisplay.class);
+            visual.displays().add(chestDisplay);
+            chestDisplay.setItemStack(new ItemStack(Material.ENDER_CHEST));
+            chestDisplay.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
+            chestDisplay.setTransformationMatrix(new Matrix4f().scale(1.01f));
+            chestDisplay.setPersistent(false);
+            chestDisplay.setGravity(false);
+            chestDisplay.setInvulnerable(true);
+            chestDisplay.setBrightness(new Display.Brightness(15, 15));
+            chestDisplay.setViewRange(3);
+            chestDisplay.setGlowing(true);
+            chestDisplay.setGlowColorOverride(Color.YELLOW);
             visuals.put(instance, visual);
         } catch (RuntimeException error) {
-            visual.displays().forEach(BlockDisplay::remove);
+            visual.displays().forEach(Display::remove);
             throw error;
         }
     }
@@ -64,7 +78,7 @@ public final class BukkitRewardChestVisuals implements AutoCloseable {
         visuals.entrySet().removeIf(entry -> {
             Visual visual = entry.getValue();
             if (!instanceOpen.test(entry.getKey()) || visual.displays().stream().anyMatch(display -> !display.isValid())) {
-                visual.displays().forEach(BlockDisplay::remove);
+                visual.displays().forEach(Display::remove);
                 return true;
             }
             Location center = visual.center();
@@ -80,13 +94,13 @@ public final class BukkitRewardChestVisuals implements AutoCloseable {
 
     private void remove(UUID instance) {
         Visual previous = visuals.remove(instance);
-        if (previous != null) previous.displays().forEach(BlockDisplay::remove);
+        if (previous != null) previous.displays().forEach(Display::remove);
     }
 
     @Override public void close() {
-        visuals.values().forEach(visual -> visual.displays().forEach(BlockDisplay::remove));
+        visuals.values().forEach(visual -> visual.displays().forEach(Display::remove));
         visuals.clear();
     }
 
-    private record Visual(Location center, List<BlockDisplay> displays) { }
+    private record Visual(Location center, List<Display> displays) { }
 }

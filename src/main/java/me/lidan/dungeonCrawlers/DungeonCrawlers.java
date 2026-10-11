@@ -656,7 +656,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         rewards.register(new RewardEntitlementService.Completion(snapshot.instanceId(),
                 context.seed(), phaseClock().instant(), score.finalSnapshot(), participants,
                 context.floor().rewards(), context.difficulty().tier()));
-        recordProgression(snapshot.instanceId(), true, null);
+        var dungeonXp = recordProgression(snapshot.instanceId(), true, null);
         var point = snapshot.rewardChest();
         world.getBlockAt(point.x(), point.y(), point.z()).setType(org.bukkit.Material.ENDER_CHEST, false);
         try {
@@ -668,12 +668,13 @@ public final class DungeonCrawlers extends JavaPlugin {
                 .map(getServer()::getPlayer)
                 .filter(java.util.Objects::nonNull)
                 .forEach(player -> DungeonMessages.send(player, ScoreResultRenderer.render(score,
-                        scoreService.freeTime(), scoreService.penaltyInterval())));
+                        scoreService.freeTime(), scoreService.penaltyInterval(), context.floor().displayName(),
+                        context.difficulty().tier().displayName(), dungeonXp.getOrDefault(player.getUniqueId(), 0D))));
         return true;
     }
 
     private void handleRunFailure(UUID instanceId) {
-        recordProgression(instanceId, false, null);
+        var dungeonXp = recordProgression(instanceId, false, null);
         if (phaseNine != null) phaseNine.cleanup(instanceId);
         var context = generation.layoutContext(instanceId).orElse(null);
         var run = runPreparation.info(instanceId).orElse(null);
@@ -693,7 +694,8 @@ public final class DungeonCrawlers extends JavaPlugin {
                     score.finalSnapshot(), participants, context.floor().rewards(), context.difficulty().tier()));
             run.participants().stream().map(getServer()::getPlayer).filter(java.util.Objects::nonNull)
                     .forEach(player -> DungeonMessages.send(player, ScoreResultRenderer.render(score,
-                            scoreService.freeTime(), scoreService.penaltyInterval())));
+                            scoreService.freeTime(), scoreService.penaltyInterval(), context.floor().displayName(),
+                            context.difficulty().tier().displayName(), dungeonXp.getOrDefault(player.getUniqueId(), 0D))));
         } catch (RuntimeException exception) {
             getLogger().warning("instance=" + instanceId + " failed result persistence failed: "
                     + exception.getClass().getSimpleName() + ": " + exception.getMessage());
@@ -936,15 +938,18 @@ public final class DungeonCrawlers extends JavaPlugin {
         return true;
     }
 
-    private void recordProgression(UUID instance, boolean success, UUID onlyPlayer) {
+    private Map<UUID, Double> recordProgression(UUID instance, boolean success, UUID onlyPlayer) {
         var context = generation.layoutContext(instance).orElse(null);
         var run = runPreparation.info(instance).orElse(null);
-        if (context == null || !context.progressionEnabled() || run == null || run.startedAt() == null) return;
+        if (context == null || !context.progressionEnabled() || run == null || run.startedAt() == null) return Map.of();
+        Map<UUID, Double> dungeonXp = new java.util.HashMap<>();
         for (UUID participant : onlyPlayer == null ? run.participants() : List.of(onlyPlayer)) {
             if (onlyPlayer == null && lifecycle.player(instance, participant)
                     .map(value -> value.state() == PlayerLifecycleService.PlayerState.REMOVED).orElse(true)) continue;
-            progression.record(instance, participant, context.floor(), context.difficulty(), success);
+            var outcome = progression.record(instance, participant, context.floor(), context.difficulty(), success);
+            dungeonXp.put(participant, outcome.xp());
         }
+        return dungeonXp;
     }
 
     private void deliverDungeonXp() {

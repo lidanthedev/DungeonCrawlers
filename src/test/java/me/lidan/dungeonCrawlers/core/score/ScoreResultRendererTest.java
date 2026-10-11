@@ -8,8 +8,33 @@ import java.time.Duration;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class ScoreResultRendererTest {
+    @Test
+    void completionShowsFloorDifficultyAndAwardedXpLastWithoutLosingHovers() {
+        var report = new ScoreService().calculateReport(
+                new ScoreService.ScoreInput(true, 0, Duration.ofMinutes(8), 12, 12), List.of());
+        var rendered = ScoreResultRenderer.render(report, Duration.ofMinutes(12), Duration.ofSeconds(20),
+                "<gold>Floor I</gold>", "Hard", 125.5);
+        assertEquals("Dungeon Complete!\nFloor: Floor I\nDifficulty: Hard\nDungeon Score: 300\nRank: S+\n"
+                + "Skill: 100/100\nTime: 100/100\nExploration: 100/100\nBonus: 0/100\nDungeon XP: +125.5",
+                PlainTextComponentSerializer.plainText().serialize(rendered));
+        assertTrue(hoverText(rendered).contains("Secrets: 12/12"));
+    }
+
+    @Test
+    void debugCompletionCanShowZeroXpAndWholeXpHasNoDecimalSuffix() {
+        var report = new ScoreService().calculateReport(
+                new ScoreService.ScoreInput(true, 0, Duration.ofMinutes(8), 0, 0), List.of());
+        for (double xp : new double[]{0, 4500}) {
+            var rendered = ScoreResultRenderer.render(report, Duration.ofMinutes(12), Duration.ofSeconds(20),
+                    "Floor III", "Impossible", xp);
+            assertTrue(PlainTextComponentSerializer.plainText().serialize(rendered)
+                    .endsWith("Dungeon XP: +" + (long) xp));
+        }
+    }
+
     @Test
     void resultHasMultilineCategoryAndBonusHoverDetails() {
         ScoreService.ScoreReport report = new ScoreService().calculateReport(

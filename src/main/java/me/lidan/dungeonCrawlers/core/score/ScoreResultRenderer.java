@@ -31,6 +31,12 @@ public final class ScoreResultRenderer {
         return render(report, freeTime, DEFAULT_PENALTY_INTERVAL);
     }
 
+    public static Component render(ScoreService.ScoreReport report, Duration freeTime, Duration penaltyInterval,
+                                   String floor, String difficulty, double dungeonXp) {
+        return render(report.result(), report.snapshot(), requirePositive("free time", freeTime),
+                requirePositive("penalty interval", penaltyInterval), floor, difficulty, dungeonXp);
+    }
+
     public static Component render(ScoreService.ScoreResult result) {
         Objects.requireNonNull(result, "result");
         return render(result, null, DEFAULT_FREE_TIME, DEFAULT_PENALTY_INTERVAL);
@@ -38,10 +44,20 @@ public final class ScoreResultRenderer {
 
     private static Component render(ScoreService.ScoreResult result, ScoreService.FinalScoreSnapshot snapshot,
                                     Duration freeTime, Duration penaltyInterval) {
+        return render(result, snapshot, freeTime, penaltyInterval, null, null, 0);
+    }
+
+    private static Component render(ScoreService.ScoreResult result, ScoreService.FinalScoreSnapshot snapshot,
+                                    Duration freeTime, Duration penaltyInterval, String floor,
+                                    String difficulty, double dungeonXp) {
         boolean successful = snapshot == null || snapshot.successful();
         Component rendered = MiniMessageUtils.miniMessage(successful
                 ? "<green><bold>Dungeon Complete!</bold></green>"
                 : "<red><bold>Dungeon Failed!</bold></red>");
+        if (floor != null) {
+            rendered = line(rendered, "<gray>Floor: <white>" + floor + "</white></gray>");
+            rendered = line(rendered, "<gray>Difficulty: <white>" + escape(difficulty) + "</white></gray>");
+        }
         rendered = line(rendered, "<gray>Dungeon Score: <white>" + result.total() + "</white></gray>");
         rendered = line(rendered, "<gray>Rank: " + rankColor(result.rank())
                 + displayRank(result.rank()) + "</" + rankColorName(result.rank()) + "></gray>");
@@ -53,6 +69,11 @@ public final class ScoreResultRenderer {
                 explorationDetails(result, snapshot)));
         rendered = rendered.append(Component.newline()).append(category("Bonus", result.bonus(),
                 bonusDetails(result)));
+        if (floor != null) {
+            rendered = line(rendered, "<gray>Dungeon XP: <aqua>+"
+                    + java.math.BigDecimal.valueOf(dungeonXp).stripTrailingZeros().toPlainString()
+                    + "</aqua></gray>");
+        }
         return rendered;
     }
 
