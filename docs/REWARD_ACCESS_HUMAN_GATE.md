@@ -30,3 +30,31 @@ Completed boss reward chests gain a small virtual Beacon model, a full-bright go
 Java 21 clean build passed all 428 tests and external-plugin shading verification. Regression coverage verifies beam height, upright geometry, no obstruction reads/block changes, particle emission, replacement, invalid entities, instance closure, idempotent shutdown and partial-spawn cleanup. JAR SHA-256: `9b6979ea5cd76fce27e02808828665de366ec9fdce4af18fa9d3ce11bd0674f5`. Client appearance and a completed live boss chest remain unchecked.
 
 Deployed to Modern Cave Crawl (`fa696721`) with matching local/remote checksum after confirming zero active instances. `cc reload all` enabled DungeonCrawlers and recovery reported `startsEnabled=true`; configuration validation and automated compatibility checks passed. Existing Human Gate 0 remains pending its separate manual checks.
+
+## Completion details and chest glow, 2026-10-11
+
+Completion and failure messages show the configured floor name and difficulty below
+the heading, then finish with `Dungeon XP: +<amount>`. The amount comes from each
+player's persisted progression outcome, including the difficulty multiplier. Debug
+runs and players without an outcome show zero. Native skill delivery continues through
+the existing once-only grant path; the result reports the recorded award, not a delivery
+receipt or a later native skill-event adjustment. Category hover details remain intact.
+
+The reward chest gains a full-bright, slightly enlarged Ender Chest ItemDisplay with
+a yellow glowing outline, centered on the physical chest. It has no collision and
+shares the beacon's nonpersistent replacement, invalidation, closure and shutdown
+cleanup. The physical chest still handles interactions.
+
+Source commit `2eff47b`; Java 21 clean build passed 440 tests and the external API
+shading check. Regression tests verify the visible result lines, XP formatting,
+zero-XP output, preserved hovers, chest position/item/glow, and display cleanup.
+Local and remote JAR SHA-256 match:
+`14284f1f5b1774c2ecf1367f4637f5a5c1d8c787cffa504fa78e5785459187a6`.
+
+Deployed to Modern Cave Crawl (`fa696721`). The existing run was already COMPLETED
+before reload. DungeonCrawlers enabled at 15:00:09 UTC and recovery reported
+`startsEnabled=true` at 15:00:22. Configuration validation passed at 15:00:54 and
+automated compatibility passed at 15:00:57. The broad reload briefly triggered a
+watchdog dump and recovered. Existing Human Gate 0 remains blocked on separate
+manual checks. Actual client chest appearance and a new completed-run message
+have not been visually checked.
