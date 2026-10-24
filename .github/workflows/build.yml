@@ -20,6 +20,23 @@ jobs:
           java-version: '21'
           cache: gradle
       - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: lidanthedev/CaveCrawlers
+          ref: ae6daeb8c6073d4829b450b4ed0cee3c103930ec # CaveCrawlers develop; unmodified native XP API
+          path: .ci-dependencies/CaveCrawlers
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: lidanthedev/CaveCrawlAddon
+          ref: 54ed322a9d1ccdedbfb188bfc876baab16861ae8
+          path: .ci-dependencies/CaveCrawlAddon
+          ssh-key: ${{ secrets.CAVECRAWLADDON_DEPLOY_KEY }}
+          persist-credentials: false
+      - name: Install native compile-only APIs
+        run: |
+          ./.ci-dependencies/CaveCrawlers/gradlew -p .ci-dependencies/CaveCrawlers publishToMavenLocal --no-daemon
+          ./.ci-dependencies/CaveCrawlAddon/gradlew -p .ci-dependencies/CaveCrawlAddon publishToMavenLocal --no-daemon
       - run: ./gradlew clean build --no-daemon
       - uses: actions/upload-artifact@v4
         with:

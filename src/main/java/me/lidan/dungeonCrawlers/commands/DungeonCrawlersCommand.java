@@ -74,7 +74,7 @@ public final class DungeonCrawlersCommand {
     private final DurableRepository durableRepository;
     private final BoostedCustomConfig mainConfig;
     private final StateTransitionService transitions = new StateTransitionService();
-    private final ScoreService scores = new ScoreService();
+    private final ScoreService scores;
     private final GenerationService generation;
     private final Consumer<UUID> preparationCancel;
     private final BooleanSupplier reloadBlocked;
@@ -113,6 +113,17 @@ public final class DungeonCrawlersCommand {
                                   DurableRepository durableRepository, GenerationService generation,
                                   Consumer<UUID> preparationCancel, BooleanSupplier reloadBlocked,
                                   BooleanSupplier debugEnabled, Consumer<Boolean> debugUpdate) {
+        this(plugin, compatibility, mainConfig, configRegistry, reservations, durableRepository, generation,
+                preparationCancel, reloadBlocked, debugEnabled, debugUpdate, new ScoreService());
+    }
+
+    public DungeonCrawlersCommand(JavaPlugin plugin, CompatibilityService compatibility,
+                                  BoostedCustomConfig mainConfig,
+                                  ConfigRegistryService configRegistry, PlayerReservationService reservations,
+                                  DurableRepository durableRepository, GenerationService generation,
+                                  Consumer<UUID> preparationCancel, BooleanSupplier reloadBlocked,
+                                  BooleanSupplier debugEnabled, Consumer<Boolean> debugUpdate,
+                                  ScoreService scores) {
         this.plugin = plugin;
         this.compatibility = compatibility;
         this.mainConfig = mainConfig;
@@ -124,6 +135,7 @@ public final class DungeonCrawlersCommand {
         this.reloadBlocked = reloadBlocked;
         this.debugEnabled = debugEnabled;
         this.debugUpdate = debugUpdate;
+        this.scores = java.util.Objects.requireNonNull(scores, "scores");
         this.parties = PartyProviders.forServer(plugin.getServer());
     }
 
@@ -133,7 +145,7 @@ public final class DungeonCrawlersCommand {
         DungeonMessages.send(sender, DungeonMessages.info("Commands. Click a line to fill in a command."));
         DungeonGenerationCommand.suggest(sender, "<green>Start a solo or party dungeon</green>",
                 "/dungeon start floor_1");
-        DungeonGenerationCommand.suggest(sender, "<green>Choose your class</green>", "/dungeon class list");
+        DungeonGenerationCommand.suggest(sender, "<green>Choose your class</green>", "/dungeon class menu");
         DungeonGenerationCommand.suggest(sender, "<green>Check your dungeon location</green>", "/dungeon whereami");
         DungeonGenerationCommand.suggest(sender, "<green>Open completed rewards</green>", "/dungeon reward open ");
         if (sender.hasPermission("dungeoncrawlers.admin.generation")) {
@@ -142,6 +154,10 @@ public final class DungeonCrawlersCommand {
                     "/dungeon instance list");
             DungeonGenerationCommand.suggest(sender, "<yellow>Inspect an instance</yellow>",
                     "/dungeon instance info ");
+        }
+        if (sender.hasPermission("dungeoncrawlers.admin.room")) {
+            DungeonGenerationCommand.suggest(sender, "<yellow>Get the room marker kit</yellow>",
+                    "/dungeon room setup");
         }
         if (sender.hasPermission("dungeoncrawlers.admin.reload")) {
             DungeonGenerationCommand.suggest(sender, "<yellow>Validate and reload configuration</yellow>",
@@ -365,6 +381,8 @@ public final class DungeonCrawlersCommand {
         sendField(sender, "minimum floor", value.minFloor());
         sendField(sender, "maximum floor", value.maxFloor() == null ? "none" : value.maxFloor());
         sendField(sender, "weight", value.weight());
+        sendField(sender, "class selector marker", value.type() == me.lidan.dungeonCrawlers.config.registry.ConfigModels.RoomType.START
+                ? "optional orange concrete powder (maximum 1)" : "not valid for this room type");
     }
 
     @Subcommand("class info")
@@ -425,7 +443,8 @@ public final class DungeonCrawlersCommand {
         try {
             var report = scores.calculateReport(new ScoreService.ScoreInput(successful, deaths,
                     Duration.ofMinutes(elapsedMinutes), foundSecrets, totalSecrets), List.of());
-            DungeonMessages.send(sender, ScoreResultRenderer.render(report));
+            DungeonMessages.send(sender, ScoreResultRenderer.render(report, scores.freeTime(),
+                    scores.penaltyInterval()));
         } catch (IllegalArgumentException | ArithmeticException exception) {
             DungeonMessages.send(sender, DungeonMessages.error(exception.getMessage()));
         }

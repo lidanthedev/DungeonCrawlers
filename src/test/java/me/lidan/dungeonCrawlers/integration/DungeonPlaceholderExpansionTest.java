@@ -1,5 +1,7 @@
 package me.lidan.dungeonCrawlers.integration;
 
+import me.lidan.dungeonCrawlers.config.registry.ConfigModels.ClassDefinition;
+import me.lidan.dungeonCrawlers.config.registry.ConfigModels.StatModifiers;
 import me.lidan.dungeonCrawlers.core.generation.GenerationService;
 import me.lidan.dungeonCrawlers.core.lifecycle.PlayerLifecycleService;
 import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
@@ -10,7 +12,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockbukkit.mockbukkit.MockBukkit;
+import org.bukkit.Material;
 
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -71,6 +75,31 @@ class DungeonPlaceholderExpansionTest {
                 "player_exploration_score", "player_bonus_score"}) {
             assertEquals("0", expansion.onRequest(player, key));
         }
+    }
+
+    @Test
+    void classPlaceholdersReadTheRunSelectionAndLockAfterPreparing() {
+        RunPreparationService runs = mock(RunPreparationService.class);
+        RunPreparationService.RunSnapshot run = mock(RunPreparationService.RunSnapshot.class);
+        OfflinePlayer player = mock(OfflinePlayer.class);
+        when(player.getUniqueId()).thenReturn(PLAYER);
+        when(run.instanceId()).thenReturn(INSTANCE);
+        when(run.state()).thenReturn(RunPreparationService.RunState.PREPARING);
+        when(run.selectedClasses()).thenReturn(Map.of(PLAYER, "tank"));
+        when(runs.instanceFor(PLAYER)).thenReturn(Optional.of(INSTANCE));
+        when(runs.info(INSTANCE)).thenReturn(Optional.of(run));
+        when(runs.selectedClass(PLAYER)).thenReturn(Optional.of(new ClassDefinition(
+                "tank", "<green>Tank", Material.SHIELD, StatModifiers.empty())));
+
+        DungeonPlaceholderExpansion expansion = expansion(runs);
+
+        assertEquals("true", expansion.onRequest(player, "player_has_class"));
+        assertEquals("Tank", expansion.onRequest(player, "player_class"));
+        assertEquals("tank", expansion.onRequest(player, "player_class_id"));
+        assertEquals("false", expansion.onRequest(player, "player_class_locked"));
+
+        when(run.state()).thenReturn(RunPreparationService.RunState.RUNNING);
+        assertEquals("true", expansion.onRequest(player, "player_class_locked"));
     }
 
     private static DungeonPlaceholderExpansion expansion(RunPreparationService runs) {

@@ -29,6 +29,14 @@ class RunPreparationServiceTest {
     private static final Instant START = Instant.parse("2026-01-01T00:00:00Z");
 
     @Test
+    void classSelectionIsOpenOnlyBeforeTheRunStarts() {
+        for (RunPreparationService.RunState state : RunPreparationService.RunState.values()) {
+            assertEquals(state == RunPreparationService.RunState.PREPARING,
+                    RunPreparationService.classSelectionOpen(state), state.name());
+        }
+    }
+
+    @Test
     void locksDoorUntilEveryMemberSelectsAndStartsOnce() {
         UUID first = UUID.randomUUID();
         UUID second = UUID.randomUUID();

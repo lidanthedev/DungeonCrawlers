@@ -1,5 +1,6 @@
 package me.lidan.dungeonCrawlers.core.portal;
 
+import me.lidan.dungeonCrawlers.config.DungeonTimings;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.FloorDefinition;
 import me.lidan.dungeonCrawlers.core.encounter.BossEntityGateway;
 import me.lidan.dungeonCrawlers.core.encounter.EncounterFactory;
@@ -25,8 +26,9 @@ import java.util.function.Consumer;
 
 /** Owns the portal countdown and the isolated boss encounter for a generated run. */
 public final class PortalEncounterService {
-    public static final Duration PORTAL_COUNTDOWN = Duration.ofSeconds(5);
-    public static final Duration BOSS_SPAWN_DELAY = Duration.ofSeconds(1);
+    private static final DungeonTimings DEFAULT_TIMINGS = DungeonTimings.defaults();
+    public static final Duration PORTAL_COUNTDOWN = DEFAULT_TIMINGS.portalCountdown();
+    public static final Duration BOSS_SPAWN_DELAY = DEFAULT_TIMINGS.bossSpawnDelay();
 
     private final CentralUpdateService updates;
     private final RunPreparationService runs;
@@ -36,6 +38,7 @@ public final class PortalEncounterService {
     private final Clock clock;
     private final Consumer<String> diagnostics;
     private final CompletionFinalizer completionEffects;
+    private final DungeonTimings timings;
     private final Map<UUID, MutableInstance> instances = new LinkedHashMap<>();
 
     public PortalEncounterService(CentralUpdateService updates, RunPreparationService runs,
@@ -62,6 +65,15 @@ public final class PortalEncounterService {
                                   EncounterFactoryRegistry factories, BossEntityGateway entities,
                                   ParticipantGateway participants, Clock clock,
                                   Consumer<String> diagnostics, CompletionFinalizer completionEffects) {
+        this(updates, runs, factories, entities, participants, clock, diagnostics, completionEffects,
+                DEFAULT_TIMINGS);
+    }
+
+    public PortalEncounterService(CentralUpdateService updates, RunPreparationService runs,
+                                  EncounterFactoryRegistry factories, BossEntityGateway entities,
+                                  ParticipantGateway participants, Clock clock,
+                                  Consumer<String> diagnostics, CompletionFinalizer completionEffects,
+                                  DungeonTimings timings) {
         this.updates = Objects.requireNonNull(updates, "updates");
         this.runs = Objects.requireNonNull(runs, "runs");
         this.factories = Objects.requireNonNull(factories, "factories");
@@ -70,6 +82,7 @@ public final class PortalEncounterService {
         this.clock = Objects.requireNonNull(clock, "clock");
         this.diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
         this.completionEffects = Objects.requireNonNull(completionEffects, "completionEffects");
+        this.timings = Objects.requireNonNull(timings, "timings");
     }
 
     public synchronized RegistrationResult register(UUID instanceId, FloorDefinition floor, LayoutPlan plan) {
@@ -124,8 +137,8 @@ public final class PortalEncounterService {
             return PortalResult.failure("central update is not registered for this instance");
         }
         state.owner = playerId;
-        state.deadline = clock.instant().plus(PORTAL_COUNTDOWN);
-        state.lastAnnouncedCountdown = (int) PORTAL_COUNTDOWN.toSeconds();
+        state.deadline = clock.instant().plus(timings.portalCountdown());
+        state.lastAnnouncedCountdown = (int) timings.portalCountdown().toSeconds();
         state.status = Status.COUNTDOWN;
         state.detail = "portal countdown started by " + participants.displayName(playerId);
         announceCountdown(state, state.lastAnnouncedCountdown);
@@ -320,7 +333,7 @@ public final class PortalEncounterService {
                     return failStart(state, "boss teleport failed for " + active.get(index));
                 }
             }
-            state.bossSpawnAt = clock.instant().plus(BOSS_SPAWN_DELAY);
+            state.bossSpawnAt = clock.instant().plus(timings.bossSpawnDelay());
         } catch (RuntimeException exception) {
             return failStart(state, exception.getClass().getSimpleName() + ": " + exception.getMessage());
         }

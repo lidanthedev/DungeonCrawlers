@@ -11,6 +11,7 @@ import com.google.gson.JsonPrimitive;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonSerializationContext;
 import com.google.gson.JsonSerializer;
+import me.lidan.dungeonCrawlers.config.DungeonTimings;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.RewardDefinition;
 import me.lidan.dungeonCrawlers.core.claim.OfferMode;
 import me.lidan.dungeonCrawlers.core.random.NamedRandomFactory;
@@ -44,9 +45,10 @@ import java.util.UUID;
  * second time. Delivery and payment deliberately live in the next phase.</p>
  */
 public final class RewardEntitlementService {
-    public static final Duration LIVE_WINDOW = Duration.ofMinutes(5);
-    public static final Duration RECOVERED_WINDOW = Duration.ofHours(24);
-    public static final Duration RECOVERED_SESSION_WINDOW = Duration.ofMinutes(5);
+    private static final DungeonTimings DEFAULT_TIMINGS = DungeonTimings.defaults();
+    public static final Duration LIVE_WINDOW = DEFAULT_TIMINGS.liveRewardWindow();
+    public static final Duration RECOVERED_WINDOW = DEFAULT_TIMINGS.recoveredRewardWindow();
+    public static final Duration RECOVERED_SESSION_WINDOW = DEFAULT_TIMINGS.recoveredRewardSessionWindow();
 
     private static final String REPOSITORY_NAMESPACE = "reward-entitlements";
     private static final int REPOSITORY_SCHEMA_VERSION = 1;
@@ -55,29 +57,41 @@ public final class RewardEntitlementService {
     private final RewardCatalog catalog;
     private final RewardRoller roller;
     private final DurableRepository repository;
+    private final DungeonTimings timings;
     private final Gson gson = new GsonBuilder().disableHtmlEscaping()
             .registerTypeAdapter(Instant.class, new InstantAdapter())
             .registerTypeAdapter(Duration.class, new DurationAdapter()).create();
     private final Map<UUID, RunState> runs = new LinkedHashMap<>();
 
     public RewardEntitlementService(Clock clock, RewardCatalog catalog) {
-        this(clock, catalog, new RewardRoller(), null);
+        this(clock, catalog, new RewardRoller(), null, DEFAULT_TIMINGS);
     }
 
     public RewardEntitlementService(Clock clock, RewardCatalog catalog, DurableRepository repository) {
-        this(clock, catalog, new RewardRoller(), repository);
+        this(clock, catalog, new RewardRoller(), repository, DEFAULT_TIMINGS);
+    }
+
+    public RewardEntitlementService(Clock clock, RewardCatalog catalog, DurableRepository repository,
+                                    DungeonTimings timings) {
+        this(clock, catalog, new RewardRoller(), repository, timings);
     }
 
     RewardEntitlementService(Clock clock, RewardCatalog catalog, RewardRoller roller) {
-        this(clock, catalog, roller, null);
+        this(clock, catalog, roller, null, DEFAULT_TIMINGS);
     }
 
     RewardEntitlementService(Clock clock, RewardCatalog catalog, RewardRoller roller,
                              DurableRepository repository) {
+        this(clock, catalog, roller, repository, DEFAULT_TIMINGS);
+    }
+
+    RewardEntitlementService(Clock clock, RewardCatalog catalog, RewardRoller roller,
+                             DurableRepository repository, DungeonTimings timings) {
         this.clock = Objects.requireNonNull(clock, "clock");
         this.catalog = Objects.requireNonNull(catalog, "catalog");
         this.roller = Objects.requireNonNull(roller, "roller");
         this.repository = repository;
+        this.timings = Objects.requireNonNull(timings, "timings");
         restore();
     }
 
@@ -92,7 +106,7 @@ public final class RewardEntitlementService {
                 if (!participant.activeAtCompletion()) continue;
                 OfferMode mode = participant.onlineAtCompletion() ? OfferMode.LIVE : OfferMode.RECOVERED;
                 Instant outerDeadline = completion.completedAt().plus(
-                        mode == OfferMode.LIVE ? LIVE_WINDOW : RECOVERED_WINDOW);
+                        mode == OfferMode.LIVE ? timings.liveRewardWindow() : timings.recoveredRewardWindow());
                 Instant sessionStarted = mode == OfferMode.LIVE ? completion.completedAt() : null;
                 Instant sessionExpires = mode == OfferMode.LIVE ? outerDeadline : null;
                 Map<String, RewardOffer> offers = rollOffers(completion, participant.playerId());
@@ -141,7 +155,7 @@ public final class RewardEntitlementService {
         if (current.sessionExpiresAt() != null && now.isBefore(current.sessionExpiresAt())) {
             return Optional.of(current);
         }
-        PlayerEntitlement recovered = current.startRecoveredSession(now);
+        PlayerEntitlement recovered = current.startRecoveredSession(now, timings.recoveredRewardSessionWindow());
         state.players.put(checkedPlayer, recovered);
         state.recordVersion++;
         try {
@@ -366,9 +380,9 @@ public final class RewardEntitlementService {
                     && (sessionExpiresAt == null || now.isBefore(sessionExpiresAt));
         }
 
-        private PlayerEntitlement startRecoveredSession(Instant now) {
+        private PlayerEntitlement startRecoveredSession(Instant now, Duration sessionWindow) {
             return new PlayerEntitlement(playerId, mode, outerDeadline, now,
-                    now.plus(RECOVERED_SESSION_WINDOW), offers);
+                    now.plus(sessionWindow), offers);
         }
     }
 

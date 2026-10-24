@@ -1,6 +1,7 @@
 package me.lidan.dungeonCrawlers.commands;
 
 import me.lidan.cavecrawlers.utils.MiniMessageUtils;
+import me.lidan.dungeonCrawlers.config.DungeonTimings;
 import me.lidan.dungeonCrawlers.config.registry.ConfigRegistryService;
 import me.lidan.dungeonCrawlers.core.generation.GenerationService;
 import me.lidan.dungeonCrawlers.core.generation.SlotAllocator;
@@ -42,7 +43,7 @@ import java.util.function.Function;
 
 @Command("dungeon")
 public final class DungeonGenerationCommand {
-    public static final Duration TELEPORT_PERMIT_DURATION = Duration.ofSeconds(5);
+    public static final Duration TELEPORT_PERMIT_DURATION = DungeonTimings.defaults().teleportPermit();
     private final ConfigRegistryService configRegistry;
     private final PartyProvider parties;
     private final PartySnapshotPolicy partyPolicy = new PartySnapshotPolicy();
@@ -59,6 +60,7 @@ public final class DungeonGenerationCommand {
     private final Function<UUID, ScoreService.FinalScoreSnapshot> scores;
     private final CombatRoomService combat;
     private final PortalEncounterService portal;
+    private final Duration teleportPermitDuration;
 
     public DungeonGenerationCommand(ConfigRegistryService configRegistry, PartyProvider parties,
                                     GenerationService generation, Server server, String generationWorldName,
@@ -96,6 +98,20 @@ public final class DungeonGenerationCommand {
                                     SecretDiscoveryService secrets,
                                     Function<UUID, ScoreService.FinalScoreSnapshot> scores,
                                     CombatRoomService combat, PortalEncounterService portal) {
+        this(configRegistry, parties, generation, server, generationWorldName, teleportPermits, clock,
+                preparationCancel, runs, debugEnabled, lifecycle, secrets, scores, combat, portal,
+                TELEPORT_PERMIT_DURATION);
+    }
+
+    public DungeonGenerationCommand(ConfigRegistryService configRegistry, PartyProvider parties,
+                                    GenerationService generation, Server server, String generationWorldName,
+                                    TeleportPermitService teleportPermits, Clock clock,
+                                    Consumer<UUID> preparationCancel, RunPreparationService runs,
+                                    BooleanSupplier debugEnabled, PlayerLifecycleService lifecycle,
+                                    SecretDiscoveryService secrets,
+                                    Function<UUID, ScoreService.FinalScoreSnapshot> scores,
+                                    CombatRoomService combat, PortalEncounterService portal,
+                                    Duration teleportPermitDuration) {
         this.configRegistry = configRegistry;
         this.parties = parties;
         this.generation = generation;
@@ -111,6 +127,11 @@ public final class DungeonGenerationCommand {
         this.scores = scores;
         this.combat = combat;
         this.portal = portal;
+        this.teleportPermitDuration = java.util.Objects.requireNonNull(teleportPermitDuration,
+                "teleportPermitDuration");
+        if (teleportPermitDuration.isZero() || teleportPermitDuration.isNegative()) {
+            throw new IllegalArgumentException("teleport permit duration must be positive");
+        }
     }
 
     @Subcommand("instance generate-debug")
@@ -173,7 +194,7 @@ public final class DungeonGenerationCommand {
             if (world == null) throw new IllegalStateException("generation world is not loaded: " + generationWorldName);
 
             Point destinationPoint = new Point(spawn.point().x(), spawn.point().y() + 1, spawn.point().z());
-            Instant permitExpiry = clock.instant().plus(TELEPORT_PERMIT_DURATION);
+            Instant permitExpiry = clock.instant().plus(teleportPermitDuration);
             teleportPermits.authorize(player.getUniqueId(), Set.of(
                     new TeleportPermitService.Destination(generationWorldName, destinationPoint)),
                     permitExpiry);

@@ -103,6 +103,34 @@ class RewardClaimServiceTest {
     }
 
     @Test
+    void affordabilityUsesTheEconomyProviderWithoutMutatingIt() {
+        EconomyGateway economy = new EconomyGateway() {
+            @Override
+            public String providerIdentity() { return "TestEconomy"; }
+
+            @Override
+            public Optional<Boolean> hasFunds(OfflinePlayer player, double amount) {
+                return Optional.of(amount <= 10);
+            }
+
+            @Override
+            public TransactionResult withdraw(OfflinePlayer player, double amount) {
+                throw new AssertionError("affordability must not withdraw");
+            }
+
+            @Override
+            public TransactionResult deposit(OfflinePlayer player, double amount) {
+                throw new AssertionError("affordability must not deposit");
+            }
+        };
+        RewardClaimService claims = new RewardClaimService(clock(), entitlements(), items(), economy);
+
+        assertEquals(RewardClaimService.Affordability.AFFORDABLE, claims.affordability(player(), 10));
+        assertEquals(RewardClaimService.Affordability.INSUFFICIENT_FUNDS, claims.affordability(player(), 11));
+        assertEquals(RewardClaimService.Affordability.AFFORDABLE, claims.affordability(player(), 0));
+    }
+
+    @Test
     void ambiguousDebitIsReconciliationOnlyAndNotChargedReleasesTheGroup() {
         RewardEntitlementService entitlements = entitlements();
         AtomicInteger withdrawals = new AtomicInteger();

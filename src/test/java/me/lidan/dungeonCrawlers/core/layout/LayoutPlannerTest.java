@@ -174,6 +174,7 @@ class LayoutPlannerTest {
                     Optional.of(new Connector(ConnectorKind.ENTRANCE, new Point(2, 2, 2), targetEntranceFacing)),
                     Optional.of(new Connector(ConnectorKind.EXIT, new Point(2, 2, 4), Facing.SOUTH)),
                     List.of(marker), List.of(marker), List.of(marker), Optional.of(marker), Optional.of(marker),
+                    Optional.of(marker),
                     List.of(new Secret(marker, SecretKind.BLESSING)), Set.of(marker), Set.of(marker), "hash-target");
 
             var result = planner.connectTest(source,
@@ -186,6 +187,7 @@ class LayoutPlannerTest {
             assertEquals(List.of(transformed), placement.normalMobs());
             assertEquals(List.of(transformed), placement.minibossMobs());
             assertEquals(List.of(transformed), placement.playerSpawns());
+            assertEquals(Optional.of(transformed), placement.classSelectorNpc());
             assertEquals(Optional.of(transformed), placement.bossSpawn());
             assertEquals(Optional.of(transformed), placement.rewardChest());
             assertEquals(Set.of(transformed), placement.portalBlocks());

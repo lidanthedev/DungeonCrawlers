@@ -1,5 +1,6 @@
 package me.lidan.dungeonCrawlers.core.claim;
 
+import me.lidan.dungeonCrawlers.config.DungeonTimings;
 import me.lidan.dungeonCrawlers.core.reward.RewardModels.ItemPayload;
 
 import java.time.Duration;
@@ -13,7 +14,7 @@ public record OfferSnapshot(UUID offerId, OfferMode mode, OfferState state, Offe
                             Instant sessionStartedAt, Instant sessionExpiresAt, Instant clockHighWater,
                             UUID attemptId, String provider, UUID accountId, long price,
                             List<ItemPayload> items) {
-    private static final Duration LIVE_WINDOW = Duration.ofMinutes(5);
+    private static final Duration LEGACY_LIVE_WINDOW = DungeonTimings.defaults().liveRewardWindow();
 
     public OfferSnapshot {
         Objects.requireNonNull(offerId, "offerId");
@@ -41,7 +42,11 @@ public record OfferSnapshot(UUID offerId, OfferMode mode, OfferState state, Offe
     }
 
     public Instant claimDeadline() {
-        if (mode == OfferMode.LIVE) return completedAt.plus(LIVE_WINDOW);
+        if (mode == OfferMode.LIVE) {
+            // New claim records persist the entitlement deadline. Keep the fallback for
+            // records written before the configurable timing was introduced.
+            return outerStartDeadline == null ? completedAt.plus(LEGACY_LIVE_WINDOW) : outerStartDeadline;
+        }
         return sessionExpiresAt != null ? sessionExpiresAt : outerStartDeadline;
     }
 

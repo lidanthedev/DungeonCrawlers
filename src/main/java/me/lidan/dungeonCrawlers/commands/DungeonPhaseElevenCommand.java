@@ -68,6 +68,7 @@ public final class DungeonPhaseElevenCommand {
     private final RewardClaimService claims;
     private final Function<UUID, Boolean> onlinePresence;
     private final BooleanSupplier debugEnabled;
+    private final ScoreService scores;
 
     public DungeonPhaseElevenCommand(RewardEntitlementService rewards, GenerationService generation,
                                      RunPreparationService runs, ConfigRegistryService config) {
@@ -100,8 +101,15 @@ public final class DungeonPhaseElevenCommand {
                                      RunPreparationService runs, ConfigRegistryService config,
                                      PlayerLifecycleService lifecycle, RewardClaimService claims,
                                      BooleanSupplier debugEnabled) {
+        this(rewards, generation, runs, config, lifecycle, claims, debugEnabled, new ScoreService());
+    }
+
+    public DungeonPhaseElevenCommand(RewardEntitlementService rewards, GenerationService generation,
+                                     RunPreparationService runs, ConfigRegistryService config,
+                                     PlayerLifecycleService lifecycle, RewardClaimService claims,
+                                     BooleanSupplier debugEnabled, ScoreService scores) {
         this(rewards, generation, runs, config, new CaveItemsAdapter(), lifecycle, claims,
-                playerId -> Bukkit.getPlayer(playerId) != null, debugEnabled);
+                playerId -> Bukkit.getPlayer(playerId) != null, debugEnabled, scores);
     }
 
     DungeonPhaseElevenCommand(RewardEntitlementService rewards, GenerationService generation,
@@ -123,6 +131,15 @@ public final class DungeonPhaseElevenCommand {
                               CaveItemsGateway caveItems, PlayerLifecycleService lifecycle,
                               RewardClaimService claims, Function<UUID, Boolean> onlinePresence,
                               BooleanSupplier debugEnabled) {
+        this(rewards, generation, runs, config, caveItems, lifecycle, claims, onlinePresence,
+                debugEnabled, new ScoreService());
+    }
+
+    DungeonPhaseElevenCommand(RewardEntitlementService rewards, GenerationService generation,
+                              RunPreparationService runs, ConfigRegistryService config,
+                              CaveItemsGateway caveItems, PlayerLifecycleService lifecycle,
+                              RewardClaimService claims, Function<UUID, Boolean> onlinePresence,
+                              BooleanSupplier debugEnabled, ScoreService scores) {
         this.rewards = Objects.requireNonNull(rewards, "rewards");
         this.generation = Objects.requireNonNull(generation, "generation");
         this.runs = Objects.requireNonNull(runs, "runs");
@@ -132,6 +149,7 @@ public final class DungeonPhaseElevenCommand {
         this.claims = claims;
         this.onlinePresence = Objects.requireNonNull(onlinePresence, "onlinePresence");
         this.debugEnabled = Objects.requireNonNull(debugEnabled, "debugEnabled");
+        this.scores = Objects.requireNonNull(scores, "scores");
     }
 
     @Subcommand("reward info")
@@ -384,7 +402,7 @@ public final class DungeonPhaseElevenCommand {
         for (RewardEntitlementService.RewardOffer offer : sortedOffers(entitlement.offers().values())) {
             if (slot >= 17) break;
             int previewSlot = slot++;
-            gui.setItem(previewSlot, rewardItem(offer, event -> {
+            gui.setItem(previewSlot, rewardItem(player, offer, event -> {
                 event.setCancelled(true);
                 if (offer.locked()) {
                     DungeonMessages.send(player,
@@ -437,9 +455,7 @@ public final class DungeonPhaseElevenCommand {
         gui.setItem(PREVIEW_BUY_SLOT, ItemBuilder.from(Material.EMERALD)
                 .name(MiniMessageUtils.miniMessage("<green>PURCHASE</green>"))
                 .lore(List.of(MiniMessageUtils.miniMessage("<gray>Price: <gold>" + priceLabel(offer.price())
-                        + "</gold></gray>"), MiniMessageUtils.miniMessage(claims == null
-                        ? "<gray>Claiming is not enabled.</gray>"
-                        : "<gray>Click to purchase and receive the rolled items.</gray>")))
+                        + "</gold></gray>"), MiniMessageUtils.miniMessage(purchaseStatus(player, offer))))
                 .asGuiItem(event -> {
                     event.setCancelled(true);
                     player.closeInventory();
@@ -469,26 +485,24 @@ public final class DungeonPhaseElevenCommand {
                 .toList();
     }
 
-    private dev.triumphteam.gui.guis.GuiItem rewardItem(RewardEntitlementService.RewardOffer offer,
+    private dev.triumphteam.gui.guis.GuiItem rewardItem(Player player,
+                                                        RewardEntitlementService.RewardOffer offer,
                                                         Consumer<InventoryClickEvent> action) {
-        return ItemBuilder.from(rewardMenuItem(offer, caveItems))
+        return ItemBuilder.from(rewardMenuItem(player, offer, caveItems))
                 .asGuiItem(action::accept);
     }
 
-    private static ItemStack rewardMenuItem(RewardEntitlementService.RewardOffer offer,
-                                            CaveItemsGateway caveItems) {
+    private ItemStack rewardMenuItem(Player player, RewardEntitlementService.RewardOffer offer,
+                                     CaveItemsGateway caveItems) {
         ItemStack item = rewardIcon(offer, caveItems).clone();
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return item;
         List<Component> lore = meta.lore() == null ? new ArrayList<>() : new ArrayList<>(meta.lore());
-        lore.add(MiniMessageUtils.miniMessage("<gray>Reward: <white>" + offer.rewardId() + "</white></gray>"));
         lore.add(MiniMessageUtils.miniMessage("<gray>Minimum score: <white>" + offer.minScore()
                 + "</white></gray>"));
         lore.add(MiniMessageUtils.miniMessage("<gray>Price: <gold>" + priceLabel(offer.price())
                 + "</gold></gray>"));
-        lore.add(MiniMessageUtils.miniMessage(offer.locked()
-                ? "<red>Locked: score requirement not met.</red>"
-                : "<green>Available: click to preview.</green>"));
+        lore.add(MiniMessageUtils.miniMessage(rewardAvailability(player, offer)));
         meta.lore(lore);
         item.setItemMeta(meta);
         return item;
@@ -496,8 +510,27 @@ public final class DungeonPhaseElevenCommand {
 
     static String previewTitle(RewardEntitlementService.RewardOffer offer) {
         String price = priceLabel(offer.price());
-        return "<dark_purple>Reward Preview: <white>" + offer.rewardId() + "</white> <gray>|</gray> <gold>"
-                + price + "</gold></dark_purple>";
+        return "<dark_purple>Reward Preview <gray>|</gray> <gold>" + price + "</gold></dark_purple>";
+    }
+
+    private String purchaseStatus(Player player, RewardEntitlementService.RewardOffer offer) {
+        if (claims == null) return "<gray>Claiming is not enabled.</gray>";
+        if (offer.locked()) return "<red>Locked: score requirement not met.</red>";
+        return claims.affordability(player, offer.price()) == RewardClaimService.Affordability.INSUFFICIENT_FUNDS
+                ? "<red>Locked: not enough money.</red>"
+                : "<gray>Click to purchase and receive the rolled items.</gray>";
+    }
+
+    private String rewardAvailability(Player player, RewardEntitlementService.RewardOffer offer) {
+        boolean insufficientFunds = claims != null && claims.affordability(player, offer.price())
+                == RewardClaimService.Affordability.INSUFFICIENT_FUNDS;
+        return rewardAvailabilityLabel(offer.locked(), insufficientFunds);
+    }
+
+    static String rewardAvailabilityLabel(boolean scoreLocked, boolean insufficientFunds) {
+        if (scoreLocked) return "<red>Locked: score requirement not met.</red>";
+        if (insufficientFunds) return "<red>Locked: not enough money.</red>";
+        return "<green>Available: click to preview.</green>";
     }
 
     private static String priceLabel(long price) {
@@ -569,11 +602,11 @@ public final class DungeonPhaseElevenCommand {
         return player.getName() == null || player.getName().isBlank() ? player.getUniqueId().toString() : player.getName();
     }
 
-    private static ScoreService.FinalScoreSnapshot maxScore() {
+    private ScoreService.FinalScoreSnapshot maxScore() {
         ScoreService.ScoreResult result = new ScoreService.ScoreResult(100, 100, 100, 0, 300,
                 DungeonRank.S_PLUS, List.of());
         return new ScoreService.FinalScoreSnapshot(
-                new ScoreService.ScoreInput(true, 0, Duration.ofMinutes(8), 0, 0),
+                new ScoreService.ScoreInput(true, 0, scores.freeTime(), 0, 0),
                 result.skill(), result.time(), result.exploration(), result.bonus(), result.total(),
                 result.rank(), result.bonusFacts());
     }
