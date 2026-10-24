@@ -111,6 +111,9 @@ public final class PortalEncounterService {
         }
         MutableInstance state = new MutableInstance(instanceId, floor, Set.copyOf(portal.portalBlocks()),
                 boss.playerSpawns(), bossSpawn, reward);
+        state.arenaCenter = new Point((boss.bounds().minimum().x() + boss.bounds().maximum().x()) / 2,
+                bossSpawn.y(), (boss.bounds().minimum().z() + boss.bounds().maximum().z()) / 2);
+        state.arenaRotation = boss.rotation();
         state.callback = now -> tick(instanceId, now);
         instances.put(instanceId, state);
         return RegistrationResult.success("portal and boss state registered", snapshot(state));
@@ -365,7 +368,8 @@ public final class PortalEncounterService {
             }
             state.encounter = factory.create(new EncounterFactory.EncounterContext(state.instanceId,
                     state.floor.encounterId(), state.floor.bossMob(), state.bossSpawn, entities,
-                    message -> diagnostics.accept("instance=" + state.instanceId + " " + message)));
+                    message -> diagnostics.accept("instance=" + state.instanceId + " " + message),
+                    state.arenaCenter, state.arenaRotation));
             if (state.encounter == null) {
                 failStart(state, "encounter factory returned null");
                 return;
@@ -550,6 +554,8 @@ public final class PortalEncounterService {
         private final List<Point> playerSpawns;
         private final Point bossSpawn;
         private final Point rewardChest;
+        private Point arenaCenter;
+        private me.lidan.dungeonCrawlers.core.template.TemplateModels.Rotation arenaRotation;
         private java.util.function.Consumer<Instant> callback;
         private Instant bossSpawnAt;
         private Status status = Status.IDLE;

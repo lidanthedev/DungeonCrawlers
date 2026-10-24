@@ -1,6 +1,7 @@
 package me.lidan.dungeonCrawlers.core.encounter;
 
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
+import me.lidan.dungeonCrawlers.core.template.TemplateModels.Rotation;
 
 import java.time.Instant;
 import java.util.Objects;
@@ -27,7 +28,12 @@ public interface EncounterFactory {
     }
 
     record EncounterContext(UUID instanceId, String encounterId, String bossMob, Point bossSpawn,
-                            BossEntityGateway entities, Consumer<String> diagnostics) {
+                            BossEntityGateway entities, Consumer<String> diagnostics,
+                            Point arenaCenter, Rotation arenaRotation) {
+        public EncounterContext(UUID instanceId, String encounterId, String bossMob, Point bossSpawn,
+                                BossEntityGateway entities, Consumer<String> diagnostics) {
+            this(instanceId, encounterId, bossMob, bossSpawn, entities, diagnostics, bossSpawn, Rotation.NONE);
+        }
         public EncounterContext {
             Objects.requireNonNull(instanceId, "instanceId");
             Objects.requireNonNull(encounterId, "encounterId");
@@ -35,6 +41,8 @@ public interface EncounterFactory {
             Objects.requireNonNull(bossSpawn, "bossSpawn");
             Objects.requireNonNull(entities, "entities");
             Objects.requireNonNull(diagnostics, "diagnostics");
+            Objects.requireNonNull(arenaCenter, "arenaCenter");
+            Objects.requireNonNull(arenaRotation, "arenaRotation");
         }
     }
 

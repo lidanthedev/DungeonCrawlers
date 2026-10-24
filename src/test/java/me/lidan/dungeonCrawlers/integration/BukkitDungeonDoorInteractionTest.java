@@ -51,6 +51,13 @@ class BukkitDungeonDoorInteractionTest {
             when(activated.openedDoorBlocks()).thenReturn(Set.of());
             when(activated.detail()).thenReturn("room already active");
             when(combat.activateAt(point)).thenReturn(activated);
+            var region = new me.lidan.dungeonCrawlers.core.protection.WorldProtectionService.InstanceRegion(
+                    world.getName(), instance, new me.lidan.dungeonCrawlers.core.template.TemplateModels.Bounds(
+                    point, point.add(new Point(4, 4, 4))), Set.of(player.getUniqueId()));
+            server.getPluginManager().registerEvents(new BukkitWorldProtectionListener(
+                    new me.lidan.dungeonCrawlers.core.protection.WorldProtectionService(), () -> java.util.List.of(region),
+                    new me.lidan.dungeonCrawlers.core.protection.TeleportPermitService(), java.time.Clock.systemUTC(),
+                    (id, at) -> runs.doorAt(at).isPresent() || combat.isDoorAt(at)), plugin);
             server.getPluginManager().registerEvents(new BukkitDungeonRunListener(command, runs, world.getName()), plugin);
             server.getPluginManager().registerEvents(new BukkitCombatListener(combat, mock(BukkitEntityIdentity.class),
                     world.getName(), () -> false, mock(BukkitBossIdentity.class), mock(PortalEncounterService.class),

@@ -70,6 +70,11 @@ public final class LayoutPlanner {
         for (int position = 0; position < composition.size(); position++) {
             EncounterCapability capability = composition.get(position);
             List<CatalogEntry> candidates = candidates(request, capability, previousCombatId);
+            if (!request.floor().generation().roomPool().isEmpty()) {
+                Set<String> used = placements.stream().map(Placement::templateId).collect(java.util.stream.Collectors.toSet());
+                List<CatalogEntry> fresh = candidates.stream().filter(entry -> !used.contains(entry.template().id())).toList();
+                if (!fresh.isEmpty()) candidates = fresh;
+            }
             if (candidates.isEmpty()) {
                 return failed(trace, "position " + position + " has no " + capability + "-capable template");
             }
@@ -198,6 +203,8 @@ public final class LayoutPlanner {
                 .filter(entry -> entry.template().type() == RoomType.NORMAL)
                 .filter(entry -> entry.template().capabilities().contains(capability))
                 .filter(entry -> supportsFloor(entry.definition(), request.floor().number()))
+                .filter(entry -> request.floor().generation().roomPool().isEmpty()
+                        || request.floor().generation().roomPool().contains(entry.template().id()))
                 .sorted(Comparator.comparing(entry -> entry.template().id())).toList();
         if (all.size() < 2 || previousId == null) return all;
         List<CatalogEntry> withoutRepeat = all.stream()

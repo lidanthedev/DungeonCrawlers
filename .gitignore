@@ -122,3 +122,7 @@ dungeoncrawlers-plan
 graphify-out/
 
 .ci-dependencies/
+
+# Python build cache
+__pycache__/
+*.py[cod]

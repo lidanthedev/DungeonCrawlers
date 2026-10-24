@@ -46,6 +46,35 @@ The shorter names `score`, `rank`, `deaths`, `players`, `alive`, `ghosts`,
 Current-room secret placeholders are accepted for scoreboard compatibility and
 return `0` because secrets are tracked for the whole run.
 
+## Dungeon sidebar
+
+The TAB configuration fragment is `server-config/tab/dungeon-scoreboard.yml`.
+Its conditional board displays only while the viewer belongs to a dungeon.
+
+| Placeholder | Example | Description |
+| --- | --- | --- |
+| `%dungeoncrawlers_rooms_cleared%` | `3` | Cleared combat rooms. |
+| `%dungeoncrawlers_rooms_total%` | `9` | Total combat rooms, including miniboss rooms. |
+| `%dungeoncrawlers_clear_percent%` | `33` | Integer combat-room completion percentage, without the percent sign. |
+| `%dungeoncrawlers_sidebar_floor%` | `Floor I • Normal` | Floor and difficulty, with legacy colors. |
+| `%dungeoncrawlers_sidebar_phase%` | `Clear the dungeon` | Current objective or class-selection readiness. |
+| `%dungeoncrawlers_sidebar_deaths%` | `2` | Total party deaths. |
+| `%dungeoncrawlers_sidebar_score%` | `Score: 305 (S+)` | Final score/rank line; empty before finalization. |
+| `%dungeoncrawlers_sidebar_party_1%` | `[B] LidanTheGamer 1,235❤` | Party member class, name, and current HP. Slots 1–5 are supported; unused slots return empty. Ghosts/dead players show `☠`; offline players show `OFFLINE`. |
+
+HP is read on the server thread and published once per second for TAB's
+asynchronous readers. Displayed HP rounds up and uses thousands separators.
+
+TAB can treat a literal `%` between placeholders as the beginning of another
+placeholder. Keep the literal percent sign at the end of a line's placeholders:
+
+```yaml
+- '&fCleared: &a%dungeoncrawlers_rooms_cleared%/%dungeoncrawlers_rooms_total% &7(&a%dungeoncrawlers_clear_percent%%&7)'
+```
+
+Use `/tab parse <player> <text>` to check the complete line in TAB; a successful
+`/papi parse` alone does not exercise TAB's parsing behavior.
+
 ## Direct instance lookup
 
 Use a UUID in the placeholder name:

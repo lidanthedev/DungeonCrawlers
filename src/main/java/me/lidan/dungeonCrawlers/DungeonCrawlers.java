@@ -117,6 +117,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class DungeonCrawlers extends JavaPlugin {
+    private me.lidan.dungeonCrawlers.integration.BukkitFoundryRooms foundryRooms;
     private Lamp.Builder<BukkitCommandActor> commandHandlerBuilder;
     private ConfigRegistryService configRegistry;
     private PlayerReservationService reservations;
@@ -295,12 +296,30 @@ public final class DungeonCrawlers extends JavaPlugin {
                 }, getLogger()::warning, instanceId -> {
                     cancelDeadlineInstance(instanceId);
                 }, true, timings);
+        var classPreferences = new me.lidan.dungeonCrawlers.integration.BukkitClassPreferences(this);
+        runPreparation.configureClassPreferences(classPreferences::read, classPreferences::write);
         phaseSeven = new SecretDiscoveryService(configRegistry::snapshot);
         lifecycle = new PlayerLifecycleService(centralUpdates, phaseClock(), this::handleLifecycleNotice, timings);
         bossIdentity = new BukkitBossIdentity(this);
         var bossGateway = new BukkitBossGateway(getServer(), this::generationWorld, mythicMobs, bossIdentity);
+        var encounterFactories = EncounterFactoryRegistry.withBasic();
+        encounterFactories.register(me.lidan.dungeonCrawlers.core.encounter.RingmasterEncounter.ID, context ->
+                new me.lidan.dungeonCrawlers.core.encounter.RingmasterEncounter(context,
+                        new me.lidan.dungeonCrawlers.integration.BukkitRingmasterArena(context, this,
+                                runPreparation, lifecycle, mythicMobs, difficultyService), phaseClock()));
+        encounterFactories.register(me.lidan.dungeonCrawlers.core.encounter.ChainboundEncounter.ID, context -> {
+            boolean impossible = generation.layoutContext(context.instanceId()).orElseThrow().difficulty().tier()
+                    == me.lidan.dungeonCrawlers.core.difficulty.Difficulty.IMPOSSIBLE;
+            try {
+                var settings = me.lidan.dungeonCrawlers.config.FoundryPack.load(configFactory,
+                        getDataFolder().toPath().resolve("foundry.yml"));
+                return new me.lidan.dungeonCrawlers.core.encounter.ChainboundEncounter(context,
+                        new me.lidan.dungeonCrawlers.integration.BukkitChainboundArena(context, this, generation,
+                                runPreparation, lifecycle, teleportPermits, phaseClock()), settings, impossible, phaseClock());
+            } catch (IOException exception) { throw new IllegalStateException(exception); }
+        });
         phaseNine = new PortalEncounterService(centralUpdates, runPreparation,
-                EncounterFactoryRegistry.withBasic(),
+                encounterFactories,
                 bossGateway,
                 new BukkitPortalParticipantGateway(getServer(), this::generationWorld, generationWorldName,
                         runPreparation, lifecycle, combat, teleportPermits, phaseClock(), timings.teleportPermit()),
@@ -321,6 +340,10 @@ public final class DungeonCrawlers extends JavaPlugin {
                 this, generation, runPreparation, lifecycle, claims);
         combatGateway.configureDifficulty(difficultyService::spawn);
         bossGateway.configureDifficulty(difficultyService::spawn);
+        foundryRooms = new me.lidan.dungeonCrawlers.integration.BukkitFoundryRooms(this, generation, runPreparation,
+                lifecycle, combat, teleportPermits, phaseClock(), worldName);
+        combat.configureObjectives(foundryRooms::complete, foundryRooms::cleanup);
+        getServer().getPluginManager().registerEvents(foundryRooms, this);
         lifecycle.configureRevival(difficultyService::activeRunicPet, this::applyRevival);
         runPreparation.configureDeadlineHandlers(this::handleRunFailure, this::hasActiveCompletionGroup,
                 this::handleDeadlineNotice);
@@ -438,6 +461,11 @@ public final class DungeonCrawlers extends JavaPlugin {
         saveDefaultResourceIfMissing("rooms.yml");
         saveDefaultResourceIfMissing("difficulties.yml");
         saveDefaultResourceIfMissing("floors/floor_1.yml");
+        saveDefaultResourceIfMissing("floors/floor_3.yml");
+        saveDefaultResourceIfMissing("rooms_foundry.yml");
+        saveDefaultResourceIfMissing("foundry.yml");
+        try { me.lidan.dungeonCrawlers.config.FoundryPack.installTemplates(this); }
+        catch (IOException exception) { throw new IllegalStateException("Cannot install Foundry templates", exception); }
         saveDefaultResourceIfMissing("config.yml");
     }
 
@@ -563,7 +591,9 @@ public final class DungeonCrawlers extends JavaPlugin {
         BukkitRewardMailboxListener rewardMailboxListener = new BukkitRewardMailboxListener(claims);
         registerEvent(new BukkitWorldProtectionListener(protectionPolicy,
                 () -> generation.protectionRegions().stream().map(WorldProtectionService.InstanceRegion::from).toList(),
-                teleportPermits, phaseClock()));
+                teleportPermits, phaseClock(), (instance, point) -> runPreparation.doorAt(point).isPresent()
+                        || combat.isDoorAt(point) || phaseNine.rewardAt(point).isPresent()
+                        || phaseSeven.secrets(instance).stream().anyMatch(secret -> secret.worldPoint().equals(point))));
         registerEvent(new BukkitDungeonRunListener(phaseFiveCommand, runPreparation, generationWorldName, phaseSeven));
         registerEvent(difficultyService);
         registerEvent(new BukkitDungeonLifecycleListener(lifecycle, runPreparation, this, phaseClock(),
@@ -913,9 +943,15 @@ public final class DungeonCrawlers extends JavaPlugin {
     private void startTasks() {
         getServer().getScheduler().runTaskTimer(this, (Runnable) () -> {
             centralUpdates.tick();
+            foundryRooms.tick(phaseClock().instant());
             generation.checkCleanupDeadlines();
         }, 1L, 1L);
-        getServer().getScheduler().runTaskTimer(this, () -> { difficultyService.tick(); deliverDungeonXp(); }, 20L, 20L);
+        getServer().getScheduler().runTaskTimer(this, () -> {
+            combat.reconcileAll();
+            if (placeholderExpansion != null) placeholderExpansion.refreshSnapshots();
+            difficultyService.tick();
+            deliverDungeonXp();
+        }, 20L, 20L);
     }
 
     @Override

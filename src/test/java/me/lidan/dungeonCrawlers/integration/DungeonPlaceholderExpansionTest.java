@@ -17,10 +17,15 @@ import org.bukkit.Material;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.List;
+import me.lidan.dungeonCrawlers.core.combat.CombatRoomService;
+import me.lidan.dungeonCrawlers.core.difficulty.Difficulty;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 
 class DungeonPlaceholderExpansionTest {
     private static final UUID INSTANCE = UUID.fromString("00000000-0000-0000-0000-000000000041");
@@ -100,6 +105,97 @@ class DungeonPlaceholderExpansionTest {
 
         when(run.state()).thenReturn(RunPreparationService.RunState.RUNNING);
         assertEquals("true", expansion.onRequest(player, "player_class_locked"));
+    }
+
+    @Test
+    void dungeonSidebarPublishesGenerationDataForAsyncTabAndUsesLiveRoomAndPartyState() throws Exception {
+        var runs = mock(RunPreparationService.class);
+        var run = mock(RunPreparationService.RunSnapshot.class);
+        var generation = mock(GenerationService.class);
+        var layout = mock(GenerationService.LayoutContext.class);
+        var floor = mock(me.lidan.dungeonCrawlers.config.registry.ConfigModels.FloorDefinition.class);
+        var combat = mock(CombatRoomService.class);
+        var room1 = mock(CombatRoomService.RoomSnapshot.class);
+        var room2 = mock(CombatRoomService.RoomSnapshot.class);
+        var lifecycle = mock(PlayerLifecycleService.class);
+        var participant = mock(PlayerLifecycleService.PlayerSnapshot.class);
+        var player = mock(OfflinePlayer.class);
+        var plugin = mock(JavaPlugin.class);
+        var server = mock(org.bukkit.Server.class);
+        var online = mock(org.bukkit.entity.Player.class);
+        when(server.getPlayer(PLAYER)).thenReturn(online);
+        when(online.getHealth()).thenReturn(1234.1);
+        when(plugin.getServer()).thenReturn(server);
+        when(server.getOfflinePlayer(PLAYER)).thenReturn(player);
+        when(player.getName()).thenReturn("Lidan");
+        when(player.getUniqueId()).thenReturn(PLAYER);
+        when(run.instanceId()).thenReturn(INSTANCE);
+        when(run.state()).thenReturn(RunPreparationService.RunState.RUNNING);
+        when(run.participants()).thenReturn(List.of(PLAYER));
+        when(run.selectedClasses()).thenReturn(Map.of(PLAYER, "tank"));
+        when(runs.instanceFor(PLAYER)).thenReturn(Optional.of(INSTANCE));
+        when(runs.info(INSTANCE)).thenReturn(Optional.of(run));
+        when(runs.snapshots()).thenReturn(List.of(run));
+        when(generation.layoutContext(INSTANCE)).thenReturn(Optional.of(layout));
+        when(layout.floor()).thenReturn(floor);
+        when(floor.displayName()).thenReturn("<gold>Floor I</gold>");
+        when(layout.difficulty()).thenReturn(Difficulty.IMPOSSIBLE.defaults());
+        when(room1.state()).thenReturn(CombatRoomService.RoomState.CLEARED);
+        when(room2.state()).thenReturn(CombatRoomService.RoomState.ACTIVE);
+        when(combat.info(INSTANCE)).thenReturn(Optional.of(new CombatRoomService.InstanceSnapshot(
+                INSTANCE, List.of(room1, room2))));
+        when(participant.playerId()).thenReturn(PLAYER);
+        when(participant.state()).thenReturn(PlayerLifecycleService.PlayerState.ALIVE);
+        when(participant.online()).thenReturn(true);
+        when(participant.deaths()).thenReturn(2);
+        when(lifecycle.info(INSTANCE)).thenReturn(Optional.of(new PlayerLifecycleService.InstanceSnapshot(
+                INSTANCE, true, false, "running", List.of(participant))));
+        var finalScore = new java.util.concurrent.atomic.AtomicReference<me.lidan.dungeonCrawlers.core.score.ScoreService.FinalScoreSnapshot>();
+        var expansion = new DungeonPlaceholderExpansion(plugin, generation, runs, lifecycle,
+                mock(SecretDiscoveryService.class), combat, new DebugSettings(false), ignored -> finalScore.get());
+        expansion.refreshSnapshots();
+        assertEquals("Floor I §8• §cImpossible", java.util.concurrent.CompletableFuture.supplyAsync(
+                () -> expansion.onRequest(player, "sidebar_floor")).get());
+        verify(generation, times(1)).layoutContext(INSTANCE);
+        assertEquals("50", expansion.onRequest(player, "clear_percent"));
+        assertEquals("1", expansion.onRequest(player, "rooms_cleared"));
+        assertEquals("2", expansion.onRequest(player, "rooms_total"));
+        assertEquals("2", expansion.onRequest(player, "sidebar_deaths"));
+        String name = "Lidan";
+        assertEquals("§b[T] §f" + name + " §a1,235❤", java.util.concurrent.CompletableFuture.supplyAsync(
+                () -> expansion.onRequest(player, "sidebar_party_1")).get());
+        verify(online, times(1)).getHealth();
+        when(participant.state()).thenReturn(PlayerLifecycleService.PlayerState.GHOST);
+        assertEquals("§b[T] §f" + name + " §c☠", expansion.onRequest(player, "sidebar_party_1"));
+        when(participant.state()).thenReturn(PlayerLifecycleService.PlayerState.ALIVE);
+        when(participant.online()).thenReturn(false);
+        assertEquals("§b[T] §f" + name + " §8OFFLINE", expansion.onRequest(player, "sidebar_party_1"));
+        when(participant.online()).thenReturn(true);
+        when(online.isDead()).thenReturn(true);
+        expansion.refreshSnapshots();
+        assertEquals("§b[T] §f" + name + " §c☠", expansion.onRequest(player, "sidebar_party_1"));
+        when(online.isDead()).thenReturn(false);
+        when(online.getHealth()).thenReturn(980.0);
+        expansion.refreshSnapshots();
+        assertEquals("§b[T] §f" + name + " §a980❤", expansion.onRequest(player, "sidebar_party_1"));
+        when(online.getHealth()).thenReturn(0.0);
+        expansion.refreshSnapshots();
+        assertEquals("§b[T] §f" + name + " §c☠", expansion.onRequest(player, "sidebar_party_1"));
+        assertEquals("", expansion.onRequest(player, "sidebar_party_2"));
+        assertEquals("", expansion.onRequest(player, "sidebar_score"));
+        var score = mock(me.lidan.dungeonCrawlers.core.score.ScoreService.FinalScoreSnapshot.class);
+        when(score.total()).thenReturn(305);
+        when(score.rank()).thenReturn(me.lidan.dungeonCrawlers.core.score.DungeonRank.S_PLUS);
+        when(score.elapsed()).thenReturn(java.time.Duration.ofSeconds(95));
+        finalScore.set(score);
+        when(run.state()).thenReturn(RunPreparationService.RunState.COMPLETED);
+        assertEquals("§fScore: §a305 §7(S+)", expansion.onRequest(player, "sidebar_score"));
+        assertEquals("1m 35s", expansion.onRequest(player, "player_elapsed_time"));
+        assertEquals("§aClaim your rewards", expansion.onRequest(player, "sidebar_phase"));
+        when(runs.instanceFor(PLAYER)).thenReturn(Optional.empty());
+        assertEquals("false", expansion.onRequest(player, "in_dungeon"));
+        assertEquals("0", expansion.onRequest(player, "rooms_cleared"));
+        assertEquals("", expansion.onRequest(player, "sidebar_party_1"));
     }
 
     private static DungeonPlaceholderExpansion expansion(RunPreparationService runs) {

@@ -1,0 +1,122 @@
+{
+  "foundry_start": {
+    "size": [
+      41,
+      23,
+      33
+    ],
+    "kind": "start",
+    "sha256": "c5df46089c05bc4dec84a8f80af4e14dde0e577aaa758fa68062d927bf79228a",
+    "blocks": 19856,
+    "secrets": 2,
+    "mobs": 0
+  },
+  "foundry_resonance": {
+    "size": [
+      49,
+      27,
+      49
+    ],
+    "kind": "bell",
+    "sha256": "f9abecb9b9a5d8fb8087efd157689eb47adccfa65858747c4f7d249e7ae81bf3",
+    "blocks": 47834,
+    "secrets": 4,
+    "mobs": 7
+  },
+  "foundry_counterweight": {
+    "size": [
+      49,
+      29,
+      57
+    ],
+    "kind": "balance",
+    "sha256": "4bf0217769f0114c35c86650dc75aa25bce190595f5687b6040dbe4393837a9f",
+    "blocks": 59153,
+    "secrets": 4,
+    "mobs": 7
+  },
+  "foundry_splitforge": {
+    "size": [
+      57,
+      25,
+      49
+    ],
+    "kind": "forge",
+    "sha256": "4ae0d221478c750645d635ab74fba155cf5cdc9ba002d9471098a278735bff13",
+    "blocks": 52184,
+    "secrets": 4,
+    "mobs": 9
+  },
+  "foundry_archives": {
+    "size": [
+      41,
+      31,
+      57
+    ],
+    "kind": "archive",
+    "sha256": "f4e56b67a04824c28f43d0984e3e4f9d806ce3ddd0a5f283cd127f3c71dd1708",
+    "blocks": 54274,
+    "secrets": 4,
+    "mobs": 8
+  },
+  "foundry_turbine": {
+    "size": [
+      57,
+      35,
+      57
+    ],
+    "kind": "turbine",
+    "sha256": "14aa1e9f5b7ab8d93cb9117ed9043709cbce3d03e4fa5e6942bfffc17235deb6",
+    "blocks": 91819,
+    "secrets": 4,
+    "mobs": 9
+  },
+  "foundry_catwalk": {
+    "size": [
+      41,
+      33,
+      65
+    ],
+    "kind": "parkour",
+    "sha256": "c7c554c14b3f71de345e73fdd1204de9bec111a3288ed59777ecf6fe9225f3c2",
+    "blocks": 67807,
+    "secrets": 4,
+    "mobs": 7
+  },
+  "foundry_warden": {
+    "size": [
+      57,
+      33,
+      49
+    ],
+    "kind": "warden",
+    "sha256": "7b517345c909f2a471694889261e266b2f1e1c638ce3e535d53161e762c238e2",
+    "blocks": 73392,
+    "secrets": 4,
+    "mobs": 2
+  },
+  "foundry_portal": {
+    "size": [
+      41,
+      29,
+      41
+    ],
+    "kind": "portal",
+    "sha256": "e783b1b2b89f90638ad205db46c6638217485d5a09eb60e07b00e042f2bd1cca",
+    "blocks": 36561,
+    "secrets": 2,
+    "mobs": 0
+  },
+  "foundry_heart": {
+    "size": [
+      81,
+      49,
+      81
+    ],
+    "kind": "boss",
+    "sha256": "de05933cc7eb6c4bc1ab31dee333fdc1b88673c026107b5caa49826af29a31b3",
+    "blocks": 65485,
+    "secrets": 0,
+    "mobs": 0
+  }
+}

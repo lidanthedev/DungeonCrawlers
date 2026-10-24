@@ -6,6 +6,8 @@ import java.util.UUID;
 
 /** Bounded active-room chunk ticket boundary. */
 public interface CombatChunkGateway {
+    default boolean isLoaded(Bounds bounds) { return true; }
+
     boolean acquire(UUID instanceId, Bounds bounds);
 
     int release(UUID instanceId, Bounds bounds);

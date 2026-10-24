@@ -39,6 +39,28 @@ class LayoutPlannerTest {
     private final LayoutPlanner planner = new LayoutPlanner();
 
     @Test
+    void explicitFloorPoolExcludesOtherFloorsAndUsesEveryLayoutBeforeRepeating() {
+        var catalog = catalog();
+        var a = catalog.get("normal_a").template();
+        var c = template("normal_c", RoomType.NORMAL, Set.of(EncounterCapability.NORMAL), a.bounds(),
+                a.entrance().orElseThrow(), a.exit().orElseThrow());
+        catalog.put("normal_c", entry(c, 1));
+        var base = floor(3, 0, false, new Vector3i(0, 0, 300));
+        var floor = new FloorDefinition(base.id(), base.number(), base.displayName(), base.templates(),
+                new Generation(3, 0, false, 64, 1, List.of("normal_a", "normal_c")), base.normalMobs(),
+                base.minibossMobs(), base.bossMob(), base.encounterId(), base.allowedClasses(), base.blessings(),
+                base.rewards(), base.limits());
+        for (int seed = 0; seed < 100; seed++) {
+            var result = planner.plan(request(seed, floor, catalog, SLOT));
+            assertTrue(result.successful(), result.errors().toString());
+            List<String> rooms = result.plan().orElseThrow().placements().stream().filter(p -> p.type() == RoomType.NORMAL)
+                    .map(LayoutPlanner.Placement::templateId).toList();
+            assertEquals(Set.of("normal_a", "normal_c"), Set.copyOf(rooms.subList(0, 2)));
+            assertFalse(rooms.contains("normal_b"));
+        }
+    }
+
+    @Test
     void previewsEachRoomTypeAloneAndRejectsBoundsOutsideSlot() {
         Point origin = new Point(100, 64, 100);
         for (var entry : catalog().values()) {

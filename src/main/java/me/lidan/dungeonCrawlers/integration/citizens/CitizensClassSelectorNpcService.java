@@ -68,6 +68,11 @@ public final class CitizensClassSelectorNpcService implements ClassSelectorNpcSe
             throw new IllegalStateException("Class selector NPCs must be created on the server thread");
         }
         removeFor(instanceId);
+        // Generation releases its tickets before preparation; Citizens requires a loaded destination chunk.
+        if (location.getWorld() == null || !location.getWorld().loadChunk(location.getBlockX() >> 4,
+                location.getBlockZ() >> 4, false)) {
+            throw new IllegalStateException("Class selector destination chunk is unavailable");
+        }
         NPC npc = registry.createNPC(EntityType.PLAYER, NPC_NAME);
         try {
             npc.setProtected(true);

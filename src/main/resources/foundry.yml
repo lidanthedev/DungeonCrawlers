@@ -1,0 +1,14 @@
+schema-version: 2
+# Health applies to each life and is multiplied by dungeon difficulty and party scaling.
+# Impossible transforms after the first life is defeated.
+boss:
+  health: 200000000
+  damage: 3500000
+  final-threshold: 0.18
+  intro-millis: 6500
+  transform-millis: 14000
+  warning-millis: 2000
+  normal-interval-millis: 8500
+  riven-interval-millis: 6500
+  final-interval-millis: 5500
+  death-millis: 5000

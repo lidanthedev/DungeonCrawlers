@@ -10,6 +10,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
+import org.bukkit.event.Event;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockBurnEvent;
@@ -20,6 +21,7 @@ import org.bukkit.event.player.PlayerBucketFillEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 
 import java.util.List;
@@ -28,6 +30,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.time.Clock;
 import java.util.function.Supplier;
+import java.util.function.BiPredicate;
+import java.util.UUID;
 
 /** Bukkit event boundary for geometry, PvP, cross-instance, and teleport protection. */
 public final class BukkitWorldProtectionListener implements Listener {
@@ -35,15 +39,35 @@ public final class BukkitWorldProtectionListener implements Listener {
     private final Supplier<List<WorldProtectionService.InstanceRegion>> regions;
     private final TeleportPermitService permits;
     private final Clock clock;
+    private final BiPredicate<UUID, Point> progressionBlock;
     private final Map<java.util.UUID, LaunchSource> launches = new HashMap<>();
 
     public BukkitWorldProtectionListener(WorldProtectionService policy,
                                          Supplier<List<WorldProtectionService.InstanceRegion>> regions,
                                          TeleportPermitService permits, Clock clock) {
+        this(policy, regions, permits, clock, (instance, point) -> false);
+    }
+
+    public BukkitWorldProtectionListener(WorldProtectionService policy,
+                                         Supplier<List<WorldProtectionService.InstanceRegion>> regions,
+                                         TeleportPermitService permits, Clock clock,
+                                         BiPredicate<UUID, Point> progressionBlock) {
         this.policy = Objects.requireNonNull(policy, "policy");
         this.regions = Objects.requireNonNull(regions, "regions");
         this.permits = Objects.requireNonNull(permits, "permits");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.progressionBlock = Objects.requireNonNull(progressionBlock, "progressionBlock");
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onInteract(PlayerInteractEvent event) {
+        var block = event.getClickedBlock();
+        if (block == null) return;
+        Point at = point(block.getLocation());
+        policy.regionAt(block.getWorld().getName(), at, regions.get()).ifPresent(region -> {
+            if (event.getHand() == org.bukkit.inventory.EquipmentSlot.OFF_HAND
+                    || !progressionBlock.test(region.instanceId(), at)) event.setUseInteractedBlock(Event.Result.DENY);
+        });
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
