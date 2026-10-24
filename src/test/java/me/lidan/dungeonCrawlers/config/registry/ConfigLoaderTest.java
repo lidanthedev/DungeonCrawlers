@@ -209,9 +209,25 @@ class ConfigLoaderTest {
                 invalid.errors().toString());
     }
 
+
+    @Test void difficultyConfigAndCustomFloorMigrationAreValidated() throws Exception {
+        copyDefaults();
+        Path floor = directory.resolve("floors/floor_1.yml");
+        String old = Files.readString(floor).replace("schema-version: 2", "schema-version: 1")
+                .replace("number: 1", "number: 3").replaceAll("(?m)^dungeon-xp:\n(?:  .*\n)*", "");
+        Files.writeString(floor, old);
+        var loaded = loader().load(directory);
+        assertTrue(loaded.successful(), loaded.errors().toString());
+        assertEquals(900, loaded.snapshot().floors().get("floor_1").completionXp());
+        assertEquals(10, loaded.snapshot().difficulties().size());
+        Path difficulties = directory.resolve("difficulties.yml");
+        Files.writeString(difficulties, Files.readString(difficulties).replace("runic-chance: 0.001", "runic-chance: 1.2"));
+        assertFalse(loader().load(directory).successful());
+    }
+
     private void copyDefaults() throws IOException {
         Path resources = Path.of("src/main/resources");
-        for (String file : new String[]{"classes.yml", "blessings.yml", "rooms.yml"}) {
+        for (String file : new String[]{"classes.yml", "blessings.yml", "rooms.yml", "difficulties.yml"}) {
             Files.copy(resources.resolve(file), directory.resolve(file), StandardCopyOption.REPLACE_EXISTING);
         }
         Files.createDirectories(directory.resolve("floors"));

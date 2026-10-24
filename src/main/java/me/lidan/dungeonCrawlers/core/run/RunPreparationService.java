@@ -278,6 +278,7 @@ public final class RunPreparationService {
                 .map(block -> new DoorBlockLookup(block.instanceId(), block.state()));
     }
 
+
     public synchronized Optional<UUID> instanceFor(UUID playerId) {
         Objects.requireNonNull(playerId, "playerId");
         return runs.values().stream().filter(run -> run.participants.contains(playerId))

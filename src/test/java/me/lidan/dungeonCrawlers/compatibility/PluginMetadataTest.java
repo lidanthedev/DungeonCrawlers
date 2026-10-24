@@ -21,7 +21,7 @@ class PluginMetadataTest {
 
         assertEquals(List.of("CaveCrawlers", "FastAsyncWorldEdit", "MythicMobs", "Vault", "ProtocolLib"),
                 yaml.getStringList("depend"));
-        assertEquals(List.of("Parties", "Essentials", "PlaceholderAPI", "Citizens"),
+        assertEquals(List.of("Parties", "Essentials", "PlaceholderAPI", "Citizens", "CaveCrawlAddon"),
                 yaml.getStringList("softdepend"));
         assertTrue(yaml.isConfigurationSection("permissions.dungeoncrawlers.admin.config"));
         assertTrue(yaml.isConfigurationSection("permissions.dungeoncrawlers.admin.reload"));

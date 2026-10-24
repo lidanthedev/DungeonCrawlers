@@ -26,6 +26,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
 import revxrsal.commands.annotation.Command;
 import revxrsal.commands.annotation.Subcommand;
+import revxrsal.commands.annotation.Suggest;
 import revxrsal.commands.annotation.SuggestWith;
 import revxrsal.commands.bukkit.annotation.CommandPermission;
 
@@ -97,7 +98,9 @@ public final class DungeonAuthoringCommand {
 
     @Subcommand("selection validate")
     @CommandPermission("dungeoncrawlers.admin.authoring")
-    public void selectionValidate(Player player, String roomType, String encounters) {
+    public void selectionValidate(Player player,
+                                  @Suggest({"normal", "start", "portal", "boss"}) String roomType,
+                                  @Suggest({"none", "normal", "miniboss", "normal,miniboss", "miniboss,normal"}) String encounters) {
         sendMarkerLegend(player);
         if (!citizensAvailable()) {
             DungeonMessages.send(player, DungeonMessages.warning(
@@ -200,7 +203,9 @@ public final class DungeonAuthoringCommand {
 
     @Subcommand("room create")
     @CommandPermission("dungeoncrawlers.admin.authoring")
-    public void roomCreate(Player player, String id, String roomType, String encounters) {
+    public void roomCreate(Player player, String id,
+                           @Suggest({"normal", "start", "portal", "boss"}) String roomType,
+                           @Suggest({"none", "normal", "miniboss", "normal,miniboss", "miniboss,normal"}) String encounters) {
         RoomType type;
         Set<EncounterCapability> capabilities;
         try {
@@ -238,7 +243,8 @@ public final class DungeonAuthoringCommand {
 
     @Subcommand("room paste")
     @CommandPermission("dungeoncrawlers.admin.authoring")
-    public void roomPaste(Player player, @SuggestWith(RoomIdSuggestionProvider.class) String id, String rotationValue) {
+    public void roomPaste(Player player, @SuggestWith(RoomIdSuggestionProvider.class) String id,
+                          @Suggest({"0", "90", "180", "270"}) String rotationValue) {
         try {
             Rotation rotation = parseRotation(rotationValue);
             byte[] schematic = authoring.schematic(id);
@@ -264,7 +270,7 @@ public final class DungeonAuthoringCommand {
     public void connectTest(Player player,
                             @SuggestWith(RoomIdSuggestionProvider.class) String fromId,
                             @SuggestWith(RoomIdSuggestionProvider.class) String toId,
-                            String fromRotation) {
+                            @Suggest({"0", "90", "180", "270"}) String fromRotation) {
         TemplateCatalogLoader.LoadResult loaded = templateCatalog.load(configRegistry.snapshot());
         if (!loaded.successful()) {
             loaded.errors().forEach(error -> DungeonMessages.send(player, DungeonMessages.error(cleanDetail(error))));

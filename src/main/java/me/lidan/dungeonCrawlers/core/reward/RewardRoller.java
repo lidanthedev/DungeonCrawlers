@@ -11,6 +11,11 @@ import java.util.random.RandomGenerator;
 
 public final class RewardRoller {
     public List<RolledReward> roll(RewardDefinition definition, RandomGenerator random) {
+        return roll(definition, random, 0);
+    }
+
+    public List<RolledReward> roll(RewardDefinition definition, RandomGenerator random, double magicFind) {
+        if (!Double.isFinite(magicFind) || magicFind < 0) throw new IllegalArgumentException("invalid magic find");
         Objects.requireNonNull(definition, "definition");
         Objects.requireNonNull(random, "random");
         if (!definition.enabled()) return List.of();
@@ -21,7 +26,7 @@ public final class RewardRoller {
         List<RolledReward> result = new ArrayList<>();
         for (int roll = 0; roll < definition.rolls(); roll++) {
             RewardItem selected = WeightedChooser.choose(available.stream()
-                    .map(item -> new WeightedChooser.Weighted<>(item, item.weight())).toList(), random);
+                    .map(item -> new WeightedChooser.Weighted<>(item, item.weight() * (item.magicFindSensitive() ? 1 + magicFind / 100 : 1))).toList(), random);
             int amount = selected.minimumAmount() == selected.maximumAmount() ? selected.minimumAmount()
                     : Math.toIntExact(random.nextLong(selected.minimumAmount(), (long) selected.maximumAmount() + 1));
             result.add(new RolledReward(selected.itemId(), amount));

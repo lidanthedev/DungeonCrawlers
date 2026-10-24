@@ -2,6 +2,8 @@ package me.lidan.dungeonCrawlers.config.registry;
 
 import me.lidan.cavecrawlers.stats.StatType;
 import me.lidan.cavecrawlers.utils.Range;
+import me.lidan.dungeonCrawlers.core.difficulty.Difficulty;
+import me.lidan.dungeonCrawlers.core.difficulty.DifficultyRules;
 import org.bukkit.Material;
 
 import java.time.Instant;
@@ -63,7 +65,15 @@ public final class ConfigModels {
     public record FloorDefinition(String id, int number, String displayName, TemplateRefs templates,
                                   Generation generation, List<String> normalMobs, List<String> minibossMobs,
                                   String bossMob, String encounterId, List<String> allowedClasses,
-                                  List<WeightedId> blessings, Map<String, RewardDefinition> rewards, Limits limits) {
+                                  List<WeightedId> blessings, Map<String, RewardDefinition> rewards, Limits limits,
+                                  double completionXp, double failureXpFactor) {
+        public FloorDefinition(String id, int number, String displayName, TemplateRefs templates,
+                               Generation generation, List<String> normalMobs, List<String> minibossMobs,
+                               String bossMob, String encounterId, List<String> allowedClasses,
+                               List<WeightedId> blessings, Map<String, RewardDefinition> rewards, Limits limits) {
+            this(id, number, displayName, templates, generation, normalMobs, minibossMobs, bossMob, encounterId,
+                    allowedClasses, blessings, rewards, limits, 100.0 * number * number, .10);
+        }
         public FloorDefinition {
             Objects.requireNonNull(id); Objects.requireNonNull(displayName); Objects.requireNonNull(templates);
             Objects.requireNonNull(generation); Objects.requireNonNull(bossMob); Objects.requireNonNull(encounterId);
@@ -83,18 +93,30 @@ public final class ConfigModels {
                                    List<RewardItem> items) {
         public RewardDefinition { items = List.copyOf(items); }
     }
-    public record RewardItem(String itemId, double weight, int minimumAmount, int maximumAmount) { }
+    public record RewardItem(String itemId, double weight, int minimumAmount, int maximumAmount,
+                             boolean magicFindSensitive) {
+        public RewardItem(String itemId, double weight, int minimumAmount, int maximumAmount) {
+            this(itemId, weight, minimumAmount, maximumAmount, false);
+        }
+    }
     public record Limits(int maxPartySize, int maxTemplateDimension, long maxTemplateVolume,
                          int maxLoadedChunksPerInstance, int mobRespawnRetries, int repositoryQueueCapacity) { }
 
     public record ConfigSnapshot(int schemaVersion, Map<String, FloorDefinition> floors,
                                  Map<String, RoomDefinition> rooms, Map<String, ClassDefinition> classes,
                                  Map<String, BlessingDefinition> blessings, Set<String> encounters,
-                                 String hash, Instant loadedAt) {
+                                 String hash, Instant loadedAt, Map<String, DifficultyRules> difficulties) {
+        public ConfigSnapshot(int schemaVersion, Map<String, FloorDefinition> floors,
+                              Map<String, RoomDefinition> rooms, Map<String, ClassDefinition> classes,
+                              Map<String, BlessingDefinition> blessings, Set<String> encounters,
+                              String hash, Instant loadedAt) {
+            this(schemaVersion, floors, rooms, classes, blessings, encounters, hash, loadedAt, Difficulty.defaultRules());
+        }
         public ConfigSnapshot {
             floors = Map.copyOf(floors); rooms = Map.copyOf(rooms); classes = Map.copyOf(classes);
             blessings = Map.copyOf(blessings); encounters = Set.copyOf(encounters);
             Objects.requireNonNull(hash); Objects.requireNonNull(loadedAt);
+            difficulties = Map.copyOf(difficulties);
         }
     }
 }

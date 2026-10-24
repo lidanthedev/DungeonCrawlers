@@ -21,6 +21,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import revxrsal.commands.annotation.Command;
 import revxrsal.commands.annotation.Subcommand;
+import revxrsal.commands.annotation.Suggest;
 import revxrsal.commands.annotation.SuggestWith;
 import revxrsal.commands.bukkit.annotation.CommandPermission;
 
@@ -204,7 +205,7 @@ public final class DungeonPhaseFourCommand {
     @Subcommand("door register-test")
     @CommandPermission("dungeoncrawlers.admin.debug")
     public void registerDoor(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
-                              int x, int y, int z, String facing) {
+                              int x, int y, int z, @Suggest({"north", "east", "south", "west"}) String facing) {
         if (!requireDebug(sender)) return;
         try {
             DoorService.DoorSnapshot door = doors.register(resolve(sender, instanceId), new Point(x, y, z),
@@ -231,7 +232,7 @@ public final class DungeonPhaseFourCommand {
     @Subcommand("door set")
     @CommandPermission("dungeoncrawlers.admin.debug")
     public void doorSet(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
-                        String state) {
+                        @Suggest({"locked", "ready", "open"}) String state) {
         if (!requireDebug(sender)) return;
         try {
             UUID id = resolve(sender, instanceId);

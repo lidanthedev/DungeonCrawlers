@@ -26,6 +26,12 @@ public final class BukkitBossGateway implements BossEntityGateway {
         this.identity = Objects.requireNonNull(identity, "identity");
     }
 
+    private java.util.function.BiConsumer<Entity, BukkitDifficultyService.Spawn> difficulty = (entity, spawn) -> { };
+
+    public void configureDifficulty(java.util.function.BiConsumer<Entity, BukkitDifficultyService.Spawn> difficulty) {
+        this.difficulty = Objects.requireNonNull(difficulty);
+    }
+
     @Override
     public SpawnResult spawn(UUID instanceId, String mobId, Point point) {
         World target = world.get();
@@ -36,6 +42,12 @@ public final class BukkitBossGateway implements BossEntityGateway {
             return SpawnResult.failure(result.detail());
         }
         identity.mark(result.entity(), instanceId);
+        try {
+            difficulty.accept(result.entity(), new BukkitDifficultyService.Spawn(instanceId, -1, point, true));
+        } catch (RuntimeException exception) {
+            remove(result.entity().getUniqueId());
+            return SpawnResult.failure(exception.getMessage());
+        }
         return SpawnResult.success(result.entity().getUniqueId(), result.detail());
     }
 

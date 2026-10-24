@@ -6,6 +6,7 @@ import com.google.gson.JsonParser;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.RewardDefinition;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.RewardItem;
 import me.lidan.dungeonCrawlers.core.reward.RewardEntitlementService;
+import me.lidan.dungeonCrawlers.core.difficulty.Difficulty;
 import me.lidan.dungeonCrawlers.core.reward.RewardModels.ItemPayload;
 import me.lidan.dungeonCrawlers.core.score.DungeonRank;
 import me.lidan.dungeonCrawlers.core.score.ScoreService;
@@ -43,6 +44,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -62,6 +64,89 @@ class RewardClaimServiceTest {
     @AfterEach
     void tearDownBukkit() {
         MockBukkit.unmock();
+    }
+
+    @Test
+    void lateLivePurchaseRefreshesPersistedPreflightDeadlineAndOwnedDeliverySurvivesClosure() {
+        var rewards = entitlements();
+        var open = new AtomicBoolean(true);
+        var now = new AtomicReference<>(COMPLETED.plusSeconds(10));
+        var clock = Mockito.mock(Clock.class);
+        Mockito.when(clock.instant()).thenAnswer(ignored -> now.get());
+        var repository = new InMemoryRepository();
+        var economy = Mockito.mock(EconomyGateway.class);
+        Mockito.when(economy.providerIdentity()).thenReturn("Vault");
+        Mockito.when(economy.withdraw(Mockito.any(), Mockito.eq(5.0)))
+                .thenReturn(new EconomyGateway.TransactionResult(true, 5, 0, "charged"));
+        var claims = new RewardClaimService(clock, repository, rewards, items(),
+                () -> null, Runnable::run, ignored -> { });
+        var result = new AtomicReference<RewardClaimService.ClaimResult>();
+        claims.claim(INSTANCE, PLAYER, "gold", player(), result::set);
+        assertEquals(RewardClaimService.ClaimStatus.BLOCKED_PROVIDER, result.get().status());
+
+        rewards.configureLiveAccess(id -> id.equals(INSTANCE) && open.get());
+        now.set(COMPLETED.plusSeconds(600));
+        var restored = new RewardClaimService(clock, repository, rewards, items(),
+                () -> economy, Runnable::run, ignored -> { });
+        restored.claim(INSTANCE, PLAYER, "gold", player(), result::set);
+        assertTrue(result.get().successful(), result.get().detail());
+        Mockito.verify(economy).withdraw(Mockito.any(), Mockito.eq(5.0));
+        open.set(false);
+        restored.claim(INSTANCE, PLAYER, "wood", player(), result::set);
+        assertEquals(RewardClaimService.ClaimStatus.REJECTED, result.get().status());
+        Mockito.verify(economy, Mockito.times(1)).withdraw(Mockito.any(), Mockito.eq(5.0));
+
+        var online = new PlayerMock(MockBukkit.getMock(), "Claimant", PLAYER);
+        MockBukkit.getMock().addPlayer(online);
+        var delivery = new AtomicReference<RewardClaimService.DeliveryResult>();
+        restored.deliver(INSTANCE, PLAYER, online, delivery::set);
+        assertTrue(delivery.get().successful(), delivery.get().detail());
+        assertEquals(1, online.getInventory().getItem(0).getAmount());
+    }
+
+    @Test
+    void instanceClosureDuringPersistenceNeverChargesThePlayer() {
+        for (int closeAfterWrite : List.of(1, 2)) {
+            var rewards = entitlements();
+            var open = new AtomicBoolean(true);
+            rewards.configureLiveAccess(id -> open.get());
+            var writes = new AtomicInteger();
+            var repository = Mockito.spy(new InMemoryRepository());
+            Mockito.doAnswer(invocation -> {
+                var submission = invocation.callRealMethod();
+                if (writes.incrementAndGet() == closeAfterWrite) open.set(false);
+                return submission;
+            }).when(repository).submit(Mockito.any());
+            var economy = Mockito.mock(EconomyGateway.class);
+            Mockito.when(economy.providerIdentity()).thenReturn("Vault");
+            var claims = new RewardClaimService(clock(), repository, rewards, items(),
+                    () -> economy, Runnable::run, ignored -> { });
+            var result = new AtomicReference<RewardClaimService.ClaimResult>();
+            claims.claim(INSTANCE, PLAYER, "gold", player(), result::set);
+            assertFalse(result.get().successful());
+            Mockito.verify(economy, Mockito.never()).withdraw(Mockito.any(), Mockito.anyDouble());
+            assertEquals(ClaimGroup.State.NONE, claims.info(INSTANCE, PLAYER).orElseThrow().claimGroup().state());
+        }
+    }
+
+    @Test
+    void discountedPriceMatchesAffordabilityFrozenClaimAndEconomyDebit() {
+        var rewards = entitlements(Difficulty.HARD);
+        var offer = rewards.preview(INSTANCE, PLAYER, "gold").orElseThrow();
+        assertEquals(4, offer.price());
+        var economy = Mockito.mock(EconomyGateway.class);
+        Mockito.when(economy.providerIdentity()).thenReturn("TestEconomy");
+        Mockito.when(economy.hasFunds(Mockito.any(), Mockito.eq(4.0))).thenReturn(Optional.of(true));
+        Mockito.when(economy.withdraw(Mockito.any(), Mockito.eq(4.0)))
+                .thenReturn(new EconomyGateway.TransactionResult(true, 4, 0, "charged"));
+        var claims = new RewardClaimService(clock(), rewards, items(), economy);
+        var account = player();
+        assertEquals(RewardClaimService.Affordability.AFFORDABLE, claims.affordability(account, offer.price()));
+        AtomicReference<RewardClaimService.ClaimResult> result = new AtomicReference<>();
+        claims.claim(INSTANCE, PLAYER, "gold", account, result::set);
+        assertTrue(result.get().successful(), result.get().detail());
+        Mockito.verify(economy).withdraw(account, 4.0);
+        assertEquals(4, claims.info(INSTANCE, PLAYER).orElseThrow().offers().get(offer.offerId()).price());
     }
 
     @Test
@@ -152,6 +237,8 @@ class RewardClaimServiceTest {
         RewardClaimService claims = new RewardClaimService(clock(), entitlements, items(), economy);
         AtomicReference<RewardClaimService.ClaimResult> result = new AtomicReference<>();
 
+        assertTrue(claims.reconciliationIds().isEmpty());
+
         claims.claim(INSTANCE, PLAYER, "gold", player(), result::set);
 
         assertEquals(RewardClaimService.ClaimStatus.RECONCILIATION_REQUIRED, result.get().status());
@@ -162,11 +249,13 @@ class RewardClaimServiceTest {
 
         UUID offerId = claims.info(INSTANCE, PLAYER).orElseThrow().offers().values().stream()
                 .filter(value -> value.price() == 5).findFirst().orElseThrow().offerId();
+        assertEquals(List.of(offerId), claims.reconciliationIds());
         AtomicReference<RewardClaimService.ReconcileResult> reconciliation = new AtomicReference<>();
         claims.reconcile(offerId, RewardClaimService.Decision.NOT_CHARGED, "test", "provider log says no debit",
                 reconciliation::set);
 
         assertTrue(reconciliation.get().successful(), reconciliation.get().detail());
+        assertTrue(claims.reconciliationIds().isEmpty());
         assertEquals(ClaimGroup.State.NONE, claims.info(INSTANCE, PLAYER).orElseThrow().claimGroup().state());
         assertEquals(1, withdrawals.get());
     }
@@ -527,6 +616,10 @@ class RewardClaimServiceTest {
     }
 
     private static RewardEntitlementService entitlements() {
+        return entitlements(Difficulty.NORMAL);
+    }
+
+    private static RewardEntitlementService entitlements(Difficulty difficulty) {
         RewardDefinition gold = new RewardDefinition(true, 5, 0, 1, false,
                 List.of(new RewardItem("GOLD", 1, 1, 1)));
         RewardDefinition wood = new RewardDefinition(true, 0, 0, 1, false,
@@ -541,7 +634,7 @@ class RewardClaimServiceTest {
                 score.rank(), score.bonusFacts());
         service.register(new RewardEntitlementService.Completion(INSTANCE, 42, COMPLETED, finalScore,
                 List.of(new RewardEntitlementService.Participant(PLAYER, true, true)),
-                Map.of("gold", gold, "wood", wood)));
+                Map.of("gold", gold, "wood", wood), difficulty));
         return service;
     }
 
@@ -573,6 +666,21 @@ class RewardClaimServiceTest {
                         amount));
             }
         };
+    }
+
+
+    @Test void fixedLootSurvivesFullInventoryAndRepeatedDelivery() {
+        var player = MockBukkit.getMock().addPlayer();
+        for (int slot = 0; slot < player.getInventory().getStorageContents().length; slot++)
+            player.getInventory().setItem(slot, new ItemStack(Material.STONE, 64));
+        var claims = new RewardClaimService(clock(), entitlements(), items(), successfulEconomy());
+        UUID drop = UUID.randomUUID();
+        claims.grantLoot(drop, player, "RUNIC_FRAGMENT", 4);
+        assertTrue(claims.info(drop, player.getUniqueId()).isPresent());
+        player.getInventory().clear(); claims.deliverPending(player); claims.grantLoot(drop, player, "RUNIC_FRAGMENT", 4);
+        int amount = Arrays.stream(player.getInventory().getContents()).filter(java.util.Objects::nonNull)
+                .mapToInt(ItemStack::getAmount).sum();
+        assertEquals(4, amount);
     }
 
     private static EconomyGateway successfulEconomy() {

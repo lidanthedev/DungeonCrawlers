@@ -137,6 +137,7 @@ public final class PortalEncounterService {
             return PortalResult.failure("central update is not registered for this instance");
         }
         state.owner = playerId;
+        state.prematureEntry = !participants.portalDoorOpened(instanceId);
         state.deadline = clock.instant().plus(timings.portalCountdown());
         state.lastAnnouncedCountdown = (int) timings.portalCountdown().toSeconds();
         state.status = Status.COUNTDOWN;
@@ -284,6 +285,19 @@ public final class PortalEncounterService {
             if (state.status == Status.COUNTDOWN && state.deadline != null && !now.isBefore(state.deadline)) {
                 state.owner = null;
                 state.deadline = null;
+                if (state.prematureEntry && runs.info(instanceId)
+                        .map(run -> run.state() == RunPreparationService.RunState.RUNNING).orElse(false)) {
+                    state.status = Status.FAILED;
+                    state.detail = "party entered the boss portal before opening its door";
+                    updates.removeSupplemental(instanceId, state.callback);
+                    participants.killParty(instanceId, state.detail);
+                    runs.fail(instanceId, state.detail);
+                    participants.title(instanceId, "<red><bold>Shortcut Unlocked!</bold></red>",
+                            "<yellow>Destination: the graveyard.</yellow>");
+                    participants.notice(instanceId,
+                            "<red>You skipped the door. The boss skipped your survival.</red>");
+                    return;
+                }
                 PortalResult started = startBossInternal(state);
                 if (!started.successful()) diagnostics.accept("instance=" + instanceId + " " + started.detail());
                 return;
@@ -390,7 +404,7 @@ public final class PortalEncounterService {
         } catch (RuntimeException exception) {
             return finalizationFailure(state, exception.getClass().getSimpleName() + ": " + exception.getMessage());
         }
-        if (!finalized) return finalizationFailure(state, "completion finalizer returned false");
+        if (!finalized) return DeathResult.accepted("completion is awaiting finalization", snapshot(state));
         RunPreparationService.PhaseResult transition = runs.enterCompletionPending(state.instanceId);
         if (!transition.successful()) {
             return finalizationFailure(state, "run completion transition failed: " + transition.detail());
@@ -447,6 +461,10 @@ public final class PortalEncounterService {
 
     public interface ParticipantGateway {
         List<UUID> activePlayers(UUID instanceId);
+
+        boolean portalDoorOpened(UUID instanceId);
+
+        void killParty(UUID instanceId, String reason);
 
         boolean teleport(UUID playerId, Point target);
 
@@ -536,6 +554,7 @@ public final class PortalEncounterService {
         private Instant bossSpawnAt;
         private Status status = Status.IDLE;
         private UUID owner;
+        private boolean prematureEntry;
         private Instant deadline;
         private int lastAnnouncedCountdown;
         private EncounterFactory.Encounter encounter;
