@@ -6,12 +6,14 @@ All commands use the `/dungeon` root. Player-facing messages use the plugin's Mi
 
 | Command | Permission | Purpose |
 | --- | --- | --- |
-| `/dungeon start <floor> [difficulty]` | `dungeoncrawlers.use` | Leader selects the difficulty; omitted tier opens the menu. All members must unlock it on that floor. |
+| `/dungeon start <floor> [difficulty]` | `dungeoncrawlers.use` and `dungeoncrawlers.start.<floor-id>` | Leader selects the difficulty; omitted tier opens the menu. All members must unlock it on that floor. |
 | `/dungeon class menu` | `dungeoncrawlers.command.class` | Open the class GUI while the run is still preparing. |
 | `/dungeon class list` | `dungeoncrawlers.use` | List floor-allowed classes as clickable text. |
 | `/dungeon class select <id>` | `dungeoncrawlers.use` | Select a class by its configured id. |
 | `/dungeon whereami` | `dungeoncrawlers.use` | Show the current dungeon location. |
 | `/dungeon reward open` | `dungeoncrawlers.use` | Open completed rewards. |
+
+Floor start permissions apply to the player starting the run, before opening the difficulty menu and again when choosing a difficulty. Operators have access by default; other players need grants such as `dungeoncrawlers.start.floor_1` or `dungeoncrawlers.start.floor_3`. Custom floor IDs use the same `dungeoncrawlers.start.<floor-id>` pattern. The admin debug start also checks these permissions.
 
 The class menu and selector NPC recheck run membership, snapshot readiness, allowed class ids, and the PREPARING state on every selection. Selection is locked after the start door opens, while the NPC may remain present as a locked signpost until cleanup.
 

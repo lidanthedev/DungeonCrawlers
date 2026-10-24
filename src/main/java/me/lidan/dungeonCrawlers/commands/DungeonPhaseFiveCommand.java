@@ -222,6 +222,12 @@ public final class DungeonPhaseFiveCommand {
             DungeonMessages.send(player, DungeonMessages.error("Unknown floor: <white>" + floorId + "</white>"));
             return;
         }
+        String permission = "dungeoncrawlers.start." + floor.id();
+        if (!player.hasPermission("dungeoncrawlers.use") || !player.hasPermission(permission)) {
+            DungeonMessages.send(player, DungeonMessages.error(
+                    "You do not have permission to start " + floor.displayName() + "."));
+            return;
+        }
         PartyProvider.PartyLookup lookup = parties.lookup(player.getUniqueId());
         PartySnapshotPolicy.SnapshotResult party = partyPolicy.snapshot(player.getUniqueId(), lookup,
                 floor.limits().maxPartySize());

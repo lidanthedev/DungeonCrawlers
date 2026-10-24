@@ -65,14 +65,15 @@ public final class BukkitDungeonRunListener implements Listener {
             if (value != null) incoming.put(type, value.getValue());
         }
         UUID instanceId = runs.instanceFor(event.getPlayer().getUniqueId()).orElse(null);
+        int dungeonLevel = DungeonClassScaling.dungeonLevel(event.getPlayer());
         var aggregated = phaseSeven == null || instanceId == null
                 ? new me.lidan.dungeonCrawlers.core.stats.StatAggregationService().aggregate(
-                        incoming, selected, java.util.Map.of(), java.util.Map.of())
-                : phaseSeven.aggregate(instanceId, selected, incoming);
+                        incoming, selected, java.util.Map.of(), java.util.Map.of(), dungeonLevel)
+                : phaseSeven.aggregate(instanceId, selected, incoming, dungeonLevel);
         aggregated.forEach((type, value) -> event.getStats().set(type, value));
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onSecretInteract(PlayerInteractEvent event) {
         if (phaseSeven == null || event.getHand() == EquipmentSlot.OFF_HAND
                 || event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getClickedBlock() == null

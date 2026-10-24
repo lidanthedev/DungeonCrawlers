@@ -13,6 +13,12 @@ libraries:
 permissions:
   dungeoncrawlers.use:
     default: true
+  dungeoncrawlers.start.floor_1:
+    description: Start a dungeon on floor_1
+    default: op
+  dungeoncrawlers.start.floor_3:
+    description: Start a dungeon on floor_3
+    default: op
   dungeoncrawlers.command.class:
     default: true
   dungeoncrawlers.admin:

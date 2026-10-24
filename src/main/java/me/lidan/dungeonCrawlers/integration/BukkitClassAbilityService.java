@@ -1,0 +1,567 @@
+package me.lidan.dungeonCrawlers.integration;
+
+import me.lidan.cavecrawlers.damage.AbilityDamage;
+import me.lidan.cavecrawlers.damage.DamageCalculationEvent;
+import me.lidan.cavecrawlers.damage.DamageManager;
+import me.lidan.cavecrawlers.damage.FinalDamageCalculation;
+import me.lidan.cavecrawlers.items.abilities.ItemAbility;
+import me.lidan.cavecrawlers.stats.ActionBarManager;
+import me.lidan.cavecrawlers.stats.StatType;
+import me.lidan.cavecrawlers.stats.StatsCalculateEvent;
+import me.lidan.cavecrawlers.stats.StatsManager;
+import me.lidan.cavecrawlers.utils.MiniMessageUtils;
+import me.lidan.dungeonCrawlers.config.registry.ConfigRegistryService;
+import me.lidan.dungeonCrawlers.core.generation.GenerationService;
+import me.lidan.dungeonCrawlers.core.lifecycle.PlayerLifecycleService;
+import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
+import me.lidan.dungeonCrawlers.core.template.TemplateModels.Bounds;
+import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
+import org.bukkit.Color;
+import org.bukkit.GameMode;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Particle;
+import org.bukkit.Sound;
+import org.bukkit.damage.DamageSource;
+import org.bukkit.damage.DamageType;
+import org.bukkit.entity.Arrow;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Mob;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
+import org.bukkit.event.entity.ProjectileHitEvent;
+import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerEvent;
+import org.bukkit.plugin.Plugin;
+import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+
+/** Main-thread dungeon class abilities and nearby-player support effects.
+ * Cooldowns, mana, and action-bar feedback use the normal CaveCrawlers
+ * {@link ItemAbility} flow. */
+public final class BukkitClassAbilityService implements Listener, AutoCloseable {
+    private final Plugin plugin;
+    private final RunPreparationService runs;
+    private final PlayerLifecycleService lifecycle;
+    private final GenerationService generation;
+    private final ConfigRegistryService config;
+    private final BukkitEntityIdentity identity;
+    private final BukkitBossIdentity bosses;
+    private final BukkitDifficultyService difficulty;
+    private final NamespacedKey classArrow;
+    private final Clock clock;
+    private final String worldName;
+    private final Map<String, ClassAbility> classAbilities = new HashMap<>();
+    private final Map<UUID, Map<String, Effect>> effects = new HashMap<>();
+    private final Map<UUID, Taunt> taunts = new HashMap<>();
+    private final Map<UUID, Shot> arrows = new HashMap<>();
+    private final Map<BannerKey, BannerField> banners = new HashMap<>();
+
+    public BukkitClassAbilityService(Plugin plugin, RunPreparationService runs, PlayerLifecycleService lifecycle,
+                                     GenerationService generation, ConfigRegistryService config,
+                                     BukkitEntityIdentity identity, BukkitBossIdentity bosses,
+                                     BukkitDifficultyService difficulty, Clock clock, String worldName) {
+        this.plugin = plugin; this.runs = runs; this.lifecycle = lifecycle; this.generation = generation;
+        this.config = config; this.identity = identity; this.bosses = bosses;
+        this.difficulty = difficulty; this.classArrow = new NamespacedKey(plugin, "class_arrow");
+        this.clock = clock; this.worldName = worldName;
+        for (String classId : List.of("berserker", "mage", "tank", "archer", "healer")) {
+            classAbilities.put(classId, new ClassAbility(classId));
+        }
+    }
+
+    public static String abilityName(String classId) {
+        return switch (classId) {
+            case "berserker" -> "Bloodrage";
+            case "mage" -> "Stormcall";
+            case "tank" -> "Iron Challenge";
+            case "archer" -> "Cataclysm Arrow";
+            case "healer" -> "Lifesurge";
+            default -> "";
+        };
+    }
+
+    public static int cooldownSeconds(String classId) {
+        return switch (classId) {
+            case "berserker", "archer" -> 30;
+            case "mage" -> 25;
+            case "tank" -> 35;
+            case "healer" -> 60;
+            default -> 0;
+        };
+    }
+
+    public static String abilityDescription(String classId, int level) {
+        return switch (classId) {
+            case "berserker" -> "+" + (25 + Math.clamp(level, 0, 60)) + "% strength and damage for 10s.";
+            case "mage" -> "Lightning strikes every room enemy; intelligence scaling, glowing for 10s.";
+            case "tank" -> "Taunt every room enemy; take 50% less damage for 10s.";
+            case "archer" -> "Fire a strength-scaled explosive arrow with an 8-block blast.";
+            case "healer" -> "Fully heal your party; regenerate 8% health each second for 10s.";
+            default -> "";
+        };
+    }
+
+    @EventHandler(priority = EventPriority.LOW)
+    public void onDrop(PlayerDropItemEvent event) {
+        UUID instance = runs.instanceFor(event.getPlayer().getUniqueId()).orElse(null);
+        if (instance == null) return;
+        // Cancel first so a failed cast or cooldown never drops the held equipment.
+        event.setCancelled(true);
+        if (activeInstance(event.getPlayer()) == null) return;
+        // Paper restores the held stack after the cancelled DROP event returns.
+        plugin.getServer().getScheduler().runTask(plugin, () -> activateClass(event));
+    }
+
+    /** Routes the DROP trigger through the class {@link ItemAbility} so cooldowns,
+     * mana, and action-bar feedback follow the normal CaveCrawlers flow. */
+    public void activateClass(PlayerEvent event) {
+        Player player = event.getPlayer();
+        UUID instance = activeInstance(player);
+        if (instance == null) return;
+        String selected = runs.info(instance).orElseThrow().selectedClasses().get(player.getUniqueId());
+        ClassAbility ability = classAbilities.get(selected);
+        if (ability == null) return;
+        ability.activateAbility(event);
+    }
+
+    /** Test hook for the native per-player cooldowns owned by each class ability. */
+    ItemAbility classAbility(String classId) {
+        return classAbilities.get(classId);
+    }
+
+    private boolean applyClassEffect(Player player) {
+        UUID instance = activeInstance(player);
+        if (instance == null) return false;
+        String selected = runs.info(instance).orElseThrow().selectedClasses().get(player.getUniqueId());
+        if (selected == null || cooldownSeconds(selected) == 0) return false;
+        int level = DungeonClassScaling.dungeonLevel(player);
+        List<Mob> mobs;
+        switch (selected) {
+            case "berserker" -> {
+                double bonus = (25 + level) / 100D;
+                effect(player, "bloodrage", instance, Map.of(StatType.STRENGTH, bonus), Map.of(), bonus, 0, 0, 1);
+            }
+            case "mage" -> {
+                mobs = roomMobs(player, instance);
+                if (mobs.isEmpty()) return noEnemies(player);
+                for (Mob mob : mobs) {
+                    mob.getWorld().strikeLightningEffect(mob.getLocation());
+                    mob.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, 200, 0));
+                }
+                damage(player, mobs, new AbilityDamage(player, 4000, 10).calculate());
+            }
+            case "tank" -> {
+                mobs = roomMobs(player, instance);
+                if (mobs.isEmpty()) return noEnemies(player);
+                effect(player, "iron_challenge", instance, Map.of(), Map.of(), 0, .5, 0, 1);
+                for (Mob mob : mobs) {
+                    Taunt previous = taunts.get(mob.getUniqueId());
+                    taunts.put(mob.getUniqueId(), new Taunt(instance, player.getUniqueId(),
+                            previous == null ? mob.getTarget() : previous.previousTarget(), clock.instant().plusSeconds(10)));
+                    mob.setTarget(player);
+                }
+            }
+            case "archer" -> {
+                if (roomBounds(player.getLocation(), instance) == null) return noEnemies(player);
+                Arrow arrow = player.launchProjectile(Arrow.class, player.getEyeLocation().getDirection().multiply(2.5));
+                arrow.setDamage(0);
+                arrow.setPickupStatus(Arrow.PickupStatus.DISALLOWED);
+                arrow.getPersistentDataContainer().set(classArrow, PersistentDataType.BYTE, (byte) 1);
+                arrows.put(arrow.getUniqueId(), new Shot(instance, player.getUniqueId(),
+                        new AbilityDamage(player, 4000, 10, StatType.STRENGTH, false).calculate(),
+                        clock.instant().plusSeconds(10)));
+            }
+            case "healer" -> {
+                double healing = healingMultiplier(player, instance);
+                for (Player member : party(player, instance, 0)) {
+                    heal(member, 100);
+                    effect(member, "lifesurge", instance, Map.of(), Map.of(), 0, 0, 8, healing);
+                }
+            }
+            default -> { return false; }
+        }
+        castFx(player);
+        return true;
+    }
+
+    /** Nearby-player effect behind each support {@link me.lidan.cavecrawlers.items.abilities.ClickAbility}.
+     * Runs inside the normal ItemAbility flow, so cooldowns and action-bar feedback
+     * belong to the base class; a false return spends no cooldown. */
+    public boolean activateSupport(Player player, String abilityId) {
+        UUID instance = activeInstance(player);
+        if (!canUseSupport(player)) {
+            ActionBarManager.getInstance().showActionBar(player,
+                    MiniMessageUtils.miniMessage("<red>Support abilities require a living player.</red>"));
+            return false;
+        }
+        double power = instance == null ? .5 : 1;
+        double healing;
+        double regen = 0;
+        double reduction = 0;
+        double damage = 0;
+        double radius = 16;
+        Material banner = null;
+        Color color = Color.LIME;
+        Map<StatType, Double> stats = Map.of();
+        Map<StatType, Double> statAdd = Map.of();
+        switch (abilityId) {
+            case "dc_aegis_standard" -> { healing = 10; stats = Map.of(StatType.DEFENSE, .35); banner = Material.WHITE_BANNER; color = Color.WHITE; }
+            case "dc_bastion_horn" -> { healing = 5; reduction = .25; }
+            case "dc_renewal_staff" -> { healing = 30; regen = 5; }
+            case "dc_dawnlight_tome" -> { healing = 15; stats = Map.of(StatType.STRENGTH, .25, StatType.INTELLIGENCE, .25); }
+            case "dc_war_standard" -> { healing = 0; stats = Map.of(StatType.STRENGTH, .35, StatType.CRIT_DAMAGE, .25); damage = .15; banner = Material.RED_BANNER; color = Color.RED; }
+            case "dc_wind_standard" -> { healing = 0; stats = Map.of(StatType.SPEED, .30); statAdd = Map.of(StatType.ATTACK_SPEED, 25D); banner = Material.CYAN_BANNER; color = Color.AQUA; }
+            case "dc_vitality_totem" -> { healing = 15; stats = Map.of(StatType.HEALTH, .25); }
+            case "dc_focus_orb" -> { healing = 0; stats = Map.of(StatType.INTELLIGENCE, .40); statAdd = Map.of(StatType.ABILITY_DAMAGE, 500D); color = Color.PURPLE; }
+            case "dc_mending_wand" -> { healing = 10; radius = 8; }
+            default -> { return false; }
+        }
+        double multiplier = power * (instance == null ? 1 : healingMultiplier(player, instance));
+        Map<StatType, Double> scaledStats = new HashMap<>();
+        stats.forEach((type, amount) -> scaledStats.put(type, amount * power));
+        Map<StatType, Double> scaledAdd = new HashMap<>();
+        statAdd.forEach((type, amount) -> scaledAdd.put(type, amount * power));
+        List<Player> members = nearbyPlayers(player, instance, radius);
+        if (abilityId.equals("dc_mending_wand")) {
+            members = members.stream().filter(member -> member.getHealth() < StatsManager.getMaxHealth(member)).toList();
+            if (members.isEmpty()) {
+                ActionBarManager.getInstance().showActionBar(player,
+                        MiniMessageUtils.miniMessage("<red>Nearby party members are already at full health.</red>"));
+                return false;
+            }
+        }
+        for (Player member : members) {
+            // Match ZOMBIE_SWORD_HEAL's flat heal followed by recipient-max-health percentage.
+            if (abilityId.equals("dc_mending_wand")) StatsManager.healPlayer(member, 100 * multiplier);
+            if (healing > 0) heal(member, healing * multiplier);
+            if (!stats.isEmpty() || !statAdd.isEmpty() || damage > 0 || reduction > 0 || regen > 0) {
+                effect(member, abilityId, instance, scaledStats, scaledAdd, damage * power, reduction * power, regen, multiplier);
+            }
+        }
+        Location center = player.getLocation().clone();
+        areaFx(center, radius, color);
+        if (banner != null) banner(player, abilityId, instance, center, banner, color);
+        castFx(player);
+        return true;
+    }
+
+    private void banner(Player player, String abilityId, UUID instance, Location center, Material material, Color color) {
+        BannerKey key = new BannerKey(player.getUniqueId(), abilityId);
+        BannerField previous = banners.remove(key);
+        if (previous != null) previous.visual().close();
+        BukkitSupportBanner visual = BukkitSupportBanner.spawn(center, material, color);
+        banners.put(key, new BannerField(instance, center, visual, color, clock.instant().plusSeconds(10)));
+    }
+
+    private static void areaFx(Location center, double radius, Color color) {
+        Particle.DustOptions dust = new Particle.DustOptions(color, 1.2F);
+        // Three great circles mark the same spherical range used for recipient selection.
+        for (int i = 0; i < 48; i++) {
+            double angle = i * Math.PI / 24;
+            double a = Math.cos(angle) * radius, b = Math.sin(angle) * radius;
+            center.getWorld().spawnParticle(Particle.DUST, center.clone().add(a, .15, b), 1, 0, 0, 0, 0, dust);
+            if (i % 2 == 0) {
+                center.getWorld().spawnParticle(Particle.DUST, center.clone().add(a, b, 0), 1, 0, 0, 0, 0, dust);
+                center.getWorld().spawnParticle(Particle.DUST, center.clone().add(0, b, a), 1, 0, 0, 0, 0, dust);
+                center.getWorld().spawnParticle(Particle.DUST, center.clone().add(a * .5, .4, b * .5), 1, 0, 0, 0, 0, dust);
+            }
+        }
+    }
+
+    private double healingMultiplier(Player source, UUID instance) {
+        var selected = config.snapshot().classes().get(runs.info(instance).orElseThrow()
+                .selectedClasses().get(source.getUniqueId()));
+        return selected == null ? 1 : 1 + selected.healingPercentPerLevel()
+                * DungeonClassScaling.dungeonLevel(source) / 100D;
+    }
+
+    private void effect(Player player, String key, UUID instance, Map<StatType, Double> stats, Map<StatType, Double> statAdd,
+                        double damage, double reduction, double regen, double healing) {
+        Effect current = new Effect(instance, player.getWorld().getName(), clock.instant().plusSeconds(10),
+                Map.copyOf(stats), Map.copyOf(statAdd), damage, reduction, regen * healing);
+        effects.computeIfAbsent(player.getUniqueId(), ignored -> new HashMap<>()).put(key, current);
+        // Recalculate after ItemAbility finishes its native mana update.
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            if (matchesContext(player, instance, current.world())) StatsManager.getInstance().calculateStats(player);
+        });
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onStats(StatsCalculateEvent event) {
+        List<Effect> active = activeEffects(event.getPlayer());
+        for (Effect effect : active) {
+            effect.statAdd().forEach((type, amount) -> event.getStats().get(type).add(amount));
+            effect.stats().forEach((type, percent) -> event.getStats().get(type).multiply(1 + percent));
+        }
+        if (active.stream().anyMatch(effect -> effect.stats().containsKey(StatType.SPEED))) {
+            // Cave clamps before StatsCalculateEvent; Tailwind must preserve those native caps.
+            event.getStats().get(StatType.SPEED).setValue(Math.min(StatsManager.SPEED_LIMIT, event.getStats().get(StatType.SPEED).getValue()));
+            event.getStats().get(StatType.ATTACK_SPEED).setValue(Math.min(StatsManager.ATTACK_SPEED_LIMIT, event.getStats().get(StatType.ATTACK_SPEED).getValue()));
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onOutgoing(DamageCalculationEvent event) {
+        UUID instance = activeInstance(event.getPlayer());
+        if (instance != null && !belongsTo(event.getTarget(), instance)) return;
+        if (!event.getPlayer().getWorld().equals(event.getTarget().getWorld())) return;
+        double bonus = activeEffects(event.getPlayer()).stream().mapToDouble(Effect::damage).max().orElse(0);
+        event.setDamage(event.getDamage() * (1 + bonus));
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onIncoming(EntityDamageEvent event) {
+        if (!(event.getEntity() instanceof Player player)) return;
+        double reduction = activeEffects(player).stream().mapToDouble(Effect::reduction).max().orElse(0);
+        event.setDamage(event.getDamage() * (1 - reduction));
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onTarget(EntityTargetLivingEntityEvent event) {
+        Taunt taunt = taunts.get(event.getEntity().getUniqueId());
+        if (taunt == null) return;
+        Player tank = plugin.getServer().getPlayer(taunt.player());
+        if (validTaunt(taunt, tank)) {
+            event.setTarget(tank);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onArrowDamage(EntityDamageByEntityEvent event) {
+        if (event.getDamager().getPersistentDataContainer().has(classArrow, PersistentDataType.BYTE)) event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onArrowHit(ProjectileHitEvent event) {
+        Shot shot = arrows.remove(event.getEntity().getUniqueId());
+        if (shot == null) return;
+        event.setCancelled(true);
+        Location center = event.getEntity().getLocation();
+        event.getEntity().remove();
+        Player source = plugin.getServer().getPlayer(shot.player());
+        if (source == null || !shot.instance().equals(activeInstance(source))
+                || !clock.instant().isBefore(shot.expires())) return;
+        Bounds room = roomBounds(center, shot.instance());
+        if (room == null) return;
+        center.getWorld().spawnParticle(Particle.EXPLOSION_EMITTER, center, 1);
+        center.getWorld().playSound(center, Sound.ENTITY_GENERIC_EXPLODE, 1, 1);
+        List<Mob> targets = center.getWorld().getNearbyEntities(center, 8, 8, 8).stream()
+                .filter(Mob.class::isInstance).map(Mob.class::cast)
+                .filter(mob -> belongsTo(mob, shot.instance()) && room.contains(point(mob.getLocation()))
+                        && mob.getLocation().distanceSquared(center) <= 64 && !mob.isDead() && mob.isValid()).toList();
+        damage(source, targets, shot.damage());
+    }
+
+    private static void damage(Player player, List<Mob> mobs, double amount) {
+        if (mobs.isEmpty()) return;
+        // A projectile source keeps Cave's damage hooks working even while the caster holds a bow.
+        Arrow source = DamageManager.getInstance().launchProjectile(player, Arrow.class,
+                new FinalDamageCalculation(amount, false));
+        try {
+            DamageSource damage = DamageSource.builder(DamageType.ARROW)
+                    .withDirectEntity(source).withCausingEntity(player).build();
+            for (Mob mob : mobs) {
+                mob.setNoDamageTicks(0);
+                mob.damage(amount, damage);
+            }
+        } finally {
+            source.remove();
+        }
+    }
+
+    private List<Mob> roomMobs(Player player, UUID instance) {
+        Bounds bounds = roomBounds(player.getLocation(), instance);
+        if (bounds == null) return List.of();
+        Location center = new Location(player.getWorld(), (bounds.minimum().x() + bounds.maximum().x()) / 2D,
+                (bounds.minimum().y() + bounds.maximum().y()) / 2D, (bounds.minimum().z() + bounds.maximum().z()) / 2D);
+        return player.getWorld().getNearbyEntities(center,
+                        (bounds.maximum().x() - bounds.minimum().x()) / 2D + 1,
+                        (bounds.maximum().y() - bounds.minimum().y()) / 2D + 1,
+                        (bounds.maximum().z() - bounds.minimum().z()) / 2D + 1).stream()
+                .filter(Mob.class::isInstance).map(Mob.class::cast)
+                .filter(mob -> !mob.isDead() && mob.isValid() && belongsTo(mob, instance)
+                        && bounds.contains(point(mob.getLocation()))).toList();
+    }
+
+    private Bounds roomBounds(Location location, UUID instance) {
+        return generation.layoutPlan(instance).stream().flatMap(plan -> plan.placements().stream())
+                .filter(room -> room.bounds().contains(point(location))).map(room -> room.bounds()).findFirst().orElse(null);
+    }
+
+    private boolean belongsTo(Entity entity, UUID instance) {
+        return identity.belongsTo(entity, instance) || bosses.read(entity).filter(instance::equals).isPresent()
+                || difficulty.belongsTo(entity, instance);
+    }
+
+    private static Point point(Location location) {
+        return new Point(location.getBlockX(), location.getBlockY(), location.getBlockZ());
+    }
+
+    private List<Player> party(Player source, UUID instance, double radius) {
+        return runs.info(instance).stream().flatMap(run -> run.participants().stream())
+                .map(id -> plugin.getServer().getPlayer(id)).filter(player -> player != null
+                        && instance.equals(activeInstance(player)) && player.getWorld().equals(source.getWorld())
+                        && (radius == 0 || player.getLocation().distanceSquared(source.getLocation()) <= radius * radius))
+                .toList();
+    }
+
+    private List<Player> nearbyPlayers(Player source, UUID instance, double radius) {
+        if (instance != null) return party(source, instance, radius);
+        return source.getWorld().getPlayers().stream()
+                .filter(player -> matchesContext(player, null, source.getWorld().getName())
+                        && player.getLocation().distanceSquared(source.getLocation()) <= radius * radius)
+                .toList();
+    }
+
+    private boolean canUseSupport(Player player) {
+        if (player == null || !player.isOnline() || player.isDead() || player.getGameMode() == GameMode.SPECTATOR) return false;
+        if (runs.instanceFor(player.getUniqueId()).isPresent() || player.getWorld().getName().equals(worldName)) {
+            return activeInstance(player) != null;
+        }
+        return true;
+    }
+
+    private boolean matchesContext(Player player, UUID instance, String world) {
+        if (!canUseSupport(player) || !player.getWorld().getName().equals(world)) return false;
+        return Objects.equals(instance, activeInstance(player));
+    }
+
+    private UUID activeInstance(Player player) {
+        if (player == null || !player.isOnline() || player.isDead() || !player.getWorld().getName().equals(worldName)) return null;
+        UUID instance = runs.instanceFor(player.getUniqueId()).orElse(null);
+        if (instance == null) return null;
+        var run = runs.info(instance).orElse(null);
+        if (run == null || (run.state() != RunPreparationService.RunState.RUNNING && run.state() != RunPreparationService.RunState.BOSS)) return null;
+        return lifecycle.player(instance, player.getUniqueId())
+                .filter(state -> state.online() && state.state() == PlayerLifecycleService.PlayerState.ALIVE)
+                .map(ignored -> instance).orElse(null);
+    }
+
+    private List<Effect> activeEffects(Player player) {
+        if (player == null) return List.of();
+        return effects.getOrDefault(player.getUniqueId(), Map.of()).values().stream()
+                .filter(effect -> matchesContext(player, effect.instance(), effect.world())
+                        && clock.instant().isBefore(effect.expires())).toList();
+    }
+
+    private static boolean noEnemies(Player player) {
+        ActionBarManager.getInstance().showActionBar(player,
+                MiniMessageUtils.miniMessage("<red>No dungeon enemies in this room.</red>"));
+        return false;
+    }
+
+    /** Cast feedback without chat; the base ability reports the cast on the action bar. */
+    private static void castFx(Player player) {
+        player.getWorld().spawnParticle(Particle.ENCHANT, player.getLocation().add(0, 1, 0), 25, .5, .5, .5);
+    }
+
+    private static void heal(Player player, double percent) {
+        StatsManager.healPlayerPercent(player, percent);
+        player.getWorld().spawnParticle(Particle.HEART, player.getLocation().add(0, 1, 0), 3, .4, .4, .4);
+    }
+
+    /** Called once per second by the existing plugin task. */
+    public void tick() {
+        Instant now = clock.instant();
+        banners.entrySet().removeIf(entry -> {
+            BannerField field = entry.getValue();
+            Player caster = plugin.getServer().getPlayer(entry.getKey().player());
+            if (!matchesContext(caster, field.instance(), field.center().getWorld().getName())
+                    || !now.isBefore(field.expires()) || !field.visual().isValid()) {
+                field.visual().close();
+                return true;
+            }
+            field.visual().tick();
+            areaFx(field.center(), 16, field.color());
+            return false;
+        });
+        for (UUID playerId : new ArrayList<>(effects.keySet())) {
+            Player player = plugin.getServer().getPlayer(playerId);
+            Map<String, Effect> active = effects.get(playerId);
+            boolean removed = active.values().removeIf(effect -> !matchesContext(player, effect.instance(), effect.world())
+                    || !now.isBefore(effect.expires()));
+            if (removed && player != null && player.isOnline() && !player.isDead()) StatsManager.getInstance().calculateStats(player);
+            if (active.isEmpty()) { effects.remove(playerId); continue; }
+            double regen = active.values().stream().mapToDouble(Effect::regen).max().orElse(0);
+            if (regen > 0) heal(player, regen);
+        }
+        taunts.entrySet().removeIf(entry -> {
+            Entity entity = plugin.getServer().getEntity(entry.getKey());
+            Player tank = plugin.getServer().getPlayer(entry.getValue().player());
+            if (!(entity instanceof Mob mob) || mob.isDead() || !mob.isValid()) return true;
+            if (!validTaunt(entry.getValue(), tank)) { restoreTarget(mob, entry.getValue()); return true; }
+            if (!tank.equals(mob.getTarget())) mob.setTarget(tank);
+            return false;
+        });
+        arrows.entrySet().removeIf(entry -> {
+            Entity arrow = plugin.getServer().getEntity(entry.getKey());
+            Shot shot = entry.getValue();
+            if (arrow == null) return true;
+            if (!now.isBefore(shot.expires()) || !shot.instance().equals(activeInstance(plugin.getServer().getPlayer(shot.player())))) {
+                arrow.remove(); return true;
+            }
+            return false;
+        });
+    }
+
+    private boolean validTaunt(Taunt taunt, Player tank) {
+        return tank != null && taunt.instance().equals(activeInstance(tank)) && clock.instant().isBefore(taunt.expires());
+    }
+
+    private static void restoreTarget(Mob mob, Taunt taunt) {
+        if (mob.getTarget() == null || !mob.getTarget().getUniqueId().equals(taunt.player())) return;
+        LivingEntity previous = taunt.previousTarget();
+        mob.setTarget(previous != null && previous.isValid() && !previous.isDead() ? previous : null);
+    }
+
+    @Override public void close() {
+        List<UUID> buffedPlayers = List.copyOf(effects.keySet());
+        for (var entry : taunts.entrySet()) {
+            if (plugin.getServer().getEntity(entry.getKey()) instanceof Mob mob) restoreTarget(mob, entry.getValue());
+        }
+        arrows.keySet().forEach(id -> { Entity arrow = plugin.getServer().getEntity(id); if (arrow != null) arrow.remove(); });
+        banners.values().forEach(field -> field.visual().close());
+        banners.clear();
+        taunts.clear(); arrows.clear(); effects.clear();
+        buffedPlayers.stream().map(plugin.getServer()::getPlayer)
+                .filter(player -> player != null && player.isOnline() && !player.isDead())
+                .forEach(player -> StatsManager.getInstance().calculateStats(player));
+    }
+
+    /** DROP-triggered class ability. Cooldown, mana, and action-bar feedback come
+     * from {@link ItemAbility#activateAbility}; only the dungeon effect is custom. */
+    private final class ClassAbility extends ItemAbility {
+        ClassAbility(String classId) {
+            super(abilityName(classId), abilityDescription(classId, 60), 0, cooldownSeconds(classId) * 1000L);
+        }
+
+        @Override
+        protected boolean useAbility(PlayerEvent event) {
+            return applyClassEffect(event.getPlayer());
+        }
+    }
+
+    private record Effect(UUID instance, String world, Instant expires, Map<StatType, Double> stats, Map<StatType, Double> statAdd, double damage, double reduction, double regen) { }
+    private record Taunt(UUID instance, UUID player, LivingEntity previousTarget, Instant expires) { }
+    private record Shot(UUID instance, UUID player, double damage, Instant expires) { }
+    private record BannerKey(UUID player, String ability) { }
+    private record BannerField(UUID instance, Location center, BukkitSupportBanner visual, Color color, Instant expires) { }
+}

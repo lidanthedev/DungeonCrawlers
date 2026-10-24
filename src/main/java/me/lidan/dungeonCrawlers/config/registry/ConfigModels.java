@@ -25,10 +25,21 @@ public final class ConfigModels {
         public static StatModifiers empty() { return new StatModifiers(Map.of(), Map.of()); }
     }
 
-    public record ClassDefinition(String id, String displayName, Material icon, StatModifiers stats) {
+    public record ClassDefinition(String id, String displayName, Material icon, StatModifiers stats,
+                                  Map<StatType, Double> statPercentPerLevel, double healingPercentPerLevel) {
+        public ClassDefinition(String id, String displayName, Material icon, StatModifiers stats) {
+            this(id, displayName, icon, stats, Map.of(), 0);
+        }
+
         public ClassDefinition {
             Objects.requireNonNull(id); Objects.requireNonNull(displayName); Objects.requireNonNull(icon);
             Objects.requireNonNull(stats);
+            statPercentPerLevel = Map.copyOf(statPercentPerLevel);
+            if (statPercentPerLevel.values().stream().anyMatch(value -> !Double.isFinite(value)
+                    || value < 0 || value > 100) || !Double.isFinite(healingPercentPerLevel)
+                    || healingPercentPerLevel < 0 || healingPercentPerLevel > 100) {
+                throw new IllegalArgumentException("class percentages per level must be in 0..100");
+            }
         }
     }
 

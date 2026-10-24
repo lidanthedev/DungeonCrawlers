@@ -145,6 +145,7 @@ public final class DungeonCrawlers extends JavaPlugin {
     private BukkitProgressBarService progressBars;
     private SecretDiscoveryService phaseSeven;
     private PortalEncounterService phaseNine;
+    private me.lidan.dungeonCrawlers.integration.BukkitRewardChestVisuals rewardChestVisuals;
     private DungeonPhaseElevenCommand phaseElevenCommand;
     private RewardEntitlementService rewards;
     private RewardClaimService claims;
@@ -153,6 +154,8 @@ public final class DungeonCrawlers extends JavaPlugin {
     private PlayerLifecycleService lifecycle;
     private me.lidan.dungeonCrawlers.core.difficulty.DungeonProgressionService progression;
     private me.lidan.dungeonCrawlers.integration.BukkitDifficultyService difficultyService;
+    private me.lidan.dungeonCrawlers.integration.BukkitClassAbilityService classAbilities;
+    private me.lidan.dungeonCrawlers.integration.cave.DungeonSupportItems supportItems;
     private DebugSettings debugSettings;
     private DungeonPlaceholderExpansion placeholderExpansion;
     private DungeonTimings timings;
@@ -298,6 +301,8 @@ public final class DungeonCrawlers extends JavaPlugin {
                 }, true, timings);
         var classPreferences = new me.lidan.dungeonCrawlers.integration.BukkitClassPreferences(this);
         runPreparation.configureClassPreferences(classPreferences::read, classPreferences::write);
+        rewardChestVisuals = new me.lidan.dungeonCrawlers.integration.BukkitRewardChestVisuals(
+                instance -> runPreparation.info(instance).isPresent());
         phaseSeven = new SecretDiscoveryService(configRegistry::snapshot);
         lifecycle = new PlayerLifecycleService(centralUpdates, phaseClock(), this::handleLifecycleNotice, timings);
         bossIdentity = new BukkitBossIdentity(this);
@@ -475,6 +480,12 @@ public final class DungeonCrawlers extends JavaPlugin {
     }
 
     private void migrateVersionedDataConfigs() throws IOException {
+        Path classesPath = getDataFolder().toPath().resolve("classes.yml");
+        try {
+            configFactory.openVersionedConfig(classesPath, "classes.yml", 2);
+        } finally {
+            configFactory.release(classesPath);
+        }
         Path blessingsPath = getDataFolder().toPath().resolve("blessings.yml");
         try {
             configFactory.openVersionedConfig(blessingsPath, "blessings.yml", 2);
@@ -596,12 +607,20 @@ public final class DungeonCrawlers extends JavaPlugin {
                         || phaseSeven.secrets(instance).stream().anyMatch(secret -> secret.worldPoint().equals(point))));
         registerEvent(new BukkitDungeonRunListener(phaseFiveCommand, runPreparation, generationWorldName, phaseSeven));
         registerEvent(difficultyService);
+        classAbilities = new me.lidan.dungeonCrawlers.integration.BukkitClassAbilityService(this,
+                runPreparation, lifecycle, generation, configRegistry, entityIdentity, bossIdentity,
+                difficultyService, phaseClock(), generationWorldName);
+        registerEvent(classAbilities);
+        supportItems = new me.lidan.dungeonCrawlers.integration.cave.DungeonSupportItems(this,
+                classAbilities::activateSupport);
+        supportItems.register();
         registerEvent(new BukkitDungeonLifecycleListener(lifecycle, runPreparation, this, phaseClock(),
                 generationWorldName, phaseFiveCommand::recoverOnJoin, phaseFiveCommand::leaveFromDungeon));
         registerEvent(new BukkitCombatListener(combat, entityIdentity, generationWorldName, () -> disabling,
                 bossIdentity, phaseNine, phaseFiveCommand::canOpenDungeonDoor));
         registerEvent(new BukkitPortalBossListener(this, phaseNine, runPreparation, generationWorldName));
-        registerEvent(new BukkitRewardChestListener(phaseNine, generationWorldName, phaseElevenCommand::openRewards));
+        registerEvent(new BukkitRewardChestListener(phaseNine, generationWorldName,
+                phaseElevenCommand::openRewards, phaseFiveCommand::canOpenDungeonDoor));
         registerEvent(rewardMailboxListener);
         registerEvent(new BukkitReloadProtectionListener(this::hasCompletionPending));
         registerEvent(classMenuService);
@@ -632,19 +651,25 @@ public final class DungeonCrawlers extends JavaPlugin {
         rewards.register(new RewardEntitlementService.Completion(snapshot.instanceId(),
                 context.seed(), phaseClock().instant(), score.finalSnapshot(), participants,
                 context.floor().rewards(), context.difficulty().tier()));
-        recordProgression(snapshot.instanceId(), true, null);
+        var dungeonXp = recordProgression(snapshot.instanceId(), true, null);
         var point = snapshot.rewardChest();
         world.getBlockAt(point.x(), point.y(), point.z()).setType(org.bukkit.Material.ENDER_CHEST, false);
+        try {
+            rewardChestVisuals.show(snapshot.instanceId(), new org.bukkit.Location(world, point.x(), point.y(), point.z()));
+        } catch (RuntimeException error) {
+            getLogger().warning("instance=" + snapshot.instanceId() + " reward chest visual failed: " + error.getMessage());
+        }
         participants.stream().map(RewardEntitlementService.Participant::playerId)
                 .map(getServer()::getPlayer)
                 .filter(java.util.Objects::nonNull)
                 .forEach(player -> DungeonMessages.send(player, ScoreResultRenderer.render(score,
-                        scoreService.freeTime(), scoreService.penaltyInterval())));
+                        scoreService.freeTime(), scoreService.penaltyInterval(), context.floor().displayName(),
+                        context.difficulty().tier().displayName(), dungeonXp.getOrDefault(player.getUniqueId(), 0D))));
         return true;
     }
 
     private void handleRunFailure(UUID instanceId) {
-        recordProgression(instanceId, false, null);
+        var dungeonXp = recordProgression(instanceId, false, null);
         if (phaseNine != null) phaseNine.cleanup(instanceId);
         var context = generation.layoutContext(instanceId).orElse(null);
         var run = runPreparation.info(instanceId).orElse(null);
@@ -664,7 +689,8 @@ public final class DungeonCrawlers extends JavaPlugin {
                     score.finalSnapshot(), participants, context.floor().rewards(), context.difficulty().tier()));
             run.participants().stream().map(getServer()::getPlayer).filter(java.util.Objects::nonNull)
                     .forEach(player -> DungeonMessages.send(player, ScoreResultRenderer.render(score,
-                            scoreService.freeTime(), scoreService.penaltyInterval())));
+                            scoreService.freeTime(), scoreService.penaltyInterval(), context.floor().displayName(),
+                            context.difficulty().tier().displayName(), dungeonXp.getOrDefault(player.getUniqueId(), 0D))));
         } catch (RuntimeException exception) {
             getLogger().warning("instance=" + instanceId + " failed result persistence failed: "
                     + exception.getClass().getSimpleName() + ": " + exception.getMessage());
@@ -907,15 +933,18 @@ public final class DungeonCrawlers extends JavaPlugin {
         return true;
     }
 
-    private void recordProgression(UUID instance, boolean success, UUID onlyPlayer) {
+    private Map<UUID, Double> recordProgression(UUID instance, boolean success, UUID onlyPlayer) {
         var context = generation.layoutContext(instance).orElse(null);
         var run = runPreparation.info(instance).orElse(null);
-        if (context == null || !context.progressionEnabled() || run == null || run.startedAt() == null) return;
+        if (context == null || !context.progressionEnabled() || run == null || run.startedAt() == null) return Map.of();
+        Map<UUID, Double> dungeonXp = new java.util.HashMap<>();
         for (UUID participant : onlyPlayer == null ? run.participants() : List.of(onlyPlayer)) {
             if (onlyPlayer == null && lifecycle.player(instance, participant)
                     .map(value -> value.state() == PlayerLifecycleService.PlayerState.REMOVED).orElse(true)) continue;
-            progression.record(instance, participant, context.floor(), context.difficulty(), success);
+            var outcome = progression.record(instance, participant, context.floor(), context.difficulty(), success);
+            dungeonXp.put(participant, outcome.xp());
         }
+        return dungeonXp;
     }
 
     void awardDungeonXp(me.lidan.dungeonCrawlers.core.difficulty.DungeonProgressionService.Outcome outcome) {
@@ -950,6 +979,8 @@ public final class DungeonCrawlers extends JavaPlugin {
             combat.reconcileAll();
             if (placeholderExpansion != null) placeholderExpansion.refreshSnapshots();
             difficultyService.tick();
+            classAbilities.tick();
+            rewardChestVisuals.tick();
             deliverDungeonXp();
         }, 20L, 20L);
     }
@@ -960,6 +991,9 @@ public final class DungeonCrawlers extends JavaPlugin {
         if (progression != null && runPreparation != null) runPreparation.snapshots().forEach(
                 run -> recordProgression(run.instanceId(), false, null));
         if (difficultyService != null) difficultyService.close();
+        if (supportItems != null) supportItems.close();
+        if (classAbilities != null) classAbilities.close();
+        if (rewardChestVisuals != null) rewardChestVisuals.close();
         if (classSelectorNpcs != null) classSelectorNpcs.shutdown();
         if (placeholderExpansion != null) placeholderExpansion.unregister();
         if (reservations != null) reservations.pauseAdmission();

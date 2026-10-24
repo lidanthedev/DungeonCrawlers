@@ -99,6 +99,30 @@ class BoostedConfigMigrationTest {
     }
 
     @Test
+    void versionOneClassesReceiveSkillPercentagesAndPreserveCustomFlatStats() throws Exception {
+        Path classesFile = directory.resolve("classes.yml");
+        try (var input = getClass().getResourceAsStream("/classes.yml")) {
+            String defaults = new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            Files.writeString(classesFile, defaults.replace("schema-version: 2", "schema-version: 1")
+                    .replaceAll("    stat-percent-per-level:.*\\R", "")
+                    .replaceAll("    healing-percent-per-level:.*\\R", "")
+                    .replace("STRENGTH: 50", "STRENGTH: 77"));
+        }
+
+        try (MockedStatic<JavaPlugin> ignored = providingPlugin()) {
+            BoostedConfigFactory factory = new BoostedConfigFactory();
+            var migrated = factory.openVersionedConfig(classesFile, "classes.yml", 2);
+            assertEquals(2, BoostedConfigFactory.schemaVersion(migrated));
+            assertEquals(77, migrated.getInt("classes.berserker.stat-add.STRENGTH"));
+            assertEquals(2, migrated.getInt("classes.berserker.stat-percent-per-level.STRENGTH", -1));
+            assertEquals(2, migrated.getInt("classes.healer.healing-percent-per-level"));
+            String once = Files.readString(classesFile);
+            factory.openVersionedConfig(classesFile, "classes.yml", 2);
+            assertEquals(once, Files.readString(classesFile));
+        }
+    }
+
+    @Test
     void versionOneBlessingsConfigReceivesLevelRangeDefault() throws Exception {
         Path blessingsFile = directory.resolve("blessings.yml");
         Files.writeString(blessingsFile, """
