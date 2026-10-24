@@ -1,5 +1,40 @@
 # Difficulty and Runic validation
 
+## Native XP integration, 2026-10-24
+
+DungeonCrawlers uses the unmodified CaveCrawlers develop commit
+`ae6daeb8c6073d4829b450b4ed0cee3c103930ec` and its normal
+`SkillsManager.giveXp(player, skill, amount, true)` API. CaveCrawlers owns skill
+database persistence. No CaveCrawlers source changes, native award receipts or
+extra skill-save calls are required. CI builds that exact develop commit.
+
+Pending awards exist only in memory and wait for a healthy native player profile,
+including after a reconnect during the same plugin lifetime. Restart discards
+pending XP. Schema-2 completion history preserves counts and floor unlocks, with
+no delivery flags. Schema-1 completed records retain counts/unlocks without XP
+replay; old interrupted-run records are ignored. This supersedes the native
+receipt and crash-recovery design described in the historical evidence below.
+
+- Merge `b3b1714` resolves the conflict with master, retaining Citizens and Lamp 4.0.0.
+- Fix `8ed20e3` removes the native receipt integration and crash XP queue.
+- Java 21 clean build: 447 tests passed, no failures, errors or skips; shading
+  verification passed. The unchanged CI-pinned addon also compiles against develop.
+- Tests cover native XP API calls, duplicate outcomes, same-session offline awards,
+  no restart replay, legacy history, callback reentry and error handling.
+- Local/remote DungeonCrawlers JAR SHA-256:
+  `df8e22670a6ce69dc7c6be9ff0aee68c68517fad930362227f544af88e54e681`.
+- Only the DungeonCrawlers JAR was uploaded to Modern Cave Crawl. There were zero
+  active instances before reload. DungeonCrawlers enabled at 13:31:19 UTC;
+  recovery reported `startsEnabled=true` at 13:31:27. Configuration validation
+  passed at 13:32:30 and automated compatibility checks passed at 13:32:31.
+  The broad reload briefly triggered the watchdog and recovered. Existing Human
+  Gate 0 remains blocked on separate manual checks.
+- Actual live XP mutation and offline reconnect delivery have not been exercised
+  with the updated build. Pending awards can be lost on restart or native grant
+  failure by design.
+
+## Historical evidence, 2026-10-02
+
 Date: 2026-10-02 UTC. Server: Modern Cave Crawl, `fa696721`.
 Status: implementation deployed; solo checks passed; party/offline and visual checks remain open.
 
