@@ -15,7 +15,9 @@ class DifficultyIdSuggestionProviderTest {
             var plugin = MockBukkit.createMockPlugin();
             var player = server.addPlayer();
             player.setOp(true);
-            var builder = BukkitLamp.builder(plugin);
+            // MockBukkit has no native Minecraft argument types for Lamp's Brigadier bridge.
+            var builder = BukkitLamp.builder(revxrsal.commands.bukkit.BukkitLampConfig
+                    .<revxrsal.commands.bukkit.actor.BukkitCommandActor>builder(plugin).disableBrigadier().build());
             AdminSuggestionProviders.register(builder, null, null, List::of, List::of, List::of, List::of);
             builder.suggestionProviders().addProviderForAnnotation(revxrsal.commands.annotation.SuggestWith.class,
                     annotation -> annotation.value() == FloorIdSuggestionProvider.class

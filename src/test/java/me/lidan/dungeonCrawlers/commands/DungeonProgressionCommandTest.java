@@ -31,7 +31,9 @@ class DungeonProgressionCommandTest {
             when(configs.snapshot()).thenReturn(new ConfigSnapshot(1, Map.of("floor_1", mock(FloorDefinition.class)),
                     Map.of(), Map.of(), Map.of(), Set.of(), "test", Instant.EPOCH));
             var progression = mock(DungeonProgressionService.class);
-            var builder = BukkitLamp.builder(plugin);
+            // MockBukkit has no native Minecraft argument types for Lamp's Brigadier bridge.
+            var builder = BukkitLamp.builder(revxrsal.commands.bukkit.BukkitLampConfig
+                    .<revxrsal.commands.bukkit.actor.BukkitCommandActor>builder(plugin).disableBrigadier().build());
             builder.suggestionProviders().addProviderForAnnotation(SuggestWith.class, annotation -> {
                 if (annotation.value() == FloorIdSuggestionProvider.class) {
                     return new FloorIdSuggestionProvider<BukkitCommandActor>(() -> List.of("floor_1"));

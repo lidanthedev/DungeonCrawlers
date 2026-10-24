@@ -350,11 +350,6 @@ public final class DungeonCrawlers extends JavaPlugin {
         combat.configureObjectives(foundryRooms::complete, foundryRooms::cleanup);
         getServer().getPluginManager().registerEvents(foundryRooms, this);
         lifecycle.configureRevival(difficultyService::activeRunicPet, this::applyRevival);
-        runPreparation.configureCombatStarted(instance -> {
-            var context = generation.layoutContext(instance).orElseThrow();
-            if (context.progressionEnabled()) runPreparation.info(instance).orElseThrow().participants().forEach(
-                    player -> progression.begin(instance, player, context.floor(), context.difficulty()));
-        });
         runPreparation.configureDeadlineHandlers(this::handleRunFailure, this::hasActiveCompletionGroup,
                 this::handleDeadlineNotice);
         registerPlaceholderExpansion();
@@ -952,13 +947,26 @@ public final class DungeonCrawlers extends JavaPlugin {
         return dungeonXp;
     }
 
-    private void deliverDungeonXp() {
+    void awardDungeonXp(me.lidan.dungeonCrawlers.core.difficulty.DungeonProgressionService.Outcome outcome) {
+        Player player = getServer().getPlayer(outcome.player());
+        if (player == null || !player.isOnline()) return;
         var nativeSkills = me.lidan.cavecrawlers.skills.SkillsManager.getInstance();
         var skill = nativeSkills.getSkillInfo("dungeon");
         if (skill == null) return;
-        for (Player player : getServer().getOnlinePlayers()) progression.deliver(player.getUniqueId(),
-                outcome -> nativeSkills.giveXpOnce(player, skill, outcome.xp(), outcome.id()),
-                callback -> getServer().getScheduler().runTask(this, callback), getLogger()::warning);
+        try {
+            nativeSkills.giveXp(player, skill, outcome.xp(), true);
+        } catch (RuntimeException error) {
+            getLogger().warning("Dungeon XP grant failed for " + player.getName() + ": " + error.getMessage());
+        }
+    }
+
+    private void deliverDungeonXp() {
+        var nativeProfiles = me.lidan.cavecrawlers.storage.PlayerSkillsManager.getInstance();
+        for (Player player : getServer().getOnlinePlayers()) {
+            if (nativeProfiles.canPersistPlayer(player.getUniqueId())) {
+                progression.deliver(player.getUniqueId(), this::awardDungeonXp);
+            }
+        }
     }
 
     private void startTasks() {

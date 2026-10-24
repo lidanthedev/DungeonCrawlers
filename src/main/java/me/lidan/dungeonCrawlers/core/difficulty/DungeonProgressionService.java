@@ -1,6 +1,7 @@
 package me.lidan.dungeonCrawlers.core.difficulty;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonParser;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.FloorDefinition;
 import me.lidan.dungeonCrawlers.persistence.DurableRepository;
 import me.lidan.dungeonCrawlers.persistence.DurableWrite;
@@ -8,16 +9,12 @@ import me.lidan.dungeonCrawlers.persistence.DurableWrite;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
-import java.util.function.Function;
 
-/** Durable run outcomes are also the source of per-floor unlocks and pending native skill grants. */
+/** Persists completion history and unlocks; pending native XP exists only in memory. */
 public final class DungeonProgressionService {
     private static final String NAMESPACE = "dungeon-outcomes";
     private static final String ADMIN_NAMESPACE = "dungeon-admin-completions";
@@ -26,19 +23,18 @@ public final class DungeonProgressionService {
     private final Map<UUID, Outcome> outcomes = new HashMap<>();
     private final Map<UUID, AdminCompletions> adminCompletions = new HashMap<>();
     private final Map<UUID, Map<String, Integer>> unlocked = new HashMap<>();
-    private final Set<UUID> delivering = new HashSet<>();
+    private final Map<UUID, Outcome> pendingXp = new java.util.LinkedHashMap<>();
 
     public DungeonProgressionService(DurableRepository repository) {
         this.repository = repository;
         for (var record : repository.list(NAMESPACE).join()) {
-            Outcome outcome = gson.fromJson(new String(record.payload(), StandardCharsets.UTF_8), Outcome.class);
+            var json = JsonParser.parseString(new String(record.payload(), StandardCharsets.UTF_8)).getAsJsonObject();
+            // Old in-progress records are not completed runs and must not replay failure XP.
+            if (json.get("schemaVersion").getAsInt() == 1 && json.has("settled")
+                    && !json.get("settled").getAsBoolean()) continue;
+            Outcome outcome = gson.fromJson(json, Outcome.class);
             validate(outcome);
             if (!record.recordId().equals(outcome.id().toString())) throw new IllegalStateException("outcome identity mismatch");
-            if (!outcome.settled()) {
-                outcome = new Outcome(1, outcome.id(), outcome.instance(), outcome.player(), outcome.floor(),
-                        outcome.difficulty(), false, outcome.xp(), false, true);
-                save(outcome);
-            }
             outcomes.put(outcome.id(), outcome);
             unlock(outcome);
         }
@@ -86,45 +82,23 @@ public final class DungeonProgressionService {
         return total;
     }
 
-    public void begin(UUID instance, UUID player, FloorDefinition floor, DifficultyRules rules) {
-        UUID id = UUID.nameUUIDFromBytes((instance + ":" + player).getBytes(StandardCharsets.UTF_8));
-        if (outcomes.containsKey(id)) return;
-        Outcome outcome = new Outcome(1, id, instance, player, floor.id(), rules.tier(), false,
-                floor.completionXp() * floor.failureXpFactor() * rules.xpMultiplier(), false, false);
-        save(outcome);
-        outcomes.put(id, outcome);
-    }
-
     public Outcome record(UUID instance, UUID player, FloorDefinition floor, DifficultyRules rules, boolean success) {
         UUID id = UUID.nameUUIDFromBytes((instance + ":" + player).getBytes(StandardCharsets.UTF_8));
         Outcome existing = outcomes.get(id);
-        if (existing != null && existing.settled()) return existing;
+        if (existing != null) return existing;
         double xp = floor.completionXp() * (success ? 1 : floor.failureXpFactor()) * rules.xpMultiplier();
-        Outcome outcome = new Outcome(1, id, instance, player, floor.id(), rules.tier(), success, xp, false, true);
+        Outcome outcome = new Outcome(2, id, instance, player, floor.id(), rules.tier(), success, xp);
         save(outcome);
         outcomes.put(id, outcome);
         unlock(outcome);
+        pendingXp.put(id, outcome);
         return outcome;
     }
 
-    public void deliver(UUID player, Function<Outcome, CompletableFuture<Boolean>> grant, Consumer<Runnable> mainThread,
-                        Consumer<String> errors) {
-        for (Outcome outcome : new ArrayList<>(outcomes.values())) {
-            if (!outcome.player().equals(player) || outcome.delivered() || !outcome.settled() || !delivering.add(outcome.id())) continue;
-            try {
-                grant.apply(outcome).whenComplete((accepted, failure) -> mainThread.accept(() -> {
-                    delivering.remove(outcome.id());
-                    if (failure != null) { errors.accept("Dungeon XP grant failed: " + failure.getMessage()); return; }
-                    if (!Boolean.TRUE.equals(accepted)) return;
-                    Outcome done = new Outcome(outcome.schemaVersion(), outcome.id(), outcome.instance(), player,
-                            outcome.floor(), outcome.difficulty(), outcome.successful(), outcome.xp(), true, true);
-                    try { save(done); outcomes.put(done.id(), done); }
-                    catch (RuntimeException exception) { errors.accept("Dungeon XP acknowledgment failed: " + exception.getMessage()); }
-                }));
-            } catch (RuntimeException exception) {
-                delivering.remove(outcome.id());
-                errors.accept("Dungeon XP grant failed: " + exception.getMessage());
-            }
+    public void deliver(UUID player, Consumer<Outcome> grant) {
+        for (Outcome outcome : new ArrayList<>(pendingXp.values())) {
+            if (!outcome.player().equals(player) || pendingXp.remove(outcome.id()) == null) continue;
+            grant.accept(outcome);
         }
     }
 
@@ -151,8 +125,7 @@ public final class DungeonProgressionService {
     private void save(Outcome outcome) {
         validate(outcome);
         var write = new DurableWrite(UUID.randomUUID(), outcome.instance(), NAMESPACE, outcome.id().toString(),
-                outcome.id() + (outcome.delivered() ? ":delivered" : outcome.settled() ? ":outcome" : ":started"),
-                outcome.delivered() ? 3 : outcome.settled() ? 2 : 1,
+                outcome.id() + ":outcome", 1,
                 gson.toJson(outcome).getBytes(StandardCharsets.UTF_8));
         var submission = repository.submit(write);
         if (!submission.accepted()) throw new IllegalStateException(submission.detail());
@@ -161,7 +134,8 @@ public final class DungeonProgressionService {
     }
 
     private static void validate(Outcome outcome) {
-        if (outcome == null || outcome.schemaVersion() != 1 || outcome.id() == null || outcome.instance() == null
+        if (outcome == null || (outcome.schemaVersion() != 1 && outcome.schemaVersion() != 2)
+                || outcome.id() == null || outcome.instance() == null
                 || outcome.player() == null || outcome.floor() == null || !outcome.floor().matches("[a-z0-9][a-z0-9_-]{0,63}")
                 || outcome.difficulty() == null || !Double.isFinite(outcome.xp()) || outcome.xp() <= 0) {
             throw new IllegalArgumentException("invalid dungeon outcome");
@@ -169,6 +143,6 @@ public final class DungeonProgressionService {
     }
 
     public record Outcome(int schemaVersion, UUID id, UUID instance, UUID player, String floor,
-                          Difficulty difficulty, boolean successful, double xp, boolean delivered, boolean settled) { }
+                          Difficulty difficulty, boolean successful, double xp) { }
     private record AdminCompletions(int schemaVersion, UUID player, String floor, Difficulty difficulty, long count) { }
 }

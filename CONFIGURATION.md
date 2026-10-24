@@ -21,8 +21,11 @@ dungeon-xp:
 
 Migration backs up schema-1 floors and preserves custom settings. Both XP amounts receive
 the difficulty multiplier. Combat must start. Successful remaining participants, including
-ghosts and offline players, get completion XP and the next unlock on that floor. Offline XP
-waits for a healthy native persistence session. Native receipts prevent repeated grants.
+ghosts and offline players, get the next unlock on that floor. Online participants receive
+XP through CaveCrawlers' normal `SkillsManager.giveXp` API once their native profile is ready;
+CaveCrawlers owns skill persistence. Offline awards wait in memory for reconnect, with no
+restart replay or award-receipt integration. Repeated outcome callbacks do not grant XP again. Legacy completion records
+retain their unlocks and counts but never replay XP; old interrupted-run records are ignored.
 
 Reward item entries may set `magic-find-sensitive: true`. The default is false. Sensitive
 weights multiply by `1 + MAGIC_FIND / 100`, and offers freeze the sampled value and roll.

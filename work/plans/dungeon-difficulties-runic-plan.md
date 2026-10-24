@@ -106,11 +106,11 @@ Store explicit per-floor XP settings with these defaults, so higher floors can b
 
 - Combat must actually start before any run XP is earned. Generation, preparation, and a cancelled/unopened start door grant zero XP.
 - Award XP once when a participant's outcome is finalized, not per kill, room, secret, or tick.
-- Successful completion awards full completion XP to every remaining participant, alive, ghost, online, or offline.
+- Successful completion awards full completion XP to every remaining participant. Offline awards wait in memory for reconnect, without restart recovery.
 - Failure awards failure XP. Already-earned XP and fragments are retained.
 - Implementation default: voluntary escape/removal after combat starts finalizes that player's failure award. It excludes them from later completion XP and unlocks. Preparation-only departures earn nothing.
 - Treat a started run terminated by timeout, wipe, or administrative cancellation as a failure; cleanup must not silently discard its award.
-- Offline XP is persisted as pending and delivered when the player's CaveCrawlers persistence session is ready after reconnect. Do not mutate an unloaded offline profile.
+- Offline XP waits in memory until the player's native profile is ready after reconnect. CaveCrawlers alone persists skill XP; pending awards are lost if DungeonCrawlers restarts.
 - Freeze the outcome, amount, floor, and difficulty at finalization; reconnecting or reloading must not change the award.
 - Use the native skill grant path, including SkillXpGainEvent and ordinary level-up behavior, so the active pet can gain XP through its existing integration.
 
@@ -226,7 +226,7 @@ The repository already supplies the main mechanisms; extend them instead of buil
 | Damage | CaveCrawlers damage events and Bukkit/Mythic attribution | Shared scoped multipliers for all supported attack paths |
 | Final results | `core/score/ScoreService`, completion/failure callbacks in `DungeonCrawlers` | Forgiven deaths, frozen XP/unlock outcomes, completion MAGIC_FIND |
 | Completion reward rolls | `core/reward/RewardRoller`, `RewardEntitlementService` | Sensitive weights and frozen participant MAGIC_FIND |
-| Persistence | `DurableRepository`, completed-run codecs and existing claim delivery | Per-floor progress and recoverable run/player XP/delivery receipts |
+| Persistence | `DurableRepository`, completed-run codecs and existing claim delivery | Per-floor completion/unlock history; temporary in-memory XP awards |
 | Pets | CaveCrawlAddon `BasePet`, `PetsManager`, `ActivePet` | Register a Runic definition; inspect active pet at lethal transition |
 
 Keep platform-neutral rules in core and Bukkit/CaveCrawlers/CaveCrawlAddon adapters in integration. Add only narrow helpers needed to share these rules.
@@ -239,7 +239,7 @@ Keep platform-neutral rules in core and Bukkit/CaveCrawlers/CaveCrawlAddon adapt
 - Extend the no-external-shading check to include `me/lidan/caveCrawlAddon/`.
 - Confirm the APIs against the resolved build artifacts and live server versions. The sibling source's `DamageCalculationEvent` and `SkillsManager.giveXp` may differ from DungeonCrawlers' currently pinned CaveCrawlers v2.0.0 artifact.
 - Normal online skill grants can use the native manager and XP event. Offline delivery must wait for a healthy, current persistence session.
-- A DungeonCrawlers pending record alone cannot guarantee exactly-once XP across a crash between native XP mutation and delivery acknowledgment. Before shipping recoverable XP, verify an existing receipted native grant; if absent, add the smallest CaveCrawlers transaction/API that persists a run/player award ID with the skill XP update. Preserve native level-up/XP-event semantics. Do not bypass skill persistence or claim crash safety from a queue alone.
+- Use the unmodified CaveCrawlers develop build and its ordinary `SkillsManager.giveXp` API. Do not modify CaveCrawlers or add native award receipts. XP is best effort across restarts; preserve native XP events, level-up behavior and database persistence.
 - Reuse versioned durable writes and stable keys such as instance/player/outcome. Add backward-compatible codecs/defaults for old completed-run records; old records must not retroactively earn new XP or unlock tiers.
 
 ## Config and live-content changes
@@ -267,7 +267,7 @@ Live configuration changes and deployment happen during implementation, not as p
 
 1. **Difficulty admission and configuration.** Add the ten-tier model/config, immutable selected tier, per-floor unlock persistence, command argument, and GUI. Reject locked members before reserving/generating a run.
 2. **Combat and conditional stats.** Apply health, duplicate-class damage, isolation, nearby-enemy protection, MAGIC_FIND, and Dungeon-level bonuses through shared scoped paths. Verify all damage sources and cross-instance isolation.
-3. **Dungeon progression and completion rolls.** Create the live Dungeon skill, freeze XP/unlock outcomes, implement native receipted XP delivery including offline reconnect, and add sensitive chest weights without changing deterministic offers.
+3. **Dungeon progression and completion rolls.** Create the live Dungeon skill, freeze XP/unlock outcomes, use normal native XP delivery with in-memory offline reconnect awards, and add sensitive chest weights without changing deterministic offers.
 4. **Runic enemies and fragments.** Add stable Runic spawn rolls, multipliers, purple presentation, ordinary drop rolls, and Void+ boss upgrades/four-fragment delivery.
 5. **Runic pet and lifecycle.** Resolve the compile-only addon integration, register the pet/item, add global pet stats and dungeon-only percentage health, latch five-second revival, revise wipe/ghost UI behavior, and add the unconditional active-pet +2 Bonus score.
 6. **Migrations, server validation, and release evidence.** Run automated checks, build, deploy, exercise the human gate, and record the actual evidence. Keep coherent implementation phases on separate branches/PRs from updated master as repository guidelines require.
@@ -284,7 +284,7 @@ Extend existing JUnit/Mockito tests where behavior already lives. Add small focu
 - Isolation uses 12 blocks, excludes ghosts/offline players, applies to solo, multiplies correctly, and never boosts environmental damage.
 - Dungeon skill uses the native curve/event/persistence. Its seven stats receive exactly +L%, while excluded stats and players outside dungeons do not.
 - Combat never started means zero XP. Completion/failure amounts scale by floor/tier; online ghosts and offline participants get full completion XP on success.
-- Repeated terminal callbacks/reconnects cannot duplicate XP or unlocks. Exercise grant/ack crash recovery through the verified native receipt mechanism.
+- Repeated terminal callbacks/reconnects cannot duplicate XP or unlocks within a running plugin. Restart restores completion history and unlocks without replaying XP. No crash-safe native grant mechanism is required.
 - Sensitive chest entries change relative weights; unflagged weights remain unchanged. Same frozen input/seed yields the same offer; reopening/changing gear never rerolls it.
 - Runic normal/miniboss and boss rates use separate stable streams. Native mob abilities remain; purple glow/particles are visible and cleaned up.
 - Ordinary fragments use killer MAGIC_FIND and configured chance; bosses give exactly four. Despawn/admin cleanup gives none; inventory overflow/retries are safe.
@@ -299,7 +299,7 @@ Run Java 21 `./gradlew test`, then `./gradlew clean build`; verify CaveCrawlers 
 
 For live validation, use the repository server and player-testing skills. Build first, record JAR SHA-256, deploy with `python deploy.py`, reload through Pterodactyl with `cc reload all`, and confirm addon reload success before testing. Use the permitted player sender for GUI/commands, and at least two players for class duplication, isolation, unlock admission, and ghost/offline completion. Use a controlled debug path to force rare Runic cases instead of waiting for natural 0.1% spawns. Debug-forced encounters must not create ordinary player progression or farmable rewards.
 
-Record actual checks in a new human-gate document. Acceptance requires successful automated checks and live evidence for both solo and party pet revival, higher-tier no-revive behavior, offline XP/unlocks, Runic drops, and stable completion chest rewards.
+Record actual checks in a new human-gate document. Acceptance requires successful automated checks and live evidence for both solo and party pet revival, higher-tier no-revive behavior, same-session offline XP/unlocks, Runic drops, and stable completion chest rewards.
 
 ## Planning completion
 

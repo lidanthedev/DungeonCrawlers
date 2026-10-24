@@ -8,7 +8,9 @@ class DungeonDifficultyDebugCommandTest {
         MockBukkit.mock();
         try {
             var plugin = MockBukkit.createMockPlugin();
-            var builder = BukkitLamp.builder(plugin);
+            // MockBukkit has no native Minecraft argument types for Lamp's Brigadier bridge.
+            var builder = BukkitLamp.builder(revxrsal.commands.bukkit.BukkitLampConfig
+                    .<revxrsal.commands.bukkit.actor.BukkitCommandActor>builder(plugin).disableBrigadier().build());
             AdminSuggestionProviders.register(builder, null, null, java.util.List::of, java.util.List::of,
                     java.util.List::of, java.util.List::of);
             builder.suggestionProviders().addProviderForAnnotation(revxrsal.commands.annotation.SuggestWith.class,

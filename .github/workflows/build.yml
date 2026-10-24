@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: lidanthedev/CaveCrawlers
-          ref: e640e5111bf3e6cb12f97964f0ea07e6ccf75bfc
+          ref: ae6daeb8c6073d4829b450b4ed0cee3c103930ec # CaveCrawlers develop; unmodified native XP API
           path: .ci-dependencies/CaveCrawlers
           persist-credentials: false
       - uses: actions/checkout@v4

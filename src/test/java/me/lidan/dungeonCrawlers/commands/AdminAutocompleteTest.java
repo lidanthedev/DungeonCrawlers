@@ -40,7 +40,9 @@ class AdminAutocompleteTest {
         admin.setOp(true);
         combat = mock(CombatRoomService.class);
         runs = mock(RunPreparationService.class);
-        var builder = BukkitLamp.builder(plugin);
+        // MockBukkit has no native Minecraft argument types for Lamp's Brigadier bridge.
+        var builder = BukkitLamp.builder(revxrsal.commands.bukkit.BukkitLampConfig
+                    .<revxrsal.commands.bukkit.actor.BukkitCommandActor>builder(plugin).disableBrigadier().build());
         AdminSuggestionProviders.register(builder, combat, runs, () -> items, () -> mobs, () -> enemies, () -> claims);
         builder.suggestionProviders().addProviderForAnnotation(SuggestWith.class, annotation -> {
             if (annotation.value() == FloorIdSuggestionProvider.class) return new FloorIdSuggestionProvider<BukkitCommandActor>(() -> List.of("floor_1", "floor_2"));
