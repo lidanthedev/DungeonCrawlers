@@ -163,6 +163,11 @@ public final class DungeonCrawlers extends JavaPlugin {
     private final Map<UUID, ScoreService.FinalScoreSnapshot> latestScores = new ConcurrentHashMap<>();
     private volatile boolean disabling;
 
+    public java.util.Optional<me.lidan.dungeonCrawlers.core.generation.GenerationService.LayoutContext>
+            getRunLayout(java.util.UUID instanceId) {
+        return generation == null ? java.util.Optional.empty() : generation.layoutContext(instanceId);
+    }
+
     @Override
     public void onEnable() {
         // Plugin startup logic
@@ -299,6 +304,8 @@ public final class DungeonCrawlers extends JavaPlugin {
                 }, getLogger()::warning, instanceId -> {
                     cancelDeadlineInstance(instanceId);
                 }, true, timings);
+        runPreparation.configureStateObserver(change -> getServer().getPluginManager().callEvent(
+                new me.lidan.dungeonCrawlers.events.DungeonRunStateChangedEvent(change)));
         var classPreferences = new me.lidan.dungeonCrawlers.integration.BukkitClassPreferences(this);
         runPreparation.configureClassPreferences(classPreferences::read, classPreferences::write);
         rewardChestVisuals = new me.lidan.dungeonCrawlers.integration.BukkitRewardChestVisuals(
@@ -340,6 +347,8 @@ public final class DungeonCrawlers extends JavaPlugin {
                             registration.getProvider());
                 }, callback -> getServer().getScheduler().runTask(this, callback),
                 detail -> getLogger().warning(detail));
+        claims.configureDeliveryObserver(delivery -> getServer().getPluginManager().callEvent(
+                new me.lidan.dungeonCrawlers.events.DungeonRewardDeliveredEvent(delivery)));
         progression = new me.lidan.dungeonCrawlers.core.difficulty.DungeonProgressionService(durableRepository);
         difficultyService = new me.lidan.dungeonCrawlers.integration.BukkitDifficultyService(
                 this, generation, runPreparation, lifecycle, claims);

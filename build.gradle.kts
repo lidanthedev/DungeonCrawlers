@@ -68,7 +68,7 @@ dependencies {
     testImplementation(libs.gson)
     // ByteBuddy needs these compile-only APIs present to mock the final CaveCrawlers
     // plugin class when the native ItemAbility flow is exercised in tests.
-    testRuntimeOnly(libs.vault.api)
+    testImplementation(libs.vault.api)
     testRuntimeOnly(libs.mythic.mobs)
     testRuntimeOnly(libs.lamp.common)
     testRuntimeOnly(libs.lamp.bukkit)
@@ -143,10 +143,13 @@ val verifyNoExternalPluginShading by tasks.registering {
 }
 
 tasks.processResources {
-    val props = mapOf("version" to project.version)
+    val commit = providers.exec { commandLine("git", "rev-parse", "--short", "HEAD") }.standardOutput.asText.get().trim()
+    val props = mapOf("version" to "${project.version}+$commit")
     inputs.properties(props)
     filteringCharset = "UTF-8"
     filesMatching("plugin.yml") {
         expand(props)
     }
 }
+
+publishing { publications { create<MavenPublication>("mavenJava") { artifact(tasks.shadowJar) } } }

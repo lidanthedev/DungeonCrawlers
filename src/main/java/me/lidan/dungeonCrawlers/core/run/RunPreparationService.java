@@ -49,6 +49,16 @@ public final class RunPreparationService {
     private Consumer<DeadlineNotice> deadlineNotices = ignored -> { };
     private final Map<UUID, MutableRun> runs = new LinkedHashMap<>();
     private boolean frozen;
+    private Consumer<StateChange> stateObserver = ignored -> { };
+    public record StateChange(RunSnapshot snapshot, boolean closed, Instant observedAt) { }
+    public synchronized void configureStateObserver(Consumer<StateChange> observer) {
+        stateObserver = Objects.requireNonNull(observer);
+    }
+    private void publishState(MutableRun run, boolean closed) {
+        try { stateObserver.accept(new StateChange(run.snapshot(), closed, clock.instant())); }
+        catch (RuntimeException failure) { diagnose("Run observer failed: " + message(failure)); }
+    }
+
     private java.util.function.Function<UUID, Optional<String>> rememberedClass = ignored -> Optional.empty();
     private java.util.function.BiConsumer<UUID, String> rememberClass = (player, classId) -> { };
 
@@ -135,6 +145,7 @@ public final class RunPreparationService {
             return PreparationResult.failure("central update already registered for instance");
         }
         runs.put(instanceId, run);
+        publishState(run, false);
         return PreparationResult.success("preparation registered", run.snapshot());
     }
 
@@ -232,6 +243,7 @@ public final class RunPreparationService {
             return DoorInteractionResult.failure(detail);
         }
         run.door = opened.door();
+        publishState(run, false);
         return DoorInteractionResult.success(opened.detail(), opened.door(), run.snapshot());
     }
 
@@ -245,6 +257,7 @@ public final class RunPreparationService {
                 InstanceState.RUNNING, InstanceState.BOSS);
         if (!transition.accepted()) return PhaseResult.failure(transition.detail());
         run.state = RunState.BOSS;
+        publishState(run, false);
         return PhaseResult.success("boss encounter started", run.snapshot());
     }
 
@@ -260,6 +273,7 @@ public final class RunPreparationService {
                 InstanceState.BOSS, InstanceState.COMPLETION_PENDING);
         if (!transition.accepted()) return PhaseResult.failure(transition.detail());
         run.state = RunState.COMPLETION_PENDING;
+        publishState(run, false);
         return PhaseResult.success("boss defeated; completion pending", run.snapshot());
     }
 
@@ -278,6 +292,7 @@ public final class RunPreparationService {
         run.completedAt = clock.instant();
         run.completionDeadline = run.completedAt.plus(timings.completionTimeout());
         run.lastCompletionCountdown = -1;
+        publishState(run, false);
         return PhaseResult.success("run completed; reward period started", run.snapshot());
     }
 
@@ -352,6 +367,7 @@ public final class RunPreparationService {
         if (run == null) return PreparationResult.success("preparation already cleaned", null);
         updates.remove(instanceId);
         doors.remove(instanceId);
+        publishState(run, true);
         return PreparationResult.success("preparation cleaned", run.snapshot());
     }
 
@@ -441,6 +457,7 @@ public final class RunPreparationService {
         if (!transition.accepted()) throw new IllegalStateException(transition.detail());
         run.state = RunState.FAILED;
         run.failedDeadline = now.plus(timings.failedReadingPeriod());
+        publishState(run, false);
         notifyDeadline(new DeadlineNotice(run.instanceId, DeadlineEvent.RUN_FAILED, 0, detail));
         try {
             failureHandler.accept(run.instanceId);

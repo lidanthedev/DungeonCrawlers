@@ -98,10 +98,17 @@ class RewardClaimServiceTest {
 
         var online = new PlayerMock(MockBukkit.getMock(), "Claimant", PLAYER);
         MockBukkit.getMock().addPlayer(online);
+        var observed = new ArrayList<RewardClaimService.DeliveredReward>();
+        restored.configureDeliveryObserver(observed::add);
+        assertTrue(observed.isEmpty());
         var delivery = new AtomicReference<RewardClaimService.DeliveryResult>();
         restored.deliver(INSTANCE, PLAYER, online, delivery::set);
         assertTrue(delivery.get().successful(), delivery.get().detail());
         assertEquals(1, online.getInventory().getItem(0).getAmount());
+        assertEquals(1, observed.size());
+        assertEquals(Map.of("GOLD", 1), observed.getFirst().items());
+        restored.deliver(INSTANCE, PLAYER, online, delivery::set);
+        assertEquals(1, observed.size(), "retry must not repeat the committed grant event");
     }
 
     @Test
@@ -467,8 +474,11 @@ class RewardClaimServiceTest {
         online.getInventory().setContents(full);
         AtomicReference<RewardClaimService.DeliveryResult> delivery = new AtomicReference<>();
 
+        var observed = new ArrayList<RewardClaimService.DeliveredReward>();
+        claims.configureDeliveryObserver(observed::add);
         claims.deliver(INSTANCE, PLAYER, online, delivery::set);
 
+        assertTrue(observed.isEmpty(), "blocked delivery cannot publish an item grant");
         assertFalse(delivery.get().successful());
         assertFalse(delivery.get().pending());
         assertEquals("inventory is full; make room before delivery retry", delivery.get().detail());

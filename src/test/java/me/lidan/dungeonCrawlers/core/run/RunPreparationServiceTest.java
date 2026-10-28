@@ -29,6 +29,28 @@ class RunPreparationServiceTest {
     private static final Instant START = Instant.parse("2026-01-01T00:00:00Z");
 
     @Test
+    void stateObserverEmitsOnlyCommittedTransitionsAndIsolatedFailures() {
+        var changes = new ArrayList<RunPreparationService.StateChange>();
+        var service = service(new AtomicInteger());
+        service.configureStateObserver(changes::add);
+        UUID player = UUID.randomUUID(), run = UUID.randomUUID();
+        service.registerGenerated(run, new PartySnapshot(player, List.of(player), false),
+                List.of("tank"), Map.of("tank", classDefinition("tank")), new Point(0, 64, 0), Facing.NORTH);
+        assertEquals(1, changes.size());
+        service.markSnapshotsReady(run); service.selectClass(run, player, "tank");
+        service.openDoor(run, player); service.openDoor(run, player);
+        service.enterBoss(run); service.enterBoss(run);
+        service.enterCompletionPending(run); service.markCompleted(run); service.markCompleted(run);
+        service.cleanup(run); service.cleanup(run);
+        assertEquals(6, changes.size());
+        assertTrue(changes.get(5).closed());
+        assertEquals(RunPreparationService.RunState.COMPLETED, changes.get(5).snapshot().state());
+        service.configureStateObserver(change -> { throw new IllegalStateException("observer failure"); });
+        assertTrue(service.registerGenerated(UUID.randomUUID(), new PartySnapshot(player, List.of(player), false),
+                List.of("tank"), Map.of("tank", classDefinition("tank")), new Point(10, 64, 0), Facing.NORTH).successful());
+    }
+
+    @Test
     void remembersSuccessfulSelectionAndAppliesAllPartyPreferencesAfterSnapshotAck() {
         UUID first = UUID.randomUUID();
         UUID second = UUID.randomUUID();

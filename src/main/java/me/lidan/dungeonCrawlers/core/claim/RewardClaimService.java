@@ -87,6 +87,15 @@ public final class RewardClaimService {
     private final Map<UUID, String> offerIndex = new LinkedHashMap<>();
     private final CompletableFuture<Void> restored = new CompletableFuture<>();
     private volatile boolean deliveryPausedForTesting;
+    public record DeliveredReward(UUID instanceId, UUID playerId, UUID offerId, long price,
+                                  Map<String, Integer> items) {
+        public DeliveredReward { items = Map.copyOf(items); }
+    }
+    private Consumer<DeliveredReward> deliveryObserver = ignored -> { };
+    public void configureDeliveryObserver(Consumer<DeliveredReward> observer) {
+        deliveryObserver = Objects.requireNonNull(observer);
+    }
+
 
     public RewardClaimService(Clock clock, DurableRepository repository,
                               RewardEntitlementService entitlements, CaveItemsGateway caveItems,
@@ -887,6 +896,11 @@ public final class RewardClaimService {
                 return;
             }
             clearDeliveryMarkers(player, offerId);
+            Map<String, Integer> deliveredItems = new LinkedHashMap<>();
+            offer.items().forEach(item -> deliveredItems.merge(item.caveItemId(), item.amount(), Integer::sum));
+            try { deliveryObserver.accept(new DeliveredReward(current.instanceId(), current.playerId(),
+                    offerId, offer.price(), deliveredItems)); }
+            catch (RuntimeException failure) { auditSink.accept("Reward observer failed: " + failure.getClass().getSimpleName()); }
             complete(callback, DeliveryResult.success(current.instanceId(), current.playerId(), offerId,
                     insertedAmount, "reward delivered"));
         });
