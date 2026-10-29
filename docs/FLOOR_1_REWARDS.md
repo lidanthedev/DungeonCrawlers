@@ -62,3 +62,30 @@ Java 21 clean build passes 466 tests, including native item registration, admini
 preservation, migration backups/idempotence, shipped item references, weights, score gates and
 sell-value checks. Live deployment evidence follows below. Combat feel, client visuals and
 long-term economic output require gameplay feedback.
+
+## Live evidence, 2026-10-30
+
+- Built Java 21 artifact `build/libs/DungeonCrawlers-1.0.jar`, version `1.0+33eac92`.
+  SHA-256 `7d303d7da58c6949a6aabf673166322077bacd5c06a8303285d648f43af47199`.
+  Full build: 466 tests, zero failures/errors/skips, external API shading check passed.
+  ConfigLoaderTest also passes alone after making its native YAML initialization independent.
+- `deploy.py` confirmed upload to Modern Cave Crawl, `fa696721`.
+- Backed up the live floor to `plugins/DungeonCrawlers/backups/floor_1-before-rewards-20261030.yml`.
+  Replaced its wooden/gold/expensive/locked placeholder pools with the five production pools.
+  Preserved floor number 2, `f1start`, `f1portal`, `ringmaster_grand_preview`, and Ringmaster encounter.
+- Latest master rejects mismatched completion/reward deadlines. The server had 300s completion
+  and 120s rewards. Backed up `config.yml` to `backups/config-before-rewards-20261030.yml` and
+  changed only `timings.live-reward-window-seconds` to 300, matching completion and bundled defaults.
+- `cc reload all` reloaded the core but left addons on old classloaders. Direct addon loading
+  initially hit a CaveCrawlAddon Stats loader-constraint error. `cc reload addons` restored dependency
+  order; DungeonCrawlers enabled at 23:21:50 UTC and recovery reported starts enabled at 23:21:56 UTC.
+  No server restart was needed. Native legacy fishing/Griffin/gemstone stat warnings and unrelated
+  addon config-version warnings remain; the new reward definitions use valid stats.
+- `version DungeonCrawlers` confirmed `1.0+33eac92`; `dungeon config validate` passed at
+  23:22:12 UTC. `dungeon floor info floor_1` reported five rewards and the original arena.
+  Operations at 23:22:16 UTC: zero instances/reservations, recovery Idle, starts Enabled, no blockers.
+- All nine `dungeon compatibility item DC_...` probes built and round-tripped native ItemStacks
+  successfully, including the shortbow and Cane ability lore. Native `CaveCrawlers/sell.yml`
+  contains all nine exact prices from the table above.
+- No player inventory, balance, or dungeon run was used for these smoke checks. Actual GUI sale,
+  reward claim, weapon firing, client appearance and mid-game combat balance remain unverified.
