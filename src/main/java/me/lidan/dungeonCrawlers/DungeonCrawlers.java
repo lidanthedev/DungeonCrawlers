@@ -347,6 +347,7 @@ public final class DungeonCrawlers extends JavaPlugin {
                             registration.getProvider());
                 }, callback -> getServer().getScheduler().runTask(this, callback),
                 detail -> getLogger().warning(detail));
+        claims.configureClaimGuard(request -> new me.lidan.dungeonCrawlers.events.DungeonRewardClaimEvent(request).callEvent());
         claims.configureDeliveryObserver(delivery -> getServer().getPluginManager().callEvent(
                 new me.lidan.dungeonCrawlers.events.DungeonRewardDeliveredEvent(delivery)));
         progression = new me.lidan.dungeonCrawlers.core.difficulty.DungeonProgressionService(durableRepository);

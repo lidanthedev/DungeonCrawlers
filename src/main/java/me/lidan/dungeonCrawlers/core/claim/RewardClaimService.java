@@ -91,6 +91,12 @@ public final class RewardClaimService {
                                   Map<String, Integer> items) {
         public DeliveredReward { items = Map.copyOf(items); }
     }
+    public record ClaimRequest(UUID instanceId, UUID playerId, UUID offerId, String rewardId, long price) { }
+    private java.util.function.Predicate<ClaimRequest> claimGuard = ignored -> true;
+    private final java.util.Set<String> checkingClaims = new java.util.HashSet<>();
+    public void configureClaimGuard(java.util.function.Predicate<ClaimRequest> guard) {
+        claimGuard = Objects.requireNonNull(guard);
+    }
     private Consumer<DeliveredReward> deliveryObserver = ignored -> { };
     public void configureDeliveryObserver(Consumer<DeliveredReward> observer) {
         deliveryObserver = Objects.requireNonNull(observer);
@@ -427,6 +433,11 @@ public final class RewardClaimService {
 
     private void beginClaim(UUID instanceId, UUID playerId, String rewardId, OfflinePlayer account,
                             Consumer<ClaimResult> callback) {
+        if (checkingClaims.contains(recordKey(instanceId, playerId))) {
+            complete(callback, ClaimResult.failure(instanceId, playerId, null, ClaimStatus.PROCESSING,
+                    "another claim is still processing"));
+            return;
+        }
         RewardEntitlementService.PlayerEntitlement entitlement = entitlements.open(instanceId, playerId).orElse(null);
         RewardEntitlementService.RewardOffer reward = entitlement == null ? null : entitlement.offers().get(rewardId);
         if (entitlement == null || reward == null) {
@@ -518,6 +529,20 @@ public final class RewardClaimService {
                                 "reward claim window has expired")
                                 : ClaimResult.failure(instanceId, playerId, reward.offerId(),
                                 ClaimStatus.PERSISTENCE_FAILED, "could not persist reward expiry")));
+                return;
+            }
+
+            String key = recordKey(instanceId, playerId);
+            checkingClaims.add(key);
+            boolean allowed;
+            try {
+                allowed = claimGuard.test(new ClaimRequest(instanceId, playerId, reward.offerId(), rewardId, reward.price()));
+            } finally {
+                checkingClaims.remove(key);
+            }
+            if (!allowed) {
+                complete(callback, ClaimResult.failure(instanceId, playerId, reward.offerId(),
+                        ClaimStatus.REJECTED, "reward claim cancelled"));
                 return;
             }
 

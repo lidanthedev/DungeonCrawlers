@@ -67,6 +67,37 @@ class RewardClaimServiceTest {
     }
 
     @Test
+    void cancelledPurchaseLeavesNoReservationAndCanBeRetried() {
+        var economy = Mockito.mock(EconomyGateway.class);
+        var claims = new RewardClaimService(clock(), entitlements(), items(), economy);
+        var result = new AtomicReference<RewardClaimService.ClaimResult>();
+        claims.configureClaimGuard(request -> {
+            assertEquals(INSTANCE, request.instanceId());
+            assertEquals(PLAYER, request.playerId());
+            assertEquals("gold", request.rewardId());
+            assertEquals(5, request.price());
+            var nested = new AtomicReference<RewardClaimService.ClaimResult>();
+            claims.claim(INSTANCE, PLAYER, "gold", player(), nested::set);
+            assertEquals(RewardClaimService.ClaimStatus.PROCESSING, nested.get().status());
+            return false;
+        });
+        claims.claim(INSTANCE, PLAYER, "gold", player(), result::set);
+        assertEquals(RewardClaimService.ClaimStatus.REJECTED, result.get().status());
+        assertEquals("reward claim cancelled", result.get().detail());
+        assertTrue(claims.info(INSTANCE, PLAYER).isEmpty());
+        Mockito.verify(economy, Mockito.never()).withdraw(Mockito.any(), Mockito.anyDouble());
+        Mockito.verify(economy, Mockito.never()).deposit(Mockito.any(), Mockito.anyDouble());
+        claims.configureClaimGuard(request -> true);
+        Mockito.when(economy.providerIdentity()).thenReturn("Vault");
+        Mockito.when(economy.hasFunds(Mockito.any(), Mockito.anyDouble())).thenReturn(Optional.of(true));
+        Mockito.when(economy.withdraw(Mockito.any(), Mockito.eq(5.0)))
+                .thenReturn(new EconomyGateway.TransactionResult(true, 5, 0, "charged"));
+        claims.claim(INSTANCE, PLAYER, "gold", player(), result::set);
+        assertTrue(result.get().successful(), result.get().detail());
+        Mockito.verify(economy).withdraw(Mockito.any(), Mockito.eq(5.0));
+    }
+
+    @Test
     void lateLivePurchaseRefreshesPersistedPreflightDeadlineAndOwnedDeliverySurvivesClosure() {
         var rewards = entitlements();
         var open = new AtomicBoolean(true);

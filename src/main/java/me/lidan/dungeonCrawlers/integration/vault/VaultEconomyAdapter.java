@@ -27,12 +27,20 @@ public final class VaultEconomyAdapter implements EconomyGateway {
 
     @Override
     public TransactionResult withdraw(OfflinePlayer player, double amount) {
+        if (!prepare(player, amount, false)) return new TransactionResult(false, 0, economy.getBalance(player), "transaction cancelled");
         return observe(player, economy.withdrawPlayer(player, amount), false);
     }
 
     @Override
     public TransactionResult deposit(OfflinePlayer player, double amount) {
+        if (!prepare(player, amount, true)) return new TransactionResult(false, 0, economy.getBalance(player), "transaction cancelled");
         return observe(player, economy.depositPlayer(player, amount), true);
+    }
+
+    private boolean prepare(OfflinePlayer player, double amount, boolean created) {
+        return amount <= 0 || !Double.isFinite(amount)
+                || new me.lidan.cavecrawlers.utils.CurrencyTransactionPrepareEvent(player.getUniqueId(), amount,
+                        created, created ? "dungeon_vault_credit" : "dungeon_vault_debit", "dungeoncrawlers").callEvent();
     }
 
     private TransactionResult observe(OfflinePlayer player, EconomyResponse response, boolean created) {
