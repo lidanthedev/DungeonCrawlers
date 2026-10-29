@@ -7,6 +7,10 @@ import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 
 public final class MythicMobsAdapter implements MythicMobGateway {
+    public java.util.List<String> ids() {
+        return java.util.List.copyOf(MythicBukkit.inst().getMobManager().getMobNames());
+    }
+
     @Override
     public boolean isConfigured(String mobId) {
         return MythicBukkit.inst().getMobManager().getMythicMob(mobId).isPresent();
@@ -42,4 +46,3 @@ public final class MythicMobsAdapter implements MythicMobGateway {
                 .orElse(false);
     }
 }
-

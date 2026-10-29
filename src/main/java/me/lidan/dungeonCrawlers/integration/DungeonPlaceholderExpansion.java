@@ -1,21 +1,28 @@
 package me.lidan.dungeonCrawlers.integration;
 
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
+import me.lidan.cavecrawlers.utils.MiniMessageUtils;
+import me.lidan.dungeonCrawlers.config.registry.ConfigModels.ClassDefinition;
 import me.lidan.dungeonCrawlers.core.combat.CombatRoomService;
 import me.lidan.dungeonCrawlers.core.generation.GenerationService;
 import me.lidan.dungeonCrawlers.core.lifecycle.PlayerLifecycleService;
+import me.lidan.dungeonCrawlers.core.location.LocationContextService;
 import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
 import me.lidan.dungeonCrawlers.core.score.ScoreService;
 import me.lidan.dungeonCrawlers.core.secret.SecretDiscoveryService;
+import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.attribute.Attribute;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 
@@ -30,6 +37,51 @@ public final class DungeonPlaceholderExpansion extends PlaceholderExpansion {
     private final DebugSettings debug;
     private final Function<UUID, Integer> legacyScoreLookup;
     private final Function<UUID, ScoreService.FinalScoreSnapshot> scoreLookup;
+    private volatile Map<UUID, GenerationService.LayoutContext> publishedLayouts = Map.of();
+    private volatile Map<UUID, GenerationService.InstanceSnapshot> publishedInstances = Map.of();
+    private volatile Map<UUID, String> playerNames = Map.of();
+    private volatile Map<UUID, String> playerHealth = Map.of();
+    private volatile Map<UUID, LocationContextService.RoomContext> playerRooms = Map.of();
+
+    /** TAB evaluates PAPI asynchronously; publish generation data from the server thread. */
+    public void refreshSnapshots() {
+        if (!Bukkit.isPrimaryThread()) throw new IllegalStateException("snapshot publication requires the server thread");
+        Map<UUID, GenerationService.LayoutContext> layouts = new java.util.HashMap<>();
+        Map<UUID, GenerationService.InstanceSnapshot> instances = new java.util.HashMap<>();
+        Map<UUID, String> names = new java.util.HashMap<>();
+        Map<UUID, String> health = new java.util.HashMap<>();
+        Map<UUID, LocationContextService.RoomContext> rooms = new java.util.HashMap<>();
+        var regions = generation.protectionRegions();
+        for (var run : runs.snapshots()) {
+            generation.layoutContext(run.instanceId()).ifPresent(value -> layouts.put(run.instanceId(), value));
+            generation.info(run.instanceId()).ifPresent(value -> instances.put(run.instanceId(), value));
+            for (UUID participant : run.participants()) {
+                String name = plugin.getServer().getOfflinePlayer(participant).getName();
+                names.put(participant, name == null ? "Player" : name);
+                var online = plugin.getServer().getPlayer(participant);
+                if (online != null) {
+                    double current = online.getHealth();
+                    var maximum = online.getAttribute(Attribute.MAX_HEALTH);
+                    double fraction = maximum == null || maximum.getValue() <= 0 ? 0 : current / maximum.getValue();
+                    String color = fraction >= .75 ? "§a" : fraction >= .5 ? "§e" : fraction >= .25 ? "§6" : "§c";
+                    health.put(participant, online.isDead() || current <= 0 ? " §c☠"
+                            : " " + color + String.format(Locale.US, "%,.0f", Math.ceil(current)) + "❤");
+                    var location = online.getLocation();
+                    if (location != null && location.getWorld() != null && regions.stream().anyMatch(region ->
+                            region.instanceId().equals(run.instanceId())
+                                    && region.world().equals(location.getWorld().getName()))) {
+                        secrets.locate(run.instanceId(), new Point(location.getBlockX(), location.getBlockY(),
+                                location.getBlockZ())).ifPresent(room -> rooms.put(participant, room));
+                    }
+                }
+            }
+        }
+        publishedLayouts = Map.copyOf(layouts);
+        publishedInstances = Map.copyOf(instances);
+        playerNames = Map.copyOf(names);
+        playerHealth = Map.copyOf(health);
+        playerRooms = Map.copyOf(rooms);
+    }
 
     /** Compatibility constructor for callers that only have a total score lookup. */
     public DungeonPlaceholderExpansion(JavaPlugin plugin, GenerationService generation,
@@ -121,7 +173,8 @@ public final class DungeonPlaceholderExpansion extends PlaceholderExpansion {
         if (key.startsWith("instance_")) return instanceValue(key, player);
 
         Context context = findPlayerContext(player.getUniqueId());
-        return context == null ? playerFallback(key) : playerValue(key, context);
+        String value = context == null ? playerFallback(key) : playerValue(key, context);
+        return key.startsWith("sidebar_") ? smallCaps(value) : value;
     }
 
     private List<RunPreparationService.RunSnapshot> activeRuns() {
@@ -175,12 +228,19 @@ public final class DungeonPlaceholderExpansion extends PlaceholderExpansion {
                 : combat.info(run.instanceId()).orElse(null);
         ScoreService.FinalScoreSnapshot score = safeScore(run.instanceId());
         Integer legacyScore = safeLegacyScore(run.instanceId());
+        Map<UUID, String> selectedClasses = run.selectedClasses() == null ? Map.of() : run.selectedClasses();
+        String selectedClassId = playerId == null ? "" : selectedClasses.getOrDefault(playerId, "");
+        Optional<ClassDefinition> selectedClassValue = playerId == null ? Optional.empty() : runs.selectedClass(playerId);
+        ClassDefinition selectedClass = selectedClassValue == null ? null : selectedClassValue.orElse(null);
+        var room = playerId == null ? null : playerRooms.get(playerId);
+        if (room != null && !room.instanceId().equals(run.instanceId())) room = null;
         return new Context(run, lifecycleSnapshot, participant, secretSnapshot, generationSnapshot, layout,
-                combatSnapshot, score, legacyScore);
+                combatSnapshot, score, legacyScore, selectedClassId, selectedClass,
+                room);
     }
 
     private GenerationService.InstanceSnapshot safeGenerationInfo(UUID instanceId) {
-        if (!Bukkit.isPrimaryThread()) return null;
+        if (!Bukkit.isPrimaryThread()) return publishedInstances.get(instanceId);
         try {
             return generation.info(instanceId).orElse(null);
         } catch (RuntimeException ignored) {
@@ -189,7 +249,7 @@ public final class DungeonPlaceholderExpansion extends PlaceholderExpansion {
     }
 
     private GenerationService.LayoutContext safeLayoutContext(UUID instanceId) {
-        if (!Bukkit.isPrimaryThread()) return null;
+        if (!Bukkit.isPrimaryThread()) return publishedLayouts.get(instanceId);
         try {
             return generation.layoutContext(instanceId).orElse(null);
         } catch (RuntimeException ignored) {
@@ -268,6 +328,7 @@ public final class DungeonPlaceholderExpansion extends PlaceholderExpansion {
 
     private String playerValue(String key, Context context) {
         PlayerLifecycleService.PlayerSnapshot player = context.player();
+        if (key.matches("sidebar_party_[1-5]")) return partyLine(context, Integer.parseInt(key.substring(14)) - 1);
         return switch (key) {
             case "in_dungeon", "player_in_dungeon" -> "true";
             case "instance", "instance_id", "player_instance", "player_instance_id" ->
@@ -296,12 +357,80 @@ public final class DungeonPlaceholderExpansion extends PlaceholderExpansion {
             case "player_bonus_score" -> scorePart(context, ScorePart.BONUS);
             case "player_elapsed_time" -> formatDuration(elapsedSeconds(context));
             case "player_elapsed_seconds" -> Long.toString(elapsedSeconds(context));
-            case "current_room", "player_current_room" -> currentRoom(context, false);
-            case "current_room_id", "player_current_room_id" -> currentRoom(context, true);
-            case "player_current_room_secrets", "player_current_room_secrets_found",
-                 "player_current_room_secrets_total" -> "0";
+            case "current_room", "player_current_room" -> context.room() == null ? "0"
+                    : Integer.toString(context.room().index());
+            case "current_room_id", "player_current_room_id" -> context.room() == null ? "" : context.room().templateId();
+            case "player_current_room_secrets", "sidebar_room_secrets" -> roomSecretCount(context, true)
+                    + "/" + roomSecretCount(context, false);
+            case "player_current_room_secrets_found" -> Integer.toString(roomSecretCount(context, true));
+            case "player_current_room_secrets_total" -> Integer.toString(roomSecretCount(context, false));
+            case "player_has_class" -> Boolean.toString(!context.selectedClassId().isBlank());
+            case "player_class_id" -> context.selectedClassId();
+            case "player_class" -> context.selectedClass() == null ? ""
+                    : MiniMessageUtils.componentToString(MiniMessageUtils.miniMessage(
+                            context.selectedClass().displayName()));
+            case "player_class_locked" -> Boolean.toString(
+                    !RunPreparationService.classSelectionOpen(context.run().state()));
+            case "rooms_total" -> Integer.toString(roomCount(context, false));
+            case "rooms_cleared" -> Integer.toString(roomCount(context, true));
+            case "clear_percent" -> Integer.toString(roomCount(context, false) == 0 ? 0
+                    : 100 * roomCount(context, true) / roomCount(context, false));
+            case "sidebar_floor" -> context.layout() == null ? "Dungeon"
+                    : plain(context.layout().floor().displayName()) + " §8• §c"
+                    + context.layout().difficulty().tier().displayName();
+            case "sidebar_phase" -> switch (context.run().state()) {
+                case PREPARING -> "§eChoose classes §7(" + context.run().selectedClasses().size()
+                        + "/" + context.run().participants().size() + ")";
+                case RUNNING -> roomCount(context, true) == roomCount(context, false)
+                        ? "§dEnter the boss portal" : "§eClear the dungeon";
+                case BOSS -> "§cDefeat the boss";
+                case COMPLETION_PENDING -> "§eFinalizing rewards";
+                case COMPLETED -> "§aClaim your rewards";
+                case FAILED -> "§cDungeon failed";
+            };
+            case "sidebar_deaths" -> Integer.toString(totalDeaths(context.lifecycle()));
+            case "sidebar_score" -> context.score() == null ? ""
+                    : "§fScore: §a" + scoreTotal(context) + " §7(" + scoreRank(context) + ")";
             default -> "";
         };
+    }
+
+    private String partyLine(Context context, int index) {
+        if (context.run().participants().size() <= index) return "";
+        UUID id = context.run().participants().get(index);
+        var participant = context.lifecycle() == null ? null : context.lifecycle().players().stream()
+                .filter(value -> value.playerId().equals(id)).findFirst().orElse(null);
+        String selected = context.run().selectedClasses().get(id);
+        String label = selected == null || selected.isBlank() ? "?" : selected.substring(0, 1).toUpperCase(Locale.ROOT);
+        String status = participant == null ? ""
+                : participant.state() == PlayerLifecycleService.PlayerState.GHOST ? " §c☠"
+                : participant.state() == PlayerLifecycleService.PlayerState.REMOVED ? " §8LEFT"
+                : !participant.online() ? " §8OFFLINE" : playerHealth.getOrDefault(id, "");
+        return "§b[" + label + "] §f" + playerNames.getOrDefault(id, "Player") + status;
+    }
+
+    private static int roomCount(Context context, boolean cleared) {
+        return context.combat() == null ? 0 : (int) context.combat().rooms().stream()
+                .filter(room -> !cleared || room.state() == CombatRoomService.RoomState.CLEARED).count();
+    }
+
+    private static String plain(String text) {
+        return MiniMessageUtils.componentToString(MiniMessageUtils.miniMessage(text));
+    }
+
+    private static String smallCaps(String text) {
+        String alphabet = "ᴀʙᴄᴅᴇꜰɢʜɪᴊᴋʟᴍɴᴏᴘǫʀꜱᴛᴜᴠᴡxʏᴢ";
+        StringBuilder result = new StringBuilder(text.length());
+        for (int index = 0; index < text.length(); index++) {
+            char letter = text.charAt(index);
+            if (letter == '§' && index + 1 < text.length()) {
+                result.append(letter).append(text.charAt(++index));
+                continue;
+            }
+            char lower = Character.toLowerCase(letter);
+            result.append(lower >= 'a' && lower <= 'z' ? alphabet.charAt(lower - 'a') : letter);
+        }
+        return result.toString();
     }
 
     private String floorId(Context context) {
@@ -330,6 +459,14 @@ public final class DungeonPlaceholderExpansion extends PlaceholderExpansion {
     private static int secretCount(Context context, boolean found) {
         if (context.secrets() == null) return 0;
         return (int) context.secrets().secrets().stream()
+                .filter(secret -> !found || secret.discovered()).count();
+    }
+
+    private static int roomSecretCount(Context context, boolean found) {
+        if (context.room() == null || context.secrets() == null
+                || !context.room().instanceId().equals(context.run().instanceId())) return 0;
+        return (int) context.secrets().secrets().stream()
+                .filter(secret -> secret.id().generatedRoomIndex() == context.room().index())
                 .filter(secret -> !found || secret.discovered()).count();
     }
 
@@ -414,14 +551,16 @@ public final class DungeonPlaceholderExpansion extends PlaceholderExpansion {
 
     private static String playerFallback(String key) {
         return switch (key) {
-            case "in_dungeon", "player_in_dungeon", "player_alive", "player_ghost" -> "false";
+            case "in_dungeon", "player_in_dungeon", "player_alive", "player_ghost",
+                 "player_has_class", "player_class_locked" -> "false";
             case "ghost_seconds", "player_respawn_seconds", "players", "alive", "ghosts", "deaths",
                  "player_deaths", "secrets_found", "player_secrets_found", "secrets_total",
-                 "player_secrets_total", "player_current_room_secrets", "player_current_room_secrets_found",
+                 "player_secrets_total", "player_current_room_secrets_found",
                  "player_current_room_secrets_total", "player_elapsed_seconds", "score", "player_score",
                  "player_skill_score", "player_time_score", "player_exploration_score",
                  "player_bonus_score" -> "0";
-            case "secrets", "player_secrets" -> "0/0";
+            case "rooms_total", "rooms_cleared", "clear_percent", "sidebar_deaths" -> "0";
+            case "secrets", "player_secrets", "player_current_room_secrets", "sidebar_room_secrets" -> "0/0";
             case "current_room", "player_current_room" -> "0";
             default -> "";
         };
@@ -451,5 +590,8 @@ public final class DungeonPlaceholderExpansion extends PlaceholderExpansion {
                            GenerationService.LayoutContext layout,
                            CombatRoomService.InstanceSnapshot combat,
                            ScoreService.FinalScoreSnapshot score,
-                           Integer legacyScore) { }
+                           Integer legacyScore,
+                           String selectedClassId,
+                           ClassDefinition selectedClass,
+                           LocationContextService.RoomContext room) { }
 }

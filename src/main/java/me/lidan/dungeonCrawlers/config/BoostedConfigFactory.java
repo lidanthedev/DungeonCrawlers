@@ -20,7 +20,7 @@ import java.util.Map;
 import java.util.HashMap;
 
 public class BoostedConfigFactory {
-    public static final int CURRENT_SCHEMA_VERSION = 4;
+    public static final int CURRENT_SCHEMA_VERSION = 6;
     public static final String VERSION_ROUTE = "schema-version";
     private static final int PACK_SCHEMA_VERSION = 1;
 
@@ -106,6 +106,21 @@ public class BoostedConfigFactory {
             }
         }
         return config;
+    }
+
+    public void migrateFloor(Path path) throws IOException {
+        BoostedCustomConfig config = open(path);
+        int version = schemaVersion(config);
+        if (version < 1 || version > 3) return;
+        Path backup = path.getParent().getParent().resolve("backups/floors-v" + version).resolve(path.getFileName());
+        Files.createDirectories(backup.getParent());
+        if (!Files.exists(backup)) Files.copy(path, backup, StandardCopyOption.COPY_ATTRIBUTES);
+        int number = config.getInt("number", 1);
+        if (!config.contains("dungeon-xp.completion", true)) config.set("dungeon-xp.completion", 100.0 * number * number);
+        if (!config.contains("dungeon-xp.failure-factor", true)) config.set("dungeon-xp.failure-factor", .10);
+        if (!config.contains("generation.room-pool", true)) config.set("generation.room-pool", List.of());
+        config.set(VERSION_ROUTE, 4);
+        if (!config.save()) throw new IOException("failed to migrate floor " + path.getFileName());
     }
 
     public static int schemaVersion(Section config) {

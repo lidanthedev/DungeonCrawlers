@@ -45,6 +45,7 @@ import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
 import revxrsal.commands.annotation.Command;
 import revxrsal.commands.annotation.Subcommand;
+import revxrsal.commands.annotation.Suggest;
 import revxrsal.commands.annotation.SuggestWith;
 import revxrsal.commands.bukkit.annotation.CommandPermission;
 
@@ -74,7 +75,7 @@ public final class DungeonCrawlersCommand {
     private final DurableRepository durableRepository;
     private final BoostedCustomConfig mainConfig;
     private final StateTransitionService transitions = new StateTransitionService();
-    private final ScoreService scores = new ScoreService();
+    private final ScoreService scores;
     private final GenerationService generation;
     private final Consumer<UUID> preparationCancel;
     private final BooleanSupplier reloadBlocked;
@@ -113,6 +114,17 @@ public final class DungeonCrawlersCommand {
                                   DurableRepository durableRepository, GenerationService generation,
                                   Consumer<UUID> preparationCancel, BooleanSupplier reloadBlocked,
                                   BooleanSupplier debugEnabled, Consumer<Boolean> debugUpdate) {
+        this(plugin, compatibility, mainConfig, configRegistry, reservations, durableRepository, generation,
+                preparationCancel, reloadBlocked, debugEnabled, debugUpdate, new ScoreService());
+    }
+
+    public DungeonCrawlersCommand(JavaPlugin plugin, CompatibilityService compatibility,
+                                  BoostedCustomConfig mainConfig,
+                                  ConfigRegistryService configRegistry, PlayerReservationService reservations,
+                                  DurableRepository durableRepository, GenerationService generation,
+                                  Consumer<UUID> preparationCancel, BooleanSupplier reloadBlocked,
+                                  BooleanSupplier debugEnabled, Consumer<Boolean> debugUpdate,
+                                  ScoreService scores) {
         this.plugin = plugin;
         this.compatibility = compatibility;
         this.mainConfig = mainConfig;
@@ -124,6 +136,7 @@ public final class DungeonCrawlersCommand {
         this.reloadBlocked = reloadBlocked;
         this.debugEnabled = debugEnabled;
         this.debugUpdate = debugUpdate;
+        this.scores = java.util.Objects.requireNonNull(scores, "scores");
         this.parties = PartyProviders.forServer(plugin.getServer());
     }
 
@@ -133,7 +146,7 @@ public final class DungeonCrawlersCommand {
         DungeonMessages.send(sender, DungeonMessages.info("Commands. Click a line to fill in a command."));
         DungeonGenerationCommand.suggest(sender, "<green>Start a solo or party dungeon</green>",
                 "/dungeon start floor_1");
-        DungeonGenerationCommand.suggest(sender, "<green>Choose your class</green>", "/dungeon class list");
+        DungeonGenerationCommand.suggest(sender, "<green>Choose your class</green>", "/dungeon class menu");
         DungeonGenerationCommand.suggest(sender, "<green>Check your dungeon location</green>", "/dungeon whereami");
         DungeonGenerationCommand.suggest(sender, "<green>Open completed rewards</green>", "/dungeon reward open ");
         if (sender.hasPermission("dungeoncrawlers.admin.generation")) {
@@ -142,6 +155,18 @@ public final class DungeonCrawlersCommand {
                     "/dungeon instance list");
             DungeonGenerationCommand.suggest(sender, "<yellow>Inspect an instance</yellow>",
                     "/dungeon instance info ");
+        }
+        if (sender.hasPermission("dungeoncrawlers.admin.room")) {
+            DungeonGenerationCommand.suggest(sender, "<yellow>Get the room marker kit</yellow>",
+                    "/dungeon room setup");
+        }
+        if (sender.hasPermission("dungeoncrawlers.admin.authoring")) {
+            DungeonGenerationCommand.suggest(sender, "<yellow>Preview an authored room</yellow>",
+                    "/dungeon room preview ");
+        }
+        if (sender.hasPermission("dungeoncrawlers.admin.progression")) {
+            DungeonGenerationCommand.suggest(sender, "<yellow>Grant floor difficulty completions</yellow>",
+                    "/dungeon completions add ");
         }
         if (sender.hasPermission("dungeoncrawlers.admin.reload")) {
             DungeonGenerationCommand.suggest(sender, "<yellow>Validate and reload configuration</yellow>",
@@ -365,11 +390,13 @@ public final class DungeonCrawlersCommand {
         sendField(sender, "minimum floor", value.minFloor());
         sendField(sender, "maximum floor", value.maxFloor() == null ? "none" : value.maxFloor());
         sendField(sender, "weight", value.weight());
+        sendField(sender, "class selector marker", value.type() == me.lidan.dungeonCrawlers.config.registry.ConfigModels.RoomType.START
+                ? "optional orange concrete powder (maximum 1)" : "not valid for this room type");
     }
 
     @Subcommand("class info")
     @CommandPermission("dungeoncrawlers.admin.config")
-    public void classInfo(CommandSender sender, String id) {
+    public void classInfo(CommandSender sender, @SuggestWith(ClassIdSuggestionProvider.class) String id) {
         var value = configRegistry.snapshot().classes().get(id);
         if (value == null) {
             DungeonMessages.send(sender, DungeonMessages.error("Unknown class: <white>" + id + "</white>"));
@@ -385,7 +412,7 @@ public final class DungeonCrawlersCommand {
 
     @Subcommand("blessing info")
     @CommandPermission("dungeoncrawlers.admin.config")
-    public void blessingInfo(CommandSender sender, String id) {
+    public void blessingInfo(CommandSender sender, @SuggestWith(BlessingIdSuggestionProvider.class) String id) {
         var value = configRegistry.snapshot().blessings().get(id);
         if (value == null) {
             DungeonMessages.send(sender, DungeonMessages.error("Unknown blessing: <white>" + id + "</white>"));
@@ -404,7 +431,9 @@ public final class DungeonCrawlersCommand {
 
     @Subcommand("state simulate")
     @CommandPermission("dungeoncrawlers.admin.debug")
-    public void stateSimulate(CommandSender sender, String from, String to) {
+    public void stateSimulate(CommandSender sender,
+                              @Suggest({"generating", "preparing", "running", "boss", "completion_pending", "completed", "failed", "destroyed"}) String from,
+                              @Suggest({"generating", "preparing", "running", "boss", "completion_pending", "completed", "failed", "destroyed"}) String to) {
         if (!debug(sender)) return;
         try {
             var result = transitions.transition(InstanceState.valueOf(from.toUpperCase(Locale.ROOT)),
@@ -425,7 +454,8 @@ public final class DungeonCrawlersCommand {
         try {
             var report = scores.calculateReport(new ScoreService.ScoreInput(successful, deaths,
                     Duration.ofMinutes(elapsedMinutes), foundSecrets, totalSecrets), List.of());
-            DungeonMessages.send(sender, ScoreResultRenderer.render(report));
+            DungeonMessages.send(sender, ScoreResultRenderer.render(report, scores.freeTime(),
+                    scores.penaltyInterval()));
         } catch (IllegalArgumentException | ArithmeticException exception) {
             DungeonMessages.send(sender, DungeonMessages.error(exception.getMessage()));
         }
@@ -492,7 +522,8 @@ public final class DungeonCrawlersCommand {
 
     @Subcommand("compatibility item")
     @CommandPermission("dungeoncrawlers.admin.debug")
-    public void item(CommandSender sender, String itemId) {
+    public void item(CommandSender sender,
+                     @SuggestWith(AdminSuggestionProviders.ItemIds.class) String itemId) {
         if (!debug(sender)) return;
         ItemStack built = caveItems.build(itemId, 1).orElse(null);
         if (built == null) {
@@ -511,7 +542,8 @@ public final class DungeonCrawlersCommand {
 
     @Subcommand("compatibility mythic")
     @CommandPermission("dungeoncrawlers.admin.debug")
-    public void mythic(Player player, String mobId) {
+    public void mythic(Player player,
+                       @SuggestWith(AdminSuggestionProviders.MobIds.class) String mobId) {
         if (!debug(player)) return;
         MythicMobGateway.SpawnResult spawned = mythic.spawn(mobId, player.getLocation(), 1);
         if (!spawned.successful()) {

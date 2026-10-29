@@ -19,6 +19,7 @@ repositories {
     }
     maven("https://mvn.lumine.io/repository/maven-public/")
     maven("https://maven.enginehub.org/repo/")
+    maven("https://maven.citizensnpcs.co/repo")
     maven("https://repo.essentialsx.net/releases/")
     maven("https://repo.alessiodp.com/releases/")
     maven("https://jitpack.io")
@@ -28,12 +29,14 @@ repositories {
 dependencies {
     compileOnly(libs.paper.api)
     compileOnly(libs.cave.crawlers)
+    compileOnly("me.lidan:CaveCrawlAddon:1.0")
     compileOnly(libs.worldedit.bukkit)
     compileOnly(libs.fawe.core)
     compileOnly(libs.mythic.mobs)
     compileOnly(libs.vault.api)
     compileOnly(libs.essentials)
     compileOnly(libs.parties.api)
+    compileOnly(libs.citizens.api)
     compileOnly(libs.gson)
     compileOnly("me.clip:placeholderapi:2.11.6")
 
@@ -55,11 +58,21 @@ dependencies {
     }
     testImplementation("me.clip:placeholderapi:2.11.6")
     testImplementation(libs.lamp.common)
+    testImplementation(libs.lamp.bukkit)
     testImplementation(libs.paper.api)
     testImplementation(libs.cave.crawlers)
+    testImplementation("me.lidan:CaveCrawlAddon:1.0")
+    testImplementation(libs.mythic.mobs)
     testImplementation(libs.parties.api)
     testImplementation(libs.worldedit.bukkit)
     testImplementation(libs.gson)
+    // ByteBuddy needs these compile-only APIs present to mock the final CaveCrawlers
+    // plugin class when the native ItemAbility flow is exercised in tests.
+    testImplementation(libs.vault.api)
+    testRuntimeOnly(libs.mythic.mobs)
+    testRuntimeOnly(libs.lamp.common)
+    testRuntimeOnly(libs.lamp.bukkit)
+    testRuntimeOnly(libs.lamp.brigadier)
 }
 
 val targetJavaVersion = 21
@@ -111,12 +124,14 @@ val verifyNoExternalPluginShading by tasks.registering {
     doLast {
         val forbiddenPrefixes = listOf(
             "me/lidan/cavecrawlers/",
+            "me/lidan/caveCrawlAddon/",
             "io/lumine/mythic/",
             "com/sk89q/worldedit/",
             "net/milkbowl/vault/",
             "net/ess3/",
             "net/essentialsx/",
             "com/alessiodp/parties/",
+            "net/citizensnpcs/",
             "com/google/gson/"
         )
         zipTree(tasks.shadowJar.get().archiveFile).matching {
@@ -128,10 +143,13 @@ val verifyNoExternalPluginShading by tasks.registering {
 }
 
 tasks.processResources {
-    val props = mapOf("version" to project.version)
+    val commit = providers.exec { commandLine("git", "rev-parse", "--short", "HEAD") }.standardOutput.asText.get().trim()
+    val props = mapOf("version" to "${project.version}+$commit")
     inputs.properties(props)
     filteringCharset = "UTF-8"
     filesMatching("plugin.yml") {
         expand(props)
     }
 }
+
+publishing { publications { create<MavenPublication>("mavenJava") { artifact(tasks.shadowJar) } } }

@@ -41,15 +41,27 @@ class TemplateMetadataTest {
         try (MockedStatic<JavaPlugin> ignored = mockStatic(JavaPlugin.class)) {
             ignored.when(() -> JavaPlugin.getProvidingPlugin(BoostedCustomConfig.class)).thenReturn(mock(JavaPlugin.class));
             BoostedConfigFactory factory = new BoostedConfigFactory();
-            TemplateMetadata.write(factory, metadata, TemplateMetadata.fromTemplate(template, schematic));
+            TemplateMetadata current = TemplateMetadata.fromTemplate(template, schematic);
+            TemplateMetadata.write(factory, metadata, current);
             TemplateMetadata loaded = TemplateMetadata.read(factory, metadata);
 
             assertEquals(template.bounds(), loaded.bounds());
             assertEquals(template.normalMobs(), loaded.normalMobs());
             assertEquals(template.minibossMobs(), loaded.minibossMobs());
             assertEquals(template.entrance(), loaded.entrance());
+            assertEquals(template.classSelectorNpc(), loaded.classSelectorNpc());
             assertEquals(template.secrets(), loaded.secrets());
             assertTrue(loaded.toTemplate("room", room()).solidBlocks().isEmpty());
+
+            Path legacy = directory.resolve("legacy.meta.yml");
+            TemplateMetadata legacyMetadata = new TemplateMetadata(current.schematicSize(),
+                    current.schematicModifiedMillis(), current.bounds(), current.entrance(), current.exit(),
+                    current.normalMobs(), current.minibossMobs(), current.playerSpawns(), Optional.empty(),
+                    current.bossSpawn(), current.rewardChest(), current.secrets(), current.portalBlocks(),
+                    current.contentHash());
+            TemplateMetadata.write(factory, legacy, legacyMetadata);
+            Files.writeString(legacy, Files.readString(legacy).replace("schema-version: 3", "schema-version: 2"));
+            assertTrue(TemplateMetadata.read(factory, legacy).classSelectorNpc().isEmpty());
         }
     }
 
@@ -58,7 +70,8 @@ class TemplateMetadataTest {
                 new Bounds(new Point(0, 0, 0), new Point(4, 4, 4)),
                 Optional.of(new Connector(ConnectorKind.ENTRANCE, new Point(0, 2, 2), Facing.WEST)),
                 Optional.of(new Connector(ConnectorKind.EXIT, new Point(4, 2, 2), Facing.EAST)),
-                List.of(new Point(2, 1, 2)), List.of(new Point(3, 1, 2)), List.of(), Optional.empty(),
+                List.of(new Point(2, 1, 2)), List.of(new Point(3, 1, 2)), List.of(),
+                Optional.of(new Point(1, 1, 1)), Optional.empty(),
                 Optional.of(new Point(2, 1, 3)), List.of(new Secret(new Point(2, 1, 4), SecretKind.STANDARD)),
                 Set.of(new Point(1, 1, 1)), Set.of(new Point(1, 1, 1)), "hash");
     }

@@ -1,4 +1,4 @@
-schema-version: 4
+schema-version: 6
 
 # Enables implementation diagnostics and debug-only commands. Keep disabled on production servers.
 debug: false
@@ -17,6 +17,37 @@ compatibility:
 # Whether Emerald player-spawn markers are replaced with air or retained in authored templates.
 authoring:
   emerald-marker-policy: replace
+
+# Optional Citizens skin for the temporary START-room class selector NPC.
+# Leave blank to keep Citizens' default skin behavior.
+class-selector:
+  npc:
+    skin: ""
+
+# Runtime periods. Every value is an integer number of seconds.
+timings:
+  preparation-warning-seconds: 60
+  preparation-timeout-seconds: 300
+  run-warning-seconds: 60
+  run-timeout-seconds: 3600
+  failed-reading-period-seconds: 10
+  completion-warning-seconds: 60
+  completion-timeout-seconds: 300
+  completion-final-countdown-seconds: 10
+  revive-seconds: 60
+  admin-revive-seconds: 3
+  portal-countdown-seconds: 5
+  boss-spawn-delay-seconds: 1
+  live-reward-window-seconds: 300
+  recovered-reward-window-seconds: 86400
+  recovered-reward-session-seconds: 300
+  score-free-time-seconds: 480
+  score-penalty-interval-seconds: 60
+  generation-cleanup-deadline-seconds: 30
+  teleport-permit-seconds: 5
+  action-bar-cooldown-seconds: 1
+  persistence-shutdown-grace-seconds: 5
+  pending-recovery-max-age-seconds: 86400
 
 # Dedicated void-world and ten-thousand-block slot grid used by asynchronous generation.
 generation:

@@ -1,0 +1,105 @@
+# Sundered Foundry human gate
+
+Date: 2026-10-10, Asia/Jerusalem. Target development server: Modern Cave Crawl, Pterodactyl `fa696721`.
+
+## Room renovation and sign removal, 2026-10-10
+
+The pack now has copper entry arches, ribbed roofs, room-specific machinery, enclosed side vaults and staircase-accessed galleries. Every combat room has four secrets; start and portal each have two. Six ordinary combat rooms contain 7–9 required enemies, and the final room requires two Chainkeepers. A complete floor has **32 secrets and 49 required enemies**. All ten templates have sealed exterior walls, foundations and roofs, with only their authored connectors open. Physical signs are absent, including in the boss room. Puzzle instructions remain holograms; four floating rune labels keep Resonance readable.
+
+- Java 21 `./gradlew clean build --no-daemon` passed all **395 tests**, with zero failures/errors and successful external API shading verification. Two new adapter tests check clue preservation, correct labels through all four rotations, ownership tags and idempotent cleanup.
+- `python3 scripts/test_foundry_floor.py` passed five checks. Independent NBT decoding verifies every shipped block against the builder and rejects sign blocks/entities. Exterior checks cover all six faces of each template, intact connectors/markers, supported routes to every secret and enemy spawn, distinct bounded spawns and crucible connectivity during spoke retraction. Regenerated templates and manifest are deterministic. This validates authored geometry, not every item-assisted teleport exploit.
+- JAR SHA-256: `9b783d9c9117ebe3c798b17c06b9882b07eb9d1ceee513485a5744239d948e53`. `python3 deploy.py` reported successful upload. Existing server templates matched their expected checksums before replacement. All ten replacements passed remote checksum verification. Original templates are backed up at `/plugins/DungeonCrawlers/backups/foundry-rooms-20261010T0939/original`; the pre-sign-removal revision is backed up at `/plugins/DungeonCrawlers/backups/foundry-rooms-nosigns-20261010T0950/original`. The server's SFTP implementation lacks `posix_rename`; activation used verified writes with restoration of originals on failure.
+- The user approved closing the active run. Initial room activation used `cc reload all` at 09:42:35 UTC. Before the final sign-removal reload, active instances were zero. Final reload at **09:50:43 UTC** enabled DungeonCrawlers at 09:50:48 with three floors / 26 rooms / three encounters. `dungeon config validate` passed at 09:50:59. Existing unrelated PlugMan/FishingAddon/placeholder warnings remained; inspected output had no Foundry exception.
+- Initial Normal debug run `fc35177a-18c7-4ff8-b4f9-5cacc8593870`, seed 3003, registered 32 secrets and 49 enemies. First-room activation spawned all seven required mobs with no failures/missing mobs. A standard secret at `(5006,67,5020)` was discovered once, and the second attempt reported already discovered. The elevated cache at `(5033,72,5076)` granted `crypt_strength`. Sampled wall, roof and foundation blocks matched their sealed materials.
+- Final Normal debug run `ff1f0e0b-8972-4b62-ab4d-aa6d21ed0ab3`, seed 3003, again registered 32 secrets and 49 enemies. First-room activation at 09:51:22 spawned all seven required mobs. In `dungeon_instances`, former sign positions `(5025,67,5011)` and `(5025,67,5054)` were air at 09:51:50–52. The initial probe used the wrong world name and was rerun successfully in the correct world. Test commands used only the authorized player `LidanTheGamer`, without changing game mode. Cleanup was requested at 09:52:07; active instances were zero at 09:52:46 and the exact scene ownership NBT selector was empty at 09:53:18.
+
+A full Survival clear, client review of the renovated architecture/hologram readability and five-player balance were not performed. The boss mechanics were unchanged; previous encounter evidence follows below.
+
+## First-form defeat transition fix, 2026-10-10
+
+This revision supersedes the original shared-health, 65% transformation described in the historical evidence below. Impossible now has two lives. First-form death, including a burst kill or an administrative death during INTRO, starts the full transformation and binds a freshly spawned actor. Its separate health pool receives difficulty and party scaling once. Only the second defeat can start victory. Normal retains its single-life encounter. The scene and listener survive actor replacement without duplication.
+
+Java 21 `./gradlew clean build --no-daemon` passed all **393 tests**, including external-plugin shading verification. Regressions cover near-lethal first-life damage, actual first defeat, INTRO defeat, full cinematic duration, no early final phase or reward, stale/duplicate death events, second-life victory timing, spawn/animation failures, wipe cleanup and a protected actor's forced removal. Adapter checks allow lethal first-form damage, reject cinematic damage, and verify two-player health scaling stays 1.45 billion on each separately spawned actor. Foundry schema 2 removes the retired transformation threshold; schema 1 still loads administrator tuning without overwriting the file.
+
+JAR SHA-256: `ec6850610de7bbcd96c4049daa906bcd712a65f43559b3f920bdf194e51eae3a`. `python3 deploy.py` reported successful upload. Zero active dungeons preceded `cc reload all` at **09:24:33 UTC**; DungeonCrawlers loaded three floors, 26 rooms and three encounters at 09:24:38. `dungeon config validate` passed against the existing schema-1 server configuration.
+
+Live solo Impossible run `5c787c0a-4fc0-4576-8fa5-8d688ca9d5eb`, seed 3003, used the authorized player `LidanTheGamer` without changing game mode:
+
+- INTRO at 09:25:22, FIRST at 09:25:29 and Forge Wave at 09:25:31.
+- A vanilla **two-billion-damage** hit killed the first actor at **09:25:34** and immediately entered TRANSFORM. The replacement's health read **one billion** at 09:25:36. Another two-billion hit at 09:25:38 was refused as invulnerable.
+- RIVEN began at **09:25:48**, fourteen seconds after the first defeat. Chain Draw cast at 09:25:50 and Guillotine at 09:25:56. The sampled upper deck at `(5058,75,8040)` was air, and the replacement actor was on the crucible at **Y=66**.
+- The run failed during Riven at 09:26:01 and cleanup completed at 09:26:13. Active instances were zero at 09:26:22; both the exact scene-ownership selector and `foundry_boss` selector were empty at 09:26:27–29.
+
+The lethal-hit transition, cinematic protection, fresh health, transformed collision floor, second-phase attacks and failure cleanup were verified live. Second-life victory and duplicate-death behavior passed automated tests; a complete survival victory and client visual review were not repeated during this fix.
+
+## Automated evidence
+
+- Java 21 `./gradlew clean build --no-daemon` passed 374 tests with no failures; the final `./gradlew build --no-daemon` passed all 375 tests, including external-plugin shading verification. A prior run hit the existing `FileDurableRepositoryTest.reservedTerminalLaneBypassesNormalSaturation` timing race. Its isolated retry and the next full clean build passed. No persistence code was changed.
+- Added boss state-machine tests cover introduction, exact transformation timing, Impossible-only mechanics, a burst crossing both thresholds, one transformation without respawn, delayed one-time victory, missing entities, animation exceptions, wipe during transformation and invalid configuration.
+- Added puzzle tests cover wrong-sequence reset, separate instance progress, distinct multiplayer holders, continuous hold time, solo latch requirements and disconnect/ghost fallback.
+- Combat regression proves mob kills cannot open the next room before the mechanism is solved, and objective cleanup runs once.
+- Scene regression executes the whole transformation and bridge mutation, verifies thousands of real block changes, enforces bounds/display limits, and restores every saved block state and display exactly once.
+- Pack tests cover resource registration, settings validation/hash changes and schema-3 migration that preserves administrator edits.
+- `python3 scripts/test_foundry_floor.py`: three tests passed. They decode every shipped schematic and compare all blocks, check connector NBT and marker support, walk ordinary room routes and secret entrances, and verify every lower-arena refuge remains connected with each cardinal bridge individually removed.
+
+## Deployment and live evidence
+
+The user explicitly approved uploading the JAR, reloading the addon and MythicMobs, and testing with `LidanTheGamer` on `fa696721`. Deployment through `python3 deploy.py` succeeded. `cc reload all` loaded three floors, 26 rooms and three boss encounters; recovery reported zero blockers. `dungeon config validate` passed. Paper reports 1.21.10; compilation uses the project's 1.21.11 API. Chain materials resolve by name for compatibility.
+
+Final JAR: `build/libs/DungeonCrawlers-1.0.jar`.
+SHA-256: `b06404cb98d0f414021cbfc02c7501442016544a7b7961b9468e2c20c5433fd3`.
+
+Live findings corrected before completion: the adapter requires Sponge **v3**, with an unnamed root containing `Schematic`, a `Blocks` container and nested block-entity `Data`. Initial incompatible test assets never pasted and were renamed with `.initial-invalid` / `.v2-invalid` suffixes on the development server. The regenerated v3 pack loaded all ten templates and generated ten placements. The class-selector NPC destination also needs its already-generated chunk loaded after generation releases tickets; the shared Citizens adapter now does that before spawning.
+
+`mm reload` completed; all five new mob IDs resolve from `dungeoncrawlers_foundry.yml`, and no Foundry-specific skill errors were logged. Unrelated existing errors concern Jasper meteor, seaplatypus, MIR/RRT targeters and a deepmines STATE mechanic. This task did not edit those definitions.
+
+Tests below used existing admin paths and vanilla damage commands where physical client input was unavailable. Boss inspection used a temporary Creative state to avoid an unattended player wipe. Snapshot restoration returned the player to Survival. These results establish server mechanics, not survival balance or client presentation.
+
+| Check | Observed result |
+| --- | --- |
+| Normal entry | `1dc4d7e8-e9c7-40b6-992f-336cfd366085`: ordinary `/dungeon start floor_3 normal` generated ten placements; class selection and debug door interaction activated room 1; three required mobs were alive, none failed. |
+| Normal boss | INTRO → FIRST → FINAL. Health started at 90 million; an 80-million damage command left 10 million. Boss position changed through AI movement. The sampled upper deck remained present; no TRANSFORM occurred. An unattended player death triggered failure and automatic cleanup. |
+| Impossible cinematic | `d8d81038-2847-4a88-9278-0d3c7597746f`, seed 3003: health started at 450 million. A two-billion damage command was capped to 292,495,500 health. Exactly one TRANSFORM at 01:43:03 UTC and RIVEN at 01:43:17 UTC. Upper deck `(5058,75,8040)` became air; boss and player moved to Y=66. |
+| Enrage and owned entities | Further actual damage entered FINAL. The encounter remained active through multiple attack cycles. NBT-tag selector found 142 owned display entities, within the configured cap. The lower refuge `(5057,65,8057)` remained solid. |
+| Death and rewards | Actual lethal damage entered DYING at 01:44:35 UTC. Completion followed the five-second sequence. Deck `(5058,75,8040)` restored to polished diorite; the owned-tag selector found zero entities; player returned to Y=76. The reward marker became an ender chest. Reward info showed score 200, one participant, an available free wooden offer and a score-locked obsidian offer. Debug progression was disabled, so this does not establish victory XP. |
+| Puzzle gate | `ecf5d66a-bfd5-4d89-a7dc-8799a63b213f`: vanilla lethal damage killed both required Sentinel/Cantor entities. Room 1 remained ACTIVE with “Enemies defeated · solve the room mechanism to continue.” |
+| Secrets/blessings | Admin discovery registered a standard cache; repeating it returned “already discovered.” A blessing cache registered `crypt_strength`, and blessing info showed level 2. Physical discovery/reachability remains a client check. |
+| Wipe during transformation | Same instance: TRANSFORM at 01:47:40 UTC; a second oversized damage command at 01:47:43 was refused as invulnerable and health remained 292,495,500. Admin wipe at 01:47:49. Before map clearing, the sampled deck was restored; owned displays were absent. Player snapshot returned Survival, then generation cleanup completed. |
+| Final preparation retry | `12b9e9f9-27e0-4e95-8a3b-75392b716294` generated ten placements after the NPC chunk fix, reached first-room activation, and cleaned up. The earlier Citizens spawn-failure warning did not recur. NPC rendering/clicking still needs client verification. |
+| Existing floors | `floor_fast` generated five placements and activated five miniboss mobs. `floor_1` generated twelve placements, passed the class/start gate, and started the existing `ringmaster` encounter. Both cleaned up. Ringmaster smoke emitted existing missing Crypt/LostAdventurer recovery warnings after the admin boss jump; this was not a full Floor I clear. |
+
+## Remaining human acceptance pass
+
+These require real client input or a party and remain unchecked:
+
+- [ ] Confirm class-selector NPC visibility/clicking, then solve the seeded resonance puzzle physically, intentionally reset it once, and verify door opening after both puzzle and enemy completion.
+- [ ] Test counterweight latch/plate interactions solo and with two players; verify clues and feedback are readable.
+- [ ] Walk every secret entrance, collect caches physically, traverse the skyway and upper stair, and test fall checkpoints.
+- [ ] Watch the entire cinematic from multiple positions and reduced particle settings. Assess actual chain/slab/pier motion, lighting, sound mix and telegraph visibility.
+- [ ] Fight in Survival: dodge each attack, observe actual bridge retraction collision, reach guillotine refuges, jump rift rings and handle Last Weave overlaps. Tune health/damage/timing from those runs.
+- [ ] Exercise disconnect/reconnect and participant departure live; wipe during introduction, retraction and final phase. Automated lifecycle/state tests cover these paths; the live wipe pass covered transformation and a Normal final-phase death.
+- [ ] Complete a full ordinary run, physically open/claim rewards, and verify victory XP/progression. Admin boss jumps were used for encounter testing.
+- [ ] Five-player load: synchronized presentation, collision safety, frame rate, server tick time and balance.
+
+## Balance revision, 2026-10-10
+
+User requested stronger Floor III mobs after comparing their low HP with Floor I. Live `/plugins/MythicMobs/Mobs/dungeon_mobs.yml` confirmed Crypt enemies at 5M HP / 400K damage and minibosses at 20M / 1M. Live `ringmaster.yml` has 55M / 2M and an Encore at 75M / 3M.
+
+- F3 base stats now match the combat tuning table in [SUNDERED_FOUNDRY.md](SUNDERED_FOUNDRY.md). Hammer damage is 1.2M and Cantor bolt damage is 1M. Timing and phase thresholds are unchanged.
+- Java 21 `./gradlew build --no-daemon` passed, including all 375 tests and the external API shading check. JAR SHA-256: `dd1ef3f6c333495302c6dc1b7b351e24a7eeac97aabf579e02f1a2ffa4732b51`.
+- Uploaded successfully to development server `fa696721`; backed up the three edited server YAML files with `.before-balance-20261010`, then patched only Foundry stat values. User approved closing the active run for reload.
+- `cc reload all` completed, DungeonCrawlers loaded three floors / 26 rooms / three encounters with config hash `508d4f82c922ea31c90ccd171007825a1a4279ce37ac944005c70ed51d625e1a`. `mm reload` completed with previously known unrelated pack warnings and no Foundry definition errors.
+- `mm mobs info` verified all five loaded F3 HP and damage values at 08:29 UTC.
+- Debug Impossible run `41615ebe-840c-4d49-ab5c-7c1b86892b04`, seed 3003, prepared and activated its first room with Sentinel and Cantor alive. Boss health NBT read at 08:30:38 UTC returned `1.0E9f`, confirming 1B solo Impossible HP without double scaling. Test run closed after the read.
+- This revision did not repeat the entire cinematic or measure Survival/party fight duration. Earlier cinematic evidence remains above; balance still needs a player combat pass.
+
+## Veyra counterplay upgrade, 2026-10-10
+
+Implementation commit `c8ffd93` adds Chain Cage escapes, Clockwork Requiem's animated chain cross, continuous Counterweight Verdict occupancy and stagger/wound counterplay, final-phase three-strike Reprisal, and four pier chains suspending the introductory boss. Impossible final enrage opens with Last Weave. Combat displays reuse a fixed 48-link pool; the full scene test reaches 190 displays within the existing 220 cap.
+
+- Java 21 `clean build --no-daemon` passed. After final telegraph alignment edits, `build --no-daemon` passed all 386 tests with no failures/errors and verified external APIs were not shaded. Attack regressions cover cage escape, single-hit detonation, departure eligibility, jumping Clockwork and minimum Reprisal warning time. Counterweight tests cover opposite-pad occupancy, continuous holds, solo fallback and lag gaps.
+- JAR SHA-256: `cde1323b8fa776bcdd08bcd1fdbfc5324718a819c816800c3d654eb8c1bcc51f`. Upload succeeded before activation. Reload waited for the active Floor I party and reward session; user then explicitly approved reload.
+- Server `fa696721`: zero active instances before `cc reload all` at 09:04:54 UTC. DungeonCrawlers enabled and loaded three floors / 26 rooms / three encounters at 09:05:01 UTC; recovery completed with admission enabled. Shared reload briefly triggered Paper's 10-second watchdog while loading FishingAddon, and existing CaveCrawlers shop-initialization warnings occurred during reload. Server recovered; no Foundry encounter exception appeared in the inspected run output.
+- Live debug Impossible instance `1517b7b5-991d-48bd-81e8-aed0932bb327`, seed 3003, generated ten placements and had two participants. INTRO 09:05:50, FIRST 09:05:56, Forge Wave / Brands / Lance casts, exactly one TRANSFORM 09:06:17, RIVEN 09:06:31, then Chain Draw and Guillotine. Damage during TRANSFORM was refused as invulnerable.
+- The party played in Survival after the test player changed back from temporary Creative. The run wiped before later Riven attacks; cleanup completed 09:06:52. Final checks showed zero active instances, no entities matching the owned scene tag or `foundry_boss`, and LidanTheGamer in Survival.
+- Cage, Clockwork and Counterweight success/failure were not reached in this live run. Their executable regressions passed; full live rotation, final-phase combinations, client presentation and party balance remain unchecked.

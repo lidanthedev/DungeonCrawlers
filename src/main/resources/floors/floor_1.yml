@@ -1,4 +1,4 @@
-schema-version: 1
+schema-version: 4
 id: floor_1
 number: 1
 display-name: "<gold>Floor I"
@@ -17,8 +17,8 @@ mobs:
   normal: [CryptZombie, CryptSkeleton, CryptSpider]
   miniboss: [LostAdventurer, AngryArchaeologist]
 boss:
-  mob: CryptGuardian
-  encounter: basic
+  mob: MadRingmaster
+  encounter: ringmaster
 classes:
   allowed: [berserker, mage, tank, healer, archer]
 blessings:
@@ -33,7 +33,10 @@ rewards:
     unique: false
     items:
       - { item: UNDEAD_ESSENCE, weight: 70, amount: "3-8" }
-      - { item: CRYPT_FRAGMENT, weight: 30 }
+      - { item: CRYPT_FRAGMENT, weight: 30, magic-find-sensitive: true }
+dungeon-xp:
+  completion: 100
+  failure-factor: 0.10
 limits:
   max-party-size: 5
   max-template-dimension: 512

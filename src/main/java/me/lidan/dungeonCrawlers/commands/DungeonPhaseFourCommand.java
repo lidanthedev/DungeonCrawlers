@@ -1,5 +1,6 @@
 package me.lidan.dungeonCrawlers.commands;
 
+import me.lidan.dungeonCrawlers.config.DungeonTimings;
 import me.lidan.dungeonCrawlers.core.door.DoorService;
 import me.lidan.dungeonCrawlers.core.protection.TeleportPermitService;
 import me.lidan.dungeonCrawlers.core.protection.WorldProtectionService;
@@ -20,6 +21,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import revxrsal.commands.annotation.Command;
 import revxrsal.commands.annotation.Subcommand;
+import revxrsal.commands.annotation.Suggest;
 import revxrsal.commands.annotation.SuggestWith;
 import revxrsal.commands.bukkit.annotation.CommandPermission;
 
@@ -50,6 +52,7 @@ public final class DungeonPhaseFourCommand {
     private final Supplier<List<WorldProtectionService.InstanceRegion>> regions;
     private final RunPreparationService runs;
     private final BooleanSupplier debugEnabled;
+    private final Duration teleportPermitDuration;
 
     public DungeonPhaseFourCommand(CentralUpdateService updates, DoorService doors,
                                    WorldProtectionService protection, TeleportPermitService permits,
@@ -67,6 +70,17 @@ public final class DungeonPhaseFourCommand {
                                    String generationWorldName,
                                    Supplier<List<WorldProtectionService.InstanceRegion>> regions,
                                    RunPreparationService runs, BooleanSupplier debugEnabled) {
+        this(updates, doors, protection, permits, snapshots, server, plugin, clock, generationWorldName,
+                regions, runs, debugEnabled, DungeonTimings.defaults().teleportPermit());
+    }
+
+    public DungeonPhaseFourCommand(CentralUpdateService updates, DoorService doors,
+                                   WorldProtectionService protection, TeleportPermitService permits,
+                                   PlayerSnapshotService snapshots, Server server, Plugin plugin, Clock clock,
+                                   String generationWorldName,
+                                   Supplier<List<WorldProtectionService.InstanceRegion>> regions,
+                                   RunPreparationService runs, BooleanSupplier debugEnabled,
+                                   Duration teleportPermitDuration) {
         this.updates = java.util.Objects.requireNonNull(updates);
         this.doors = java.util.Objects.requireNonNull(doors);
         this.protection = java.util.Objects.requireNonNull(protection);
@@ -80,6 +94,10 @@ public final class DungeonPhaseFourCommand {
         this.regions = java.util.Objects.requireNonNull(regions);
         this.runs = java.util.Objects.requireNonNull(runs);
         this.debugEnabled = java.util.Objects.requireNonNull(debugEnabled);
+        this.teleportPermitDuration = java.util.Objects.requireNonNull(teleportPermitDuration);
+        if (teleportPermitDuration.isZero() || teleportPermitDuration.isNegative()) {
+            throw new IllegalArgumentException("teleport permit duration must be positive");
+        }
     }
 
     @Subcommand("instance advance")
@@ -187,7 +205,7 @@ public final class DungeonPhaseFourCommand {
     @Subcommand("door register-test")
     @CommandPermission("dungeoncrawlers.admin.debug")
     public void registerDoor(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
-                              int x, int y, int z, String facing) {
+                              int x, int y, int z, @Suggest({"north", "east", "south", "west"}) String facing) {
         if (!requireDebug(sender)) return;
         try {
             DoorService.DoorSnapshot door = doors.register(resolve(sender, instanceId), new Point(x, y, z),
@@ -214,7 +232,7 @@ public final class DungeonPhaseFourCommand {
     @Subcommand("door set")
     @CommandPermission("dungeoncrawlers.admin.debug")
     public void doorSet(CommandSender sender, @SuggestWith(InstanceIdSuggestionProvider.class) String instanceId,
-                        String state) {
+                        @Suggest({"locked", "ready", "open"}) String state) {
         if (!requireDebug(sender)) return;
         try {
             UUID id = resolve(sender, instanceId);
@@ -306,7 +324,7 @@ public final class DungeonPhaseFourCommand {
                     new TeleportPermitService.Destination(location.getWorld().getName(),
                             new Point(location.getBlockX(), location.getBlockY(), location.getBlockZ()))));
             permits.authorize(player.getUniqueId(), destinations,
-                    clock.instant().plus(DungeonGenerationCommand.TELEPORT_PERMIT_DURATION));
+                    clock.instant().plus(teleportPermitDuration));
             var result = BukkitPlayerRecovery.restore(player, saved, server, fallback);
             DungeonMessages.send(player, result.successful()
                     ? DungeonMessages.success("Player restored from <white>" + result.source()

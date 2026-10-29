@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -38,6 +39,7 @@ class TemplateValidatorTest {
         var start = blocks();
         start.put(new Point(2, 2, 4), jigsaw("dungeoncrawlers:exit", "south_up"));
         start.put(new Point(2, 1, 2), block("emerald_block"));
+        start.put(new Point(1, 1, 1), block("orange_concrete_powder"));
         var startResult = validator.validate("start", RoomType.START, Set.of(), selection(start), EmeraldPolicy.REPLACE);
 
         var portal = blocks();
@@ -63,6 +65,67 @@ class TemplateValidatorTest {
         assertEquals(SecretKind.STANDARD, bossResult.template().orElseThrow().secrets().getFirst().kind());
         assertEquals(2, portalResult.template().orElseThrow().portalBlocks().size());
         assertTrue(bossResult.template().orElseThrow().solidBlocks().contains(new Point(1, 1, 1)));
+        assertEquals(Optional.of(new Point(1, 1, 1)), startResult.template().orElseThrow().classSelectorNpc());
+    }
+
+    @Test
+    void onlyStartRoomsMayContainOneClassSelectorMarker() {
+        var normal = blocks();
+        normal.put(new Point(2, 2, 0), jigsaw("dungeoncrawlers:entrance", "north_up"));
+        normal.put(new Point(2, 2, 4), jigsaw("dungeoncrawlers:exit", "south_up"));
+        normal.put(new Point(1, 1, 1), block("gray_concrete_powder"));
+        normal.put(new Point(3, 1, 1), block("orange_concrete_powder"));
+        var normalResult = validator.validate("normal", RoomType.NORMAL, Set.of(EncounterCapability.NORMAL),
+                selection(normal), EmeraldPolicy.REPLACE);
+
+        var start = blocks();
+        start.put(new Point(2, 2, 4), jigsaw("dungeoncrawlers:exit", "south_up"));
+        start.put(new Point(2, 1, 2), block("emerald_block"));
+        start.put(new Point(1, 1, 1), block("orange_concrete_powder"));
+        start.put(new Point(3, 1, 1), block("orange_concrete_powder"));
+        var startResult = validator.validate("start", RoomType.START, Set.of(), selection(start), EmeraldPolicy.REPLACE);
+
+        assertTrue(normalResult.errors().stream().anyMatch(error -> error.contains("must not contain class selector")),
+                normalResult.errors().toString());
+        assertTrue(startResult.errors().stream().anyMatch(error -> error.contains("at most one class selector")),
+                startResult.errors().toString());
+    }
+
+    @Test
+    void rejectsClassSelectorMarkerInEveryNonStartRoomType() {
+        var normal = blocks();
+        normal.put(new Point(2, 2, 0), jigsaw("dungeoncrawlers:entrance", "north_up"));
+        normal.put(new Point(2, 2, 4), jigsaw("dungeoncrawlers:exit", "south_up"));
+        normal.put(new Point(2, 1, 1), block("gray_concrete_powder"));
+        normal.put(new Point(3, 1, 1), block("orange_concrete_powder"));
+        var normalResult = validator.validate("normal", RoomType.NORMAL, Set.of(EncounterCapability.NORMAL),
+                selection(normal), EmeraldPolicy.REPLACE);
+
+        var miniboss = blocks();
+        miniboss.put(new Point(2, 2, 0), jigsaw("dungeoncrawlers:entrance", "north_up"));
+        miniboss.put(new Point(2, 2, 4), jigsaw("dungeoncrawlers:exit", "south_up"));
+        miniboss.put(new Point(2, 1, 1), block("yellow_concrete_powder"));
+        miniboss.put(new Point(3, 1, 1), block("orange_concrete_powder"));
+        var minibossResult = validator.validate("miniboss", RoomType.NORMAL, Set.of(EncounterCapability.MINIBOSS),
+                selection(miniboss), EmeraldPolicy.REPLACE);
+
+        var portal = blocks();
+        portal.put(new Point(2, 2, 0), jigsaw("dungeoncrawlers:entrance", "north_up"));
+        portal.put(new Point(2, 1, 1), block("nether_portal"));
+        portal.put(new Point(2, 1, 2), block("orange_concrete_powder"));
+        var portalResult = validator.validate("portal", RoomType.PORTAL, Set.of(), selection(portal), EmeraldPolicy.REPLACE);
+
+        var boss = blocks();
+        boss.put(new Point(1, 1, 1), block("emerald_block"));
+        boss.put(new Point(2, 1, 2), block("red_concrete_powder"));
+        boss.put(new Point(3, 1, 3), block("lime_concrete_powder"));
+        boss.put(new Point(2, 1, 1), block("orange_concrete_powder"));
+        var bossResult = validator.validate("boss", RoomType.BOSS, Set.of(), selection(boss), EmeraldPolicy.RETAIN);
+
+        for (var result : java.util.List.of(normalResult, minibossResult, portalResult, bossResult)) {
+            assertTrue(result.errors().stream().anyMatch(error -> error.contains("must not contain class selector")),
+                    result.errors().toString());
+        }
     }
 
     @Test

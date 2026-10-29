@@ -11,8 +11,10 @@ import com.google.gson.JsonPrimitive;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonSerializationContext;
 import com.google.gson.JsonSerializer;
+import me.lidan.dungeonCrawlers.config.DungeonTimings;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.RewardDefinition;
 import me.lidan.dungeonCrawlers.core.claim.OfferMode;
+import me.lidan.dungeonCrawlers.core.difficulty.Difficulty;
 import me.lidan.dungeonCrawlers.core.random.NamedRandomFactory;
 import me.lidan.dungeonCrawlers.core.score.ScoreService;
 import me.lidan.dungeonCrawlers.persistence.DurableRecord;
@@ -35,6 +37,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
 
 /**
  * Free, claim-free reward access for a completed run.
@@ -44,9 +47,10 @@ import java.util.UUID;
  * second time. Delivery and payment deliberately live in the next phase.</p>
  */
 public final class RewardEntitlementService {
-    public static final Duration LIVE_WINDOW = Duration.ofMinutes(5);
-    public static final Duration RECOVERED_WINDOW = Duration.ofHours(24);
-    public static final Duration RECOVERED_SESSION_WINDOW = Duration.ofMinutes(5);
+    private static final DungeonTimings DEFAULT_TIMINGS = DungeonTimings.defaults();
+    public static final Duration LIVE_WINDOW = DEFAULT_TIMINGS.liveRewardWindow();
+    public static final Duration RECOVERED_WINDOW = DEFAULT_TIMINGS.recoveredRewardWindow();
+    public static final Duration RECOVERED_SESSION_WINDOW = DEFAULT_TIMINGS.recoveredRewardSessionWindow();
 
     private static final String REPOSITORY_NAMESPACE = "reward-entitlements";
     private static final int REPOSITORY_SCHEMA_VERSION = 1;
@@ -55,30 +59,57 @@ public final class RewardEntitlementService {
     private final RewardCatalog catalog;
     private final RewardRoller roller;
     private final DurableRepository repository;
+    private final DungeonTimings timings;
     private final Gson gson = new GsonBuilder().disableHtmlEscaping()
             .registerTypeAdapter(Instant.class, new InstantAdapter())
             .registerTypeAdapter(Duration.class, new DurationAdapter()).create();
     private final Map<UUID, RunState> runs = new LinkedHashMap<>();
+    private Predicate<UUID> liveInstanceOpen;
 
     public RewardEntitlementService(Clock clock, RewardCatalog catalog) {
-        this(clock, catalog, new RewardRoller(), null);
+        this(clock, catalog, new RewardRoller(), null, DEFAULT_TIMINGS);
     }
 
     public RewardEntitlementService(Clock clock, RewardCatalog catalog, DurableRepository repository) {
-        this(clock, catalog, new RewardRoller(), repository);
+        this(clock, catalog, new RewardRoller(), repository, DEFAULT_TIMINGS);
+    }
+
+    public RewardEntitlementService(Clock clock, RewardCatalog catalog, DurableRepository repository,
+                                    DungeonTimings timings) {
+        this(clock, catalog, new RewardRoller(), repository, timings);
     }
 
     RewardEntitlementService(Clock clock, RewardCatalog catalog, RewardRoller roller) {
-        this(clock, catalog, roller, null);
+        this(clock, catalog, roller, null, DEFAULT_TIMINGS);
     }
 
     RewardEntitlementService(Clock clock, RewardCatalog catalog, RewardRoller roller,
                              DurableRepository repository) {
+        this(clock, catalog, roller, repository, DEFAULT_TIMINGS);
+    }
+
+    RewardEntitlementService(Clock clock, RewardCatalog catalog, RewardRoller roller,
+                             DurableRepository repository, DungeonTimings timings) {
         this.clock = Objects.requireNonNull(clock, "clock");
         this.catalog = Objects.requireNonNull(catalog, "catalog");
         this.roller = Objects.requireNonNull(roller, "roller");
         this.repository = repository;
+        this.timings = Objects.requireNonNull(timings, "timings");
         restore();
+    }
+
+    /** Runtime instance state owns live access; persisted/offline recovery retains its own deadlines. */
+    public synchronized void configureLiveAccess(Predicate<UUID> liveInstanceOpen) {
+        this.liveInstanceOpen = Objects.requireNonNull(liveInstanceOpen, "liveInstanceOpen");
+    }
+
+    public synchronized boolean isOpen(UUID instanceId, UUID playerId) {
+        return player(instanceId, playerId).map(value -> isOpen(instanceId, value, clock.instant())).orElse(false);
+    }
+
+    private boolean isOpen(UUID instanceId, PlayerEntitlement entitlement, Instant now) {
+        return entitlement.mode() == OfferMode.LIVE && liveInstanceOpen != null
+                ? liveInstanceOpen.test(instanceId) : entitlement.open(now);
     }
 
     /** Registers a completion once. Re-registering the same instance returns its original rolls. */
@@ -92,7 +123,7 @@ public final class RewardEntitlementService {
                 if (!participant.activeAtCompletion()) continue;
                 OfferMode mode = participant.onlineAtCompletion() ? OfferMode.LIVE : OfferMode.RECOVERED;
                 Instant outerDeadline = completion.completedAt().plus(
-                        mode == OfferMode.LIVE ? LIVE_WINDOW : RECOVERED_WINDOW);
+                        mode == OfferMode.LIVE ? timings.liveRewardWindow() : timings.recoveredRewardWindow());
                 Instant sessionStarted = mode == OfferMode.LIVE ? completion.completedAt() : null;
                 Instant sessionExpires = mode == OfferMode.LIVE ? outerDeadline : null;
                 Map<String, RewardOffer> offers = rollOffers(completion, participant.playerId());
@@ -135,13 +166,15 @@ public final class RewardEntitlementService {
         Instant now = effectiveNow(clock.instant());
         if (current == null) return Optional.empty();
         if (current.mode() == OfferMode.LIVE) {
-            return current.open(now) ? Optional.of(current) : Optional.empty();
+            if (!isOpen(instanceId, current, now)) return Optional.empty();
+            return Optional.of(liveInstanceOpen == null ? current : new PlayerEntitlement(current.playerId(),
+                    current.mode(), Instant.MAX, current.sessionStartedAt(), Instant.MAX, current.offers()));
         }
         if (!now.isBefore(current.outerDeadline())) return Optional.empty();
         if (current.sessionExpiresAt() != null && now.isBefore(current.sessionExpiresAt())) {
             return Optional.of(current);
         }
-        PlayerEntitlement recovered = current.startRecoveredSession(now);
+        PlayerEntitlement recovered = current.startRecoveredSession(now, timings.recoveredRewardSessionWindow());
         state.players.put(checkedPlayer, recovered);
         state.recordVersion++;
         try {
@@ -157,7 +190,7 @@ public final class RewardEntitlementService {
     public synchronized Optional<RewardOffer> preview(UUID instanceId, UUID playerId, String rewardId) {
         Objects.requireNonNull(rewardId, "rewardId");
         PlayerEntitlement entitlement = player(instanceId, playerId).orElse(null);
-        if (entitlement == null || !entitlement.open(effectiveNow(clock.instant()))) return Optional.empty();
+        if (entitlement == null || !isOpen(instanceId, entitlement, effectiveNow(clock.instant()))) return Optional.empty();
         return Optional.ofNullable(entitlement.offers().get(rewardId));
     }
 
@@ -181,6 +214,8 @@ public final class RewardEntitlementService {
 
     private Map<String, RewardOffer> rollOffers(Completion completion, UUID playerId) {
         Map<String, RewardOffer> offers = new LinkedHashMap<>();
+        boolean runicBoss = completion.score().successful() && completion.score().bonusFacts().stream()
+                .anyMatch(fact -> fact.key().equals(ScoreService.RunicBossBonus.ID) && fact.points() == 20);
         completion.rewards().entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
             String rewardId = entry.getKey();
             RewardDefinition definition = entry.getValue();
@@ -193,8 +228,11 @@ public final class RewardEntitlementService {
                     .getBytes(StandardCharsets.UTF_8));
             boolean locked = completion.score().total() < definition.minScore();
             List<RewardRoller.RolledReward> rolls = locked ? List.of() : roller.roll(definition,
-                    new NamedRandomFactory(completion.seed()).stream(rewardStreamKey(playerId, rewardId)));
-            offers.put(rewardId, new RewardOffer(offerId, rewardId, definition.price(), definition.minScore(),
+                    new NamedRandomFactory(completion.seed()).stream(rewardStreamKey(playerId, rewardId)),
+                    completion.participants().stream().filter(value -> value.playerId().equals(playerId))
+                            .mapToDouble(Participant::magicFind).findFirst().orElse(0));
+            offers.put(rewardId, new RewardOffer(offerId, rewardId,
+                    completion.difficulty().chestPrice(definition.price(), runicBoss), definition.minScore(),
                     locked, rolls));
         });
         return Map.copyOf(offers);
@@ -298,13 +336,21 @@ public final class RewardEntitlementService {
 
     public record Completion(UUID instanceId, long seed, Instant completedAt,
                              ScoreService.FinalScoreSnapshot score, List<Participant> participants,
-                             Map<String, RewardDefinition> rewards) {
+                             Map<String, RewardDefinition> rewards, Difficulty difficulty) {
+        public Completion(UUID instanceId, long seed, Instant completedAt,
+                          ScoreService.FinalScoreSnapshot score, List<Participant> participants,
+                          Map<String, RewardDefinition> rewards) {
+            this(instanceId, seed, completedAt, score, participants, rewards, Difficulty.NORMAL);
+        }
+
         public Completion {
             Objects.requireNonNull(instanceId, "instanceId");
             Objects.requireNonNull(completedAt, "completedAt");
             Objects.requireNonNull(score, "score");
             Objects.requireNonNull(participants, "participants");
             Objects.requireNonNull(rewards, "rewards");
+            // Persisted completions from before difficulty pricing have no tier field.
+            difficulty = difficulty == null ? Difficulty.NORMAL : difficulty;
             participants = List.copyOf(participants);
             rewards = Map.copyOf(rewards);
             Set<UUID> ids = new HashSet<>();
@@ -315,9 +361,13 @@ public final class RewardEntitlementService {
         }
     }
 
-    public record Participant(UUID playerId, boolean activeAtCompletion, boolean onlineAtCompletion) {
+    public record Participant(UUID playerId, boolean activeAtCompletion, boolean onlineAtCompletion, double magicFind) {
+        public Participant(UUID playerId, boolean activeAtCompletion, boolean onlineAtCompletion) {
+            this(playerId, activeAtCompletion, onlineAtCompletion, 0);
+        }
         public Participant {
             Objects.requireNonNull(playerId, "playerId");
+            if (!Double.isFinite(magicFind) || magicFind < 0) throw new IllegalArgumentException("invalid magic find");
         }
     }
 
@@ -366,9 +416,9 @@ public final class RewardEntitlementService {
                     && (sessionExpiresAt == null || now.isBefore(sessionExpiresAt));
         }
 
-        private PlayerEntitlement startRecoveredSession(Instant now) {
+        private PlayerEntitlement startRecoveredSession(Instant now, Duration sessionWindow) {
             return new PlayerEntitlement(playerId, mode, outerDeadline, now,
-                    now.plus(RECOVERED_SESSION_WINDOW), offers);
+                    now.plus(sessionWindow), offers);
         }
     }
 

@@ -38,9 +38,58 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class GenerationServiceTest {
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-01-01T00:00:00Z"), ZoneOffset.UTC);
+
+    @Test
+    void previewSharesSlotReservationJournalAndClearAcknowledgementsWithLiveInstances() {
+        Fixture fixture = fixture(2);
+        var live = fixture.start(UUID.randomUUID());
+        UUID player = UUID.randomUUID();
+        ConfigSnapshot snapshot = mock(ConfigSnapshot.class);
+        when(snapshot.rooms()).thenReturn(Map.of("start", mock(me.lidan.dungeonCrawlers.config.registry.ConfigModels.RoomDefinition.class)));
+        var request = new GenerationService.StartRequest(snapshot, mock(FloorDefinition.class),
+                new PartySnapshot(player, List.of(player), true), 0, 0);
+        fixture.repository.autoAck = false;
+        var preview = fixture.service.startPreview(request, "start");
+        assertTrue(preview.accepted());
+        assertEquals(1, preview.slotId());
+        assertFalse(fixture.service.startPreview(request, "start").accepted());
+        assertEquals(1, fixture.world.pasteCalls);
+        fixture.repository.ack.complete(fixture.repository.receipt);
+        var previewPlan = fixture.service.layoutPlan(preview.instanceId()).orElseThrow();
+        var livePlan = fixture.service.layoutPlan(live.instanceId()).orElseThrow();
+        assertFalse(previewPlan.placements().getFirst().bounds().intersects(livePlan.placements().getFirst().bounds()));
+        assertFalse(fixture.service.layoutContext(preview.instanceId()).orElseThrow().progressionEnabled());
+        assertEquals("Room preview: start", fixture.service.info(preview.instanceId()).orElseThrow().floorName());
+        CompletableFuture<Void> clear = new CompletableFuture<>();
+        fixture.world.clears.add(clear);
+        fixture.service.cancel(preview.instanceId());
+        assertTrue(fixture.reservations.lookup(player).isPresent());
+        assertEquals(SlotAllocator.SlotState.CLEARING, fixture.slots.lookup(1).orElseThrow().state());
+        clear.complete(null);
+        assertTrue(fixture.reservations.lookup(player).isEmpty());
+        assertEquals(SlotAllocator.SlotState.FREE, fixture.slots.lookup(1).orElseThrow().state());
+        assertEquals(GenerationService.InstanceStatus.GENERATED, fixture.service.info(live.instanceId()).orElseThrow().status());
+    }
+
+    @Test
+    void unknownOrProgressionEnabledPreviewCannotReserveOrPaste() {
+        Fixture fixture = fixture(1);
+        ConfigSnapshot snapshot = mock(ConfigSnapshot.class);
+        UUID player = UUID.randomUUID();
+        var request = new GenerationService.StartRequest(snapshot, mock(FloorDefinition.class),
+                new PartySnapshot(player, List.of(player), true), 0, 0);
+        assertFalse(fixture.service.startPreview(request, "missing").accepted());
+        when(snapshot.rooms()).thenReturn(Map.of("start", mock(me.lidan.dungeonCrawlers.config.registry.ConfigModels.RoomDefinition.class)));
+        var progressing = new GenerationService.StartRequest(snapshot, request.floor(), request.party(), 0, 0,
+                me.lidan.dungeonCrawlers.core.difficulty.Difficulty.NORMAL.defaults());
+        assertFalse(fixture.service.startPreview(progressing, "start").accepted());
+        assertEquals(0, fixture.world.pasteCalls);
+        assertTrue(fixture.reservations.lookup(player).isEmpty());
+    }
 
     @Test
     void durableRuntimeAckAlwaysPrecedesFirstPaste() {
@@ -301,8 +350,16 @@ class GenerationServiceTest {
         SlotAllocator slots = new SlotAllocator(new SlotAllocator.Settings(capacity, 10_000, 500, 64, -64, 319));
         FakeRepository repository = new FakeRepository();
         FakeWorld world = new FakeWorld();
-        GenerationService.PreparationProvider provider = (instanceId, seed, floor, snapshot, slot) ->
-                prepared(instanceId, slot);
+        GenerationService.PreparationProvider provider = new GenerationService.PreparationProvider() {
+            @Override public GenerationService.PreparedGeneration prepare(UUID id, long seed, FloorDefinition floor,
+                                                                         ConfigSnapshot snapshot, SlotAllocator.SlotLease slot) {
+                return prepared(id, slot);
+            }
+            @Override public GenerationService.PreparedGeneration preparePreview(UUID id, ConfigSnapshot snapshot,
+                                                                                SlotAllocator.SlotLease slot, String roomId) {
+                return prepared(id, slot);
+            }
+        };
         GenerationService service = new GenerationService(reservations, slots, repository, world, provider,
                 Runnable::run, Runnable::run, () -> true, ignored -> { }, CLOCK, "dungeon_instances");
         return new Fixture(service, reservations, slots, repository, world);

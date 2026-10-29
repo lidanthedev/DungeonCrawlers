@@ -10,6 +10,21 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
 class ScoreServiceTest {
+    @Test void runicBossAddsTwentyBonusOnlyOnSuccessfulClearAndStacksWithPetOnce() {
+        var service = new ScoreService();
+        var boss = new ScoreService.RunicBossBonus(true);
+        List<ScoreService.BonusProvider> providers = List.of(boss, boss, new ScoreService.RunicPetBonus(true));
+        var cleared = service.calculateReport(new ScoreService.ScoreInput(true, 1, Duration.ofMinutes(1), 0, 0), providers);
+        assertEquals(22, cleared.result().bonus());
+        assertEquals(320, cleared.result().total());
+        assertEquals(20, cleared.finalSnapshot().bonusFacts().stream()
+                .filter(fact -> fact.key().equals(ScoreService.RunicBossBonus.ID)).findFirst().orElseThrow().points());
+        var failed = service.calculate(new ScoreService.ScoreInput(false, 1, Duration.ofMinutes(1), 0, 0), providers);
+        assertEquals(2, failed.bonus());
+        assertEquals(0, service.calculate(new ScoreService.ScoreInput(true, 0, Duration.ofMinutes(1), 0, 0),
+                List.of(new ScoreService.RunicBossBonus(false))).bonus());
+    }
+
     private final ScoreService service = new ScoreService();
 
     @Test
@@ -73,6 +88,23 @@ class ScoreServiceTest {
                 .map(ScoreService.BonusProvider::id).toList());
         org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
                 () -> registry.register(provider("first", 1, List.of())));
+    }
+
+    @Test
+    void activeRunicPetAddsTwoBonusPointsWithoutRevivalOrChangingDeathPenalties() {
+        for (boolean successful : new boolean[]{true, false}) {
+            for (int deaths : new int[]{0, 1, 2}) {
+                var input = new ScoreService.ScoreInput(successful, deaths, Duration.ofMinutes(8), 0, 0);
+                var bonus = new ScoreService.RunicPetBonus(true);
+                var report = service.calculateReport(input, List.of(bonus, bonus));
+                assertEquals(2, report.result().bonus());
+                assertEquals(successful ? 100 - 2 * deaths : 0, report.result().skill());
+                assertEquals(deaths, report.finalSnapshot().deaths());
+                assertEquals(List.of(new ScoreService.BonusFact("runic_pet", 2, "Active Runic pet")),
+                        report.finalSnapshot().bonusFacts());
+                assertEquals(0, service.calculate(input, List.of(new ScoreService.RunicPetBonus(false))).bonus());
+            }
+        }
     }
 
     private ScoreService.ScoreResult score(boolean success, int deaths, long minutes, int found, int total) {

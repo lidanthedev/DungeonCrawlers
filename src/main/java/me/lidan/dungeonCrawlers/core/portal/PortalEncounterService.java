@@ -1,5 +1,6 @@
 package me.lidan.dungeonCrawlers.core.portal;
 
+import me.lidan.dungeonCrawlers.config.DungeonTimings;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.FloorDefinition;
 import me.lidan.dungeonCrawlers.core.encounter.BossEntityGateway;
 import me.lidan.dungeonCrawlers.core.encounter.EncounterFactory;
@@ -25,8 +26,9 @@ import java.util.function.Consumer;
 
 /** Owns the portal countdown and the isolated boss encounter for a generated run. */
 public final class PortalEncounterService {
-    public static final Duration PORTAL_COUNTDOWN = Duration.ofSeconds(5);
-    public static final Duration BOSS_SPAWN_DELAY = Duration.ofSeconds(1);
+    private static final DungeonTimings DEFAULT_TIMINGS = DungeonTimings.defaults();
+    public static final Duration PORTAL_COUNTDOWN = DEFAULT_TIMINGS.portalCountdown();
+    public static final Duration BOSS_SPAWN_DELAY = DEFAULT_TIMINGS.bossSpawnDelay();
 
     private final CentralUpdateService updates;
     private final RunPreparationService runs;
@@ -36,6 +38,7 @@ public final class PortalEncounterService {
     private final Clock clock;
     private final Consumer<String> diagnostics;
     private final CompletionFinalizer completionEffects;
+    private final DungeonTimings timings;
     private final Map<UUID, MutableInstance> instances = new LinkedHashMap<>();
 
     public PortalEncounterService(CentralUpdateService updates, RunPreparationService runs,
@@ -62,6 +65,15 @@ public final class PortalEncounterService {
                                   EncounterFactoryRegistry factories, BossEntityGateway entities,
                                   ParticipantGateway participants, Clock clock,
                                   Consumer<String> diagnostics, CompletionFinalizer completionEffects) {
+        this(updates, runs, factories, entities, participants, clock, diagnostics, completionEffects,
+                DEFAULT_TIMINGS);
+    }
+
+    public PortalEncounterService(CentralUpdateService updates, RunPreparationService runs,
+                                  EncounterFactoryRegistry factories, BossEntityGateway entities,
+                                  ParticipantGateway participants, Clock clock,
+                                  Consumer<String> diagnostics, CompletionFinalizer completionEffects,
+                                  DungeonTimings timings) {
         this.updates = Objects.requireNonNull(updates, "updates");
         this.runs = Objects.requireNonNull(runs, "runs");
         this.factories = Objects.requireNonNull(factories, "factories");
@@ -70,6 +82,7 @@ public final class PortalEncounterService {
         this.clock = Objects.requireNonNull(clock, "clock");
         this.diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
         this.completionEffects = Objects.requireNonNull(completionEffects, "completionEffects");
+        this.timings = Objects.requireNonNull(timings, "timings");
     }
 
     public synchronized RegistrationResult register(UUID instanceId, FloorDefinition floor, LayoutPlan plan) {
@@ -98,6 +111,9 @@ public final class PortalEncounterService {
         }
         MutableInstance state = new MutableInstance(instanceId, floor, Set.copyOf(portal.portalBlocks()),
                 boss.playerSpawns(), bossSpawn, reward);
+        state.arenaCenter = new Point((boss.bounds().minimum().x() + boss.bounds().maximum().x()) / 2,
+                bossSpawn.y(), (boss.bounds().minimum().z() + boss.bounds().maximum().z()) / 2);
+        state.arenaRotation = boss.rotation();
         state.callback = now -> tick(instanceId, now);
         instances.put(instanceId, state);
         return RegistrationResult.success("portal and boss state registered", snapshot(state));
@@ -124,8 +140,9 @@ public final class PortalEncounterService {
             return PortalResult.failure("central update is not registered for this instance");
         }
         state.owner = playerId;
-        state.deadline = clock.instant().plus(PORTAL_COUNTDOWN);
-        state.lastAnnouncedCountdown = (int) PORTAL_COUNTDOWN.toSeconds();
+        state.prematureEntry = !participants.portalDoorOpened(instanceId);
+        state.deadline = clock.instant().plus(timings.portalCountdown());
+        state.lastAnnouncedCountdown = (int) timings.portalCountdown().toSeconds();
         state.status = Status.COUNTDOWN;
         state.detail = "portal countdown started by " + participants.displayName(playerId);
         announceCountdown(state, state.lastAnnouncedCountdown);
@@ -271,6 +288,19 @@ public final class PortalEncounterService {
             if (state.status == Status.COUNTDOWN && state.deadline != null && !now.isBefore(state.deadline)) {
                 state.owner = null;
                 state.deadline = null;
+                if (state.prematureEntry && runs.info(instanceId)
+                        .map(run -> run.state() == RunPreparationService.RunState.RUNNING).orElse(false)) {
+                    state.status = Status.FAILED;
+                    state.detail = "party entered the boss portal before opening its door";
+                    updates.removeSupplemental(instanceId, state.callback);
+                    participants.killParty(instanceId, state.detail);
+                    runs.fail(instanceId, state.detail);
+                    participants.title(instanceId, "<red><bold>Shortcut Unlocked!</bold></red>",
+                            "<yellow>Destination: the graveyard.</yellow>");
+                    participants.notice(instanceId,
+                            "<red>You skipped the door. The boss skipped your survival.</red>");
+                    return;
+                }
                 PortalResult started = startBossInternal(state);
                 if (!started.successful()) diagnostics.accept("instance=" + instanceId + " " + started.detail());
                 return;
@@ -320,7 +350,7 @@ public final class PortalEncounterService {
                     return failStart(state, "boss teleport failed for " + active.get(index));
                 }
             }
-            state.bossSpawnAt = clock.instant().plus(BOSS_SPAWN_DELAY);
+            state.bossSpawnAt = clock.instant().plus(timings.bossSpawnDelay());
         } catch (RuntimeException exception) {
             return failStart(state, exception.getClass().getSimpleName() + ": " + exception.getMessage());
         }
@@ -338,7 +368,8 @@ public final class PortalEncounterService {
             }
             state.encounter = factory.create(new EncounterFactory.EncounterContext(state.instanceId,
                     state.floor.encounterId(), state.floor.bossMob(), state.bossSpawn, entities,
-                    message -> diagnostics.accept("instance=" + state.instanceId + " " + message)));
+                    message -> diagnostics.accept("instance=" + state.instanceId + " " + message),
+                    state.arenaCenter, state.arenaRotation));
             if (state.encounter == null) {
                 failStart(state, "encounter factory returned null");
                 return;
@@ -377,7 +408,7 @@ public final class PortalEncounterService {
         } catch (RuntimeException exception) {
             return finalizationFailure(state, exception.getClass().getSimpleName() + ": " + exception.getMessage());
         }
-        if (!finalized) return finalizationFailure(state, "completion finalizer returned false");
+        if (!finalized) return DeathResult.accepted("completion is awaiting finalization", snapshot(state));
         RunPreparationService.PhaseResult transition = runs.enterCompletionPending(state.instanceId);
         if (!transition.successful()) {
             return finalizationFailure(state, "run completion transition failed: " + transition.detail());
@@ -434,6 +465,10 @@ public final class PortalEncounterService {
 
     public interface ParticipantGateway {
         List<UUID> activePlayers(UUID instanceId);
+
+        boolean portalDoorOpened(UUID instanceId);
+
+        void killParty(UUID instanceId, String reason);
 
         boolean teleport(UUID playerId, Point target);
 
@@ -519,10 +554,13 @@ public final class PortalEncounterService {
         private final List<Point> playerSpawns;
         private final Point bossSpawn;
         private final Point rewardChest;
+        private Point arenaCenter;
+        private me.lidan.dungeonCrawlers.core.template.TemplateModels.Rotation arenaRotation;
         private java.util.function.Consumer<Instant> callback;
         private Instant bossSpawnAt;
         private Status status = Status.IDLE;
         private UUID owner;
+        private boolean prematureEntry;
         private Instant deadline;
         private int lastAnnouncedCountdown;
         private EncounterFactory.Encounter encounter;

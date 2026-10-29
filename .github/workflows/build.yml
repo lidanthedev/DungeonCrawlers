@@ -6,9 +6,54 @@ on:
 
 permissions:
   contents: read
+  actions: read
+
+env:
+  CAVECRAWLERS_REF: 16f67df8d881f564a261b7a0607194d090d2e465
+  CAVECRAWLADDON_REF: 54ed322a9d1ccdedbfb188bfc876baab16861ae8
 
 jobs:
+  addon-api:
+    if: github.event_name == 'push' && github.repository == 'lidanthedev/DungeonCrawlers'
+    runs-on: ubuntu-latest
+    outputs:
+      run-id: ${{ github.run_id }}
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-disabled: true
+      - uses: actions/checkout@v4
+        with:
+          repository: lidanthedev/CaveCrawlers
+          ref: ${{ env.CAVECRAWLERS_REF }}
+          path: .ci-dependencies/CaveCrawlers
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: lidanthedev/CaveCrawlAddon
+          ref: ${{ env.CAVECRAWLADDON_REF }}
+          path: .ci-dependencies/CaveCrawlAddon
+          ssh-key: ${{ secrets.CAVECRAWLADDON_DEPLOY_KEY }}
+          persist-credentials: false
+      - name: Publish pinned addon API
+        run: |
+          ./.ci-dependencies/CaveCrawlers/gradlew -p .ci-dependencies/CaveCrawlers publishToMavenLocal --no-daemon
+          ./.ci-dependencies/CaveCrawlAddon/gradlew -p .ci-dependencies/CaveCrawlAddon publishToMavenLocal --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CaveCrawlAddon-${{ env.CAVECRAWLADDON_REF }}
+          path: |
+            ~/.m2/repository/me/lidan/CaveCrawlAddon/1.0/*.jar
+            ~/.m2/repository/me/lidan/CaveCrawlAddon/1.0/*.pom
+          if-no-files-found: error
+
   java-21:
+    needs: addon-api
+    if: ${{ !cancelled() && (needs.addon-api.result == 'success' || needs.addon-api.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,6 +65,46 @@ jobs:
           java-version: '21'
           cache: gradle
       - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: lidanthedev/CaveCrawlers
+          ref: ${{ env.CAVECRAWLERS_REF }} # Includes CurrencyTransactionPrepareEvent
+          path: .ci-dependencies/CaveCrawlers
+          persist-credentials: false
+      - name: Find trusted addon API artifact
+        id: addon-artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRUSTED_RUN_ID: ${{ needs.addon-api.outputs.run-id }}
+        run: |
+          if [ -n "$TRUSTED_RUN_ID" ]; then
+            echo "run-id=$TRUSTED_RUN_ID" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          for run_id in $(gh api --method GET --paginate repos/lidanthedev/DungeonCrawlers/actions/artifacts \
+            -f name="CaveCrawlAddon-$CAVECRAWLADDON_REF" \
+            --jq '.artifacts[] | select(.expired == false) | .workflow_run.id'); do
+            trusted_run=$(gh api "repos/lidanthedev/DungeonCrawlers/actions/runs/$run_id" \
+              --jq 'select(.event == "push" and .path == ".github/workflows/build.yml" and .head_repository.full_name == "lidanthedev/DungeonCrawlers") | .id')
+            if [ -n "$trusted_run" ]; then
+              echo "run-id=$trusted_run" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "::error::No pinned addon API artifact. Run a trusted push build to publish it."
+          exit 1
+      - uses: actions/download-artifact@v4
+        with:
+          name: CaveCrawlAddon-${{ env.CAVECRAWLADDON_REF }}
+          repository: lidanthedev/DungeonCrawlers
+          run-id: ${{ steps.addon-artifact.outputs.run-id }}
+          github-token: ${{ github.token }}
+          path: .ci-dependencies/CaveCrawlAddon
+      - name: Install native compile-only APIs
+        run: |
+          ./.ci-dependencies/CaveCrawlers/gradlew -p .ci-dependencies/CaveCrawlers publishToMavenLocal --no-daemon
+          mkdir -p ~/.m2/repository/me/lidan/CaveCrawlAddon/1.0
+          cp .ci-dependencies/CaveCrawlAddon/*.jar .ci-dependencies/CaveCrawlAddon/*.pom ~/.m2/repository/me/lidan/CaveCrawlAddon/1.0/
       - run: ./gradlew clean build --no-daemon
       - uses: actions/upload-artifact@v4
         with:

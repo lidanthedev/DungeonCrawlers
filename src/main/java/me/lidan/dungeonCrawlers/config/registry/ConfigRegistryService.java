@@ -143,7 +143,7 @@ public final class ConfigRegistryService {
 
     private Map<String, byte[]> captureSourceFiles() throws IOException {
         List<Path> sources = new ArrayList<>(List.of(dataDirectory.resolve("classes.yml"),
-                dataDirectory.resolve("blessings.yml"), dataDirectory.resolve("rooms.yml")));
+                dataDirectory.resolve("blessings.yml"), dataDirectory.resolve("rooms.yml"), dataDirectory.resolve("difficulties.yml")));
         if (Files.isDirectory(dataDirectory.resolve("floors"))) {
             try (Stream<Path> stream = Files.list(dataDirectory.resolve("floors"))) {
                 sources.addAll(stream.filter(Files::isRegularFile).sorted().toList());

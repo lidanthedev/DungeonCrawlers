@@ -5,13 +5,21 @@ api-version: '1.21'
 authors: [ LidanTheDev ]
 description: Dungeon gameplay addon for CaveCrawlers
 depend: [CaveCrawlers, FastAsyncWorldEdit, MythicMobs, Vault, ProtocolLib]
-softdepend: [Parties, Essentials, PlaceholderAPI]
+softdepend: [Parties, Essentials, PlaceholderAPI, Citizens, CaveCrawlAddon]
 libraries:
   - io.github.revxrsal:lamp.common:4.0.0
   - io.github.revxrsal:lamp.brigadier:4.0.0
   - io.github.revxrsal:lamp.bukkit:4.0.0
 permissions:
   dungeoncrawlers.use:
+    default: true
+  dungeoncrawlers.start.floor_1:
+    description: Start a dungeon on floor_1
+    default: op
+  dungeoncrawlers.start.floor_3:
+    description: Start a dungeon on floor_3
+    default: op
+  dungeoncrawlers.command.class:
     default: true
   dungeoncrawlers.admin:
     default: op
@@ -22,8 +30,12 @@ permissions:
       dungeoncrawlers.admin.simulate: true
       dungeoncrawlers.admin.diagnostics: true
       dungeoncrawlers.admin.authoring: true
+      dungeoncrawlers.admin.room: true
       dungeoncrawlers.admin.generation: true
       dungeoncrawlers.admin.debug: true
+      dungeoncrawlers.admin.progression: true
+  dungeoncrawlers.admin.progression:
+    default: op
   dungeoncrawlers.admin.debug:
     default: op
   dungeoncrawlers.admin.compatibility:
@@ -37,6 +49,8 @@ permissions:
   dungeoncrawlers.admin.diagnostics:
     default: op
   dungeoncrawlers.admin.authoring:
+    default: op
+  dungeoncrawlers.admin.room:
     default: op
   dungeoncrawlers.admin.generation:
     default: op

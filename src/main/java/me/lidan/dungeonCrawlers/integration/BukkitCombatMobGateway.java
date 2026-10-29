@@ -27,6 +27,12 @@ public final class BukkitCombatMobGateway implements CombatMobGateway {
         this.identity = Objects.requireNonNull(identity, "identity");
     }
 
+    private java.util.function.BiConsumer<Entity, BukkitDifficultyService.Spawn> difficulty = (entity, spawn) -> { };
+
+    public void configureDifficulty(java.util.function.BiConsumer<Entity, BukkitDifficultyService.Spawn> difficulty) {
+        this.difficulty = Objects.requireNonNull(difficulty);
+    }
+
     @Override
     public SpawnResult spawn(UUID instanceId, int roomIndex, String mobId, Point point) {
         Objects.requireNonNull(instanceId, "instanceId");
@@ -41,6 +47,12 @@ public final class BukkitCombatMobGateway implements CombatMobGateway {
         }
         Entity entity = result.entity();
         identity.mark(entity, new EntityIdentity(instanceId, roomIndex));
+        try {
+            difficulty.accept(entity, new BukkitDifficultyService.Spawn(instanceId, roomIndex, point, false));
+        } catch (RuntimeException exception) {
+            remove(entity.getUniqueId());
+            return SpawnResult.failure(exception.getMessage());
+        }
         return new SpawnResult(true, entity.getUniqueId(), result.detail());
     }
 

@@ -31,6 +31,24 @@ class ConfigLoaderTest {
         assertEquals(RoomType.START, first.snapshot().rooms().get("dungeon_start").type());
         assertEquals(3000, first.snapshot().floors().get("floor_1").templates().bossOffset().z());
         assertEquals(1, first.snapshot().floors().get("floor_1").rewards().get("wooden").items().get(1).minimumAmount());
+        assertEquals(2.0, first.snapshot().classes().get("berserker").statPercentPerLevel()
+                .get(me.lidan.cavecrawlers.stats.StatType.STRENGTH));
+        assertEquals(2.0, first.snapshot().classes().get("healer").healingPercentPerLevel());
+    }
+
+    @Test
+    void invalidClassPercentagesAreRejected() throws Exception {
+        copyDefaults();
+        Path classes = directory.resolve("classes.yml");
+        Files.writeString(classes, Files.readString(classes)
+                .replace("stat-percent-per-level: { STRENGTH: 2 }", "stat-percent-per-level: { STRENGTH: -2 }")
+                .replace("healing-percent-per-level: 2", "healing-percent-per-level: .nan"));
+
+        ConfigLoadResult result = loader().load(directory);
+
+        assertFalse(result.successful());
+        assertTrue(result.errors().stream().anyMatch(error -> error.contains("stat-percent-per-level")));
+        assertTrue(result.errors().stream().anyMatch(error -> error.contains("healing-percent-per-level")));
     }
 
     @Test
@@ -86,7 +104,7 @@ class ConfigLoaderTest {
     void unknownEncounterWarnsAndUsesRegisteredBasicFallback() throws Exception {
         copyDefaults();
         Path floor = directory.resolve("floors/floor_1.yml");
-        Files.writeString(floor, Files.readString(floor).replace("encounter: basic", "encounter: future_boss"));
+        Files.writeString(floor, Files.readString(floor).replace("encounter: ringmaster", "encounter: future_boss"));
 
         ConfigLoadResult result = loader().load(directory);
 
@@ -162,11 +180,11 @@ class ConfigLoaderTest {
     void schemaAndBoundedIntegersRequireExactIntValues() throws Exception {
         copyDefaults();
         Path classes = directory.resolve("classes.yml");
-        Files.writeString(classes, Files.readString(classes).replace("schema-version: 1", "schema-version: 1.5"));
+        Files.writeString(classes, Files.readString(classes).replace("schema-version: 2", "schema-version: 1.5"));
         Path rooms = directory.resolve("rooms.yml");
         Files.writeString(rooms, Files.readString(rooms).replace("schema-version: 1", "schema-version: 4294967297"));
         ConfigLoadResult invalidSchema = loader().load(directory);
-        assertTrue(invalidSchema.errors().stream().anyMatch(error -> error.contains("classes.yml:schema-version must be 1")));
+        assertTrue(invalidSchema.errors().stream().anyMatch(error -> error.contains("classes.yml:schema-version must be 2")));
         assertTrue(invalidSchema.errors().stream().anyMatch(error -> error.contains("rooms.yml:schema-version must be 1")));
 
         copyDefaults();
@@ -209,9 +227,25 @@ class ConfigLoaderTest {
                 invalid.errors().toString());
     }
 
+
+    @Test void difficultyConfigAndCustomFloorMigrationAreValidated() throws Exception {
+        copyDefaults();
+        Path floor = directory.resolve("floors/floor_1.yml");
+        String old = Files.readString(floor).replace("schema-version: 3", "schema-version: 1")
+                .replace("number: 1", "number: 3").replaceAll("(?m)^dungeon-xp:\n(?:  .*\n)*", "");
+        Files.writeString(floor, old);
+        var loaded = loader().load(directory);
+        assertTrue(loaded.successful(), loaded.errors().toString());
+        assertEquals(900, loaded.snapshot().floors().get("floor_1").completionXp());
+        assertEquals(10, loaded.snapshot().difficulties().size());
+        Path difficulties = directory.resolve("difficulties.yml");
+        Files.writeString(difficulties, Files.readString(difficulties).replace("runic-chance: 0.001", "runic-chance: 1.2"));
+        assertFalse(loader().load(directory).successful());
+    }
+
     private void copyDefaults() throws IOException {
         Path resources = Path.of("src/main/resources");
-        for (String file : new String[]{"classes.yml", "blessings.yml", "rooms.yml"}) {
+        for (String file : new String[]{"classes.yml", "blessings.yml", "rooms.yml", "difficulties.yml"}) {
             Files.copy(resources.resolve(file), directory.resolve(file), StandardCopyOption.REPLACE_EXISTING);
         }
         Files.createDirectories(directory.resolve("floors"));

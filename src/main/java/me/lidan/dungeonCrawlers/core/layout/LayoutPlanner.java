@@ -70,6 +70,11 @@ public final class LayoutPlanner {
         for (int position = 0; position < composition.size(); position++) {
             EncounterCapability capability = composition.get(position);
             List<CatalogEntry> candidates = candidates(request, capability, previousCombatId);
+            if (!request.floor().generation().roomPool().isEmpty()) {
+                Set<String> used = placements.stream().map(Placement::templateId).collect(java.util.stream.Collectors.toSet());
+                List<CatalogEntry> fresh = candidates.stream().filter(entry -> !used.contains(entry.template().id())).toList();
+                if (!fresh.isEmpty()) candidates = fresh;
+            }
             if (candidates.isEmpty()) {
                 return failed(trace, "position " + position + " has no " + capability + "-capable template");
             }
@@ -198,6 +203,8 @@ public final class LayoutPlanner {
                 .filter(entry -> entry.template().type() == RoomType.NORMAL)
                 .filter(entry -> entry.template().capabilities().contains(capability))
                 .filter(entry -> supportsFloor(entry.definition(), request.floor().number()))
+                .filter(entry -> request.floor().generation().roomPool().isEmpty()
+                        || request.floor().generation().roomPool().contains(entry.template().id()))
                 .sorted(Comparator.comparing(entry -> entry.template().id())).toList();
         if (all.size() < 2 || previousId == null) return all;
         List<CatalogEntry> withoutRepeat = all.stream()
@@ -227,6 +234,15 @@ public final class LayoutPlanner {
         return placement(instanceId, index, next, rotation, origin, encounter);
     }
 
+    public LayoutPlan preview(UUID instanceId, Template template, Point origin, Bounds slotBounds, String configHash) {
+        Placement placed = placement(instanceId, 0, template, Rotation.NONE, origin, null);
+        if (!slotBounds.contains(placed.bounds().minimum()) || !slotBounds.contains(placed.bounds().maximum())) {
+            throw new IllegalArgumentException("room does not fit inside an instance slot");
+        }
+        return new LayoutPlan("room-preview-v1", instanceId, 0, configHash, template.contentHash(),
+                List.of(placed), List.of(), List.of("room preview " + template.id()));
+    }
+
     private static Placement placement(UUID instanceId, int index, Template template, Rotation rotation,
                                        Point origin, EncounterCapability encounter) {
         Bounds bounds = template.bounds().rotate(rotation).translate(origin);
@@ -250,6 +266,7 @@ public final class LayoutPlanner {
                 entrance, exit, solids, Set.copyOf(reserved), transformList(template.normalMobs(), rotation, origin),
                 transformList(template.minibossMobs(), rotation, origin),
                 transformList(template.playerSpawns(), rotation, origin),
+                template.classSelectorNpc().map(point -> rotation.apply(point).add(origin)),
                 template.bossSpawn().map(point -> rotation.apply(point).add(origin)),
                 template.rewardChest().map(point -> rotation.apply(point).add(origin)),
                 transform(template.portalBlocks(), rotation, origin), secrets);
@@ -399,14 +416,27 @@ public final class LayoutPlanner {
                             Rotation rotation, Point origin, Bounds bounds, Optional<Connector> entrance,
                             Optional<Connector> exit, Set<Point> solidBlocks, Set<Point> reservedConnectorCells,
                             List<Point> normalMobs, List<Point> minibossMobs, List<Point> playerSpawns,
-                            Optional<Point> bossSpawn, Optional<Point> rewardChest, Set<Point> portalBlocks,
+                            Optional<Point> classSelectorNpc, Optional<Point> bossSpawn, Optional<Point> rewardChest,
+                            Set<Point> portalBlocks,
                             List<PlacedSecret> secrets) {
+        public Placement(int index, String templateId, RoomType type, EncounterCapability encounter,
+                         Rotation rotation, Point origin, Bounds bounds, Optional<Connector> entrance,
+                         Optional<Connector> exit, Set<Point> solidBlocks, Set<Point> reservedConnectorCells,
+                         List<Point> normalMobs, List<Point> minibossMobs, List<Point> playerSpawns,
+                         Optional<Point> bossSpawn, Optional<Point> rewardChest, Set<Point> portalBlocks,
+                         List<PlacedSecret> secrets) {
+            this(index, templateId, type, encounter, rotation, origin, bounds, entrance, exit, solidBlocks,
+                    reservedConnectorCells, normalMobs, minibossMobs, playerSpawns, Optional.empty(), bossSpawn,
+                    rewardChest, portalBlocks, secrets);
+        }
+
         public Placement {
             Objects.requireNonNull(templateId); Objects.requireNonNull(type); Objects.requireNonNull(rotation);
             Objects.requireNonNull(origin); Objects.requireNonNull(bounds); Objects.requireNonNull(entrance);
             Objects.requireNonNull(exit); solidBlocks = Set.copyOf(solidBlocks);
             reservedConnectorCells = Set.copyOf(reservedConnectorCells); normalMobs = List.copyOf(normalMobs);
             minibossMobs = List.copyOf(minibossMobs); playerSpawns = List.copyOf(playerSpawns);
+            Objects.requireNonNull(classSelectorNpc);
             Objects.requireNonNull(bossSpawn); Objects.requireNonNull(rewardChest);
             portalBlocks = Set.copyOf(portalBlocks); secrets = List.copyOf(secrets);
         }
@@ -419,6 +449,7 @@ public final class LayoutPlanner {
             result.addAll(normalMobs);
             result.addAll(minibossMobs);
             result.addAll(playerSpawns);
+            classSelectorNpc.ifPresent(result::add);
             bossSpawn.ifPresent(result::add);
             rewardChest.ifPresent(result::add);
             return Set.copyOf(result);

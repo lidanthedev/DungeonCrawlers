@@ -2,6 +2,7 @@ package me.lidan.dungeonCrawlers.integration;
 
 import me.lidan.cavecrawlers.stats.StatType;
 import me.lidan.cavecrawlers.stats.StatsCalculateEvent;
+import me.lidan.cavecrawlers.stats.StatsManager;
 import me.lidan.cavecrawlers.utils.MiniMessageUtils;
 import me.lidan.dungeonCrawlers.commands.DungeonPhaseFiveCommand;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.ClassDefinition;
@@ -40,15 +41,17 @@ public final class BukkitDungeonRunListener implements Listener {
         this.phaseSeven = phaseSeven;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onPreparationDoor(PlayerInteractEvent event) {
         if (event.getHand() == EquipmentSlot.OFF_HAND) return;
-        if (event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getClickedBlock() == null
+        if ((event.getAction() != Action.RIGHT_CLICK_BLOCK && event.getAction() != Action.LEFT_CLICK_BLOCK)
+                || event.getClickedBlock() == null
                 || !event.getClickedBlock().getWorld().getName().equals(generationWorldName)) return;
         Point point = new Point(event.getClickedBlock().getX(), event.getClickedBlock().getY(),
                 event.getClickedBlock().getZ());
         if (runs.doorAt(point).isEmpty()) return;
         event.setCancelled(true);
+        if (!phaseFive.canOpenDungeonDoor(event.getPlayer().getUniqueId())) return;
         phaseFive.openDoorAt(event.getPlayer(), point);
     }
 
@@ -62,14 +65,15 @@ public final class BukkitDungeonRunListener implements Listener {
             if (value != null) incoming.put(type, value.getValue());
         }
         UUID instanceId = runs.instanceFor(event.getPlayer().getUniqueId()).orElse(null);
+        int dungeonLevel = DungeonClassScaling.dungeonLevel(event.getPlayer());
         var aggregated = phaseSeven == null || instanceId == null
                 ? new me.lidan.dungeonCrawlers.core.stats.StatAggregationService().aggregate(
-                        incoming, selected, java.util.Map.of(), java.util.Map.of())
-                : phaseSeven.aggregate(instanceId, selected, incoming);
+                        incoming, selected, java.util.Map.of(), java.util.Map.of(), dungeonLevel)
+                : phaseSeven.aggregate(instanceId, selected, incoming, dungeonLevel);
         aggregated.forEach((type, value) -> event.getStats().set(type, value));
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onSecretInteract(PlayerInteractEvent event) {
         if (phaseSeven == null || event.getHand() == EquipmentSlot.OFF_HAND
                 || event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getClickedBlock() == null
@@ -78,6 +82,7 @@ public final class BukkitDungeonRunListener implements Listener {
         if (material != org.bukkit.Material.CHEST && material != org.bukkit.Material.TRAPPED_CHEST) return;
         UUID instanceId = runs.instanceFor(event.getPlayer().getUniqueId()).orElse(null);
         if (instanceId == null) return;
+        if (!phaseFive.canOpenDungeonDoor(event.getPlayer().getUniqueId())) return;
         Point point = new Point(event.getClickedBlock().getX(), event.getClickedBlock().getY(),
                 event.getClickedBlock().getZ());
         var result = phaseSeven.discover(instanceId, event.getPlayer().getUniqueId(), point);
@@ -88,7 +93,14 @@ public final class BukkitDungeonRunListener implements Listener {
             return;
         }
         if (result.blessingId() == null) {
-            DungeonMessages.send(event.getPlayer(), "<green>Secret discovered.</green>");
+            if (material == org.bukkit.Material.TRAPPED_CHEST) {
+                StatsManager.healPlayerPercent(event.getPlayer(), 100D);
+                var stats = StatsManager.getInstance().getStats(event.getPlayer());
+                stats.get(StatType.MANA).setValue(stats.get(StatType.INTELLIGENCE).getValue());
+                DungeonMessages.send(event.getPlayer(), "<green>Secret discovered! Health and mana fully restored.</green>");
+            } else {
+                DungeonMessages.send(event.getPlayer(), "<green>Secret discovered.</green>");
+            }
         } else {
             var discovery = result.blessing();
             String displayName = phaseSeven.blessingDisplayName(instanceId, result.blessingId())

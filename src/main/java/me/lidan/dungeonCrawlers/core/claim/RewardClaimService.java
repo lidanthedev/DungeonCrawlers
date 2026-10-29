@@ -2,13 +2,13 @@ package me.lidan.dungeonCrawlers.core.claim;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonDeserializationContext;
+import com.google.gson.JsonDeserializer;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
-import com.google.gson.JsonDeserializationContext;
-import com.google.gson.JsonDeserializer;
 import com.google.gson.JsonSerializationContext;
 import com.google.gson.JsonSerializer;
 import me.lidan.dungeonCrawlers.core.reward.RewardEntitlementService;
@@ -21,6 +21,7 @@ import me.lidan.dungeonCrawlers.persistence.DurableRepository;
 import me.lidan.dungeonCrawlers.persistence.DurableSubmission;
 import me.lidan.dungeonCrawlers.persistence.DurableWrite;
 import me.lidan.dungeonCrawlers.persistence.model.CompletedRunRecordCodec;
+import org.bukkit.NamespacedKey;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
@@ -28,7 +29,6 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
-import org.bukkit.NamespacedKey;
 
 import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
@@ -38,18 +38,23 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * Owns the paid reward claim boundary.
@@ -87,6 +92,21 @@ public final class RewardClaimService {
     private final Map<UUID, String> offerIndex = new LinkedHashMap<>();
     private final CompletableFuture<Void> restored = new CompletableFuture<>();
     private volatile boolean deliveryPausedForTesting;
+    public record DeliveredReward(UUID instanceId, UUID playerId, UUID offerId, long price,
+                                  Map<String, Integer> items) {
+        public DeliveredReward { items = Map.copyOf(items); }
+    }
+    public record ClaimRequest(UUID instanceId, UUID playerId, UUID offerId, String rewardId, long price) { }
+    private Predicate<ClaimRequest> claimGuard = ignored -> true;
+    private final Set<String> checkingClaims = new HashSet<>();
+    public void configureClaimGuard(Predicate<ClaimRequest> guard) {
+        claimGuard = Objects.requireNonNull(guard);
+    }
+    private Consumer<DeliveredReward> deliveryObserver = ignored -> { };
+    public void configureDeliveryObserver(Consumer<DeliveredReward> observer) {
+        deliveryObserver = Objects.requireNonNull(observer);
+    }
+
 
     public RewardClaimService(Clock clock, DurableRepository repository,
                               RewardEntitlementService entitlements, CaveItemsGateway caveItems,
@@ -111,8 +131,55 @@ public final class RewardClaimService {
         this(clock, null, entitlements, caveItems, () -> economy, Runnable::run, ignored -> { });
     }
 
+    /** Fixed enemy loot uses the existing durable, provenance-checked mailbox. */
+    public void grantLoot(UUID dropId, Player player, String itemId, int amount) {
+        whenRestored(() -> {
+            String key = recordKey(dropId, player.getUniqueId());
+            MutableRecord existing = records.get(key);
+            if (existing != null) {
+                if (!existing.pending) deliver(dropId, player.getUniqueId(), player, ignored -> { });
+                return;
+            }
+            ItemStack item = caveItems.build(itemId, amount).orElseThrow(
+                    () -> new IllegalStateException("Missing loot item " + itemId));
+            byte[] bytes = item.serializeAsBytes();
+            UUID payloadId = UUID.nameUUIDFromBytes((dropId + ":loot").getBytes(StandardCharsets.UTF_8));
+            List<ItemPayload> payloads = List.of(new ItemPayload(payloadId, itemId, amount, bytes, checksum(bytes)));
+            OfferSnapshot offer = new OfferSnapshot(dropId, OfferMode.LIVE, OfferState.OWNED, null,
+                    clock.instant(), null, null, null, null, clock.instant(), null, DEFAULT_PROVIDER,
+                    player.getUniqueId(), 0, payloads);
+            ClaimRecord before = new ClaimRecord(dropId, player.getUniqueId(), Map.of(), ClaimGroup.none(),
+                    Map.of(), List.of(), 0);
+            ClaimRecord target = new ClaimRecord(dropId, player.getUniqueId(), Map.of(dropId, offer),
+                    new ClaimGroup(ClaimGroup.State.CLAIMED, dropId, null), Map.of(dropId, payloads), List.of(), 1);
+            MutableRecord mutable = ensureMutable(null, before);
+            persistCandidate(mutable, before, target, true, saved -> {
+                if (saved && player.isOnline()) deliver(dropId, player.getUniqueId(), player, ignored -> { });
+                else if (!saved) auditSink.accept("Runic loot persistence failed: " + dropId);
+            });
+        }, () -> auditSink.accept("Runic loot mailbox unavailable: " + dropId));
+    }
+
     public CompletableFuture<Void> ready() {
         return restored;
+    }
+
+    /**
+     * Provides the non-mutating affordability state used by the reward GUI.
+     * Unknown providers remain available for preview and are checked again at purchase time.
+     */
+    public Affordability affordability(OfflinePlayer account, long price) {
+        Objects.requireNonNull(account, "account");
+        if (price <= 0) return Affordability.AFFORDABLE;
+        EconomyGateway provider = safeEconomy();
+        if (provider == null) return Affordability.UNKNOWN;
+        try {
+            Optional<Boolean> result = provider.hasFunds(account, (double) price);
+            if (result.isEmpty()) return Affordability.UNKNOWN;
+            return result.get() ? Affordability.AFFORDABLE : Affordability.INSUFFICIENT_FUNDS;
+        } catch (RuntimeException exception) {
+            return Affordability.UNKNOWN;
+        }
     }
 
     /**
@@ -263,6 +330,18 @@ public final class RewardClaimService {
         }
     }
 
+    public List<UUID> reconciliationIds() {
+        synchronized (records) {
+            return records.values().stream().filter(value -> !value.pending)
+                    .map(value -> value.current)
+                    .filter(record -> record.claimGroup().state() == ClaimGroup.State.ATTEMPTED)
+                    .flatMap(record -> record.offers().values().stream()
+                            .filter(offer -> offer.state() == OfferState.RECONCILIATION_REQUIRED
+                                    && offer.offerId().equals(record.claimGroup().winnerOfferId())))
+                    .map(OfferSnapshot::offerId).toList();
+        }
+    }
+
     public static boolean isPending(ItemStack item) {
         return readBoolean(item, PENDING_KEY);
     }
@@ -277,6 +356,12 @@ public final class RewardClaimService {
 
     public static Optional<UUID> ownerId(ItemStack item) {
         return readUuid(item, OWNER_KEY);
+    }
+
+    public enum Affordability {
+        AFFORDABLE,
+        INSUFFICIENT_FUNDS,
+        UNKNOWN
     }
 
     public static ItemStack markPending(ItemStack source, UUID claimId, UUID ownerId, UUID itemId) {
@@ -353,6 +438,11 @@ public final class RewardClaimService {
 
     private void beginClaim(UUID instanceId, UUID playerId, String rewardId, OfflinePlayer account,
                             Consumer<ClaimResult> callback) {
+        if (checkingClaims.contains(recordKey(instanceId, playerId))) {
+            complete(callback, ClaimResult.failure(instanceId, playerId, null, ClaimStatus.PROCESSING,
+                    "another claim is still processing"));
+            return;
+        }
         RewardEntitlementService.PlayerEntitlement entitlement = entitlements.open(instanceId, playerId).orElse(null);
         RewardEntitlementService.RewardOffer reward = entitlement == null ? null : entitlement.offers().get(rewardId);
         if (entitlement == null || reward == null) {
@@ -375,7 +465,8 @@ public final class RewardClaimService {
                         ClaimStatus.PROCESSING, "another claim is still processing"));
                 return;
             }
-            current = mutable == null ? createRecord(instanceId, playerId, entitlement) : mutable.current;
+            current = mutable == null ? createRecord(instanceId, playerId, entitlement)
+                    : withLiveAccess(mutable.current, entitlement);
             if (mutable != null && current.claimGroup().state() != ClaimGroup.State.NONE) {
                 ClaimStatus status = current.claimGroup().state() == ClaimGroup.State.ATTEMPTED
                         ? ClaimStatus.RECONCILIATION_REQUIRED : ClaimStatus.ALREADY_CLAIMED;
@@ -446,6 +537,20 @@ public final class RewardClaimService {
                 return;
             }
 
+            String key = recordKey(instanceId, playerId);
+            checkingClaims.add(key);
+            boolean allowed;
+            try {
+                allowed = claimGuard.test(new ClaimRequest(instanceId, playerId, reward.offerId(), rewardId, reward.price()));
+            } finally {
+                checkingClaims.remove(key);
+            }
+            if (!allowed) {
+                complete(callback, ClaimResult.failure(instanceId, playerId, reward.offerId(),
+                        ClaimStatus.REJECTED, "reward claim cancelled"));
+                return;
+            }
+
             EconomyGateway provider = safeEconomy();
             String providerId = providerIdentity(provider);
             OfferSnapshot prepared = snapshot;
@@ -504,6 +609,11 @@ public final class RewardClaimService {
                         ClaimStatus.PROCESSING, "reward claim changed while preparing"));
                 return;
             }
+            if (!entitlements.isOpen(current.instanceId(), current.playerId())) {
+                complete(callback, ClaimResult.failure(current.instanceId(), current.playerId(), offerId,
+                        ClaimStatus.EXPIRED, "reward entitlement is unavailable or expired"));
+                return;
+            }
             OfferSnapshot attempted = transition(source, OfferStateMachine.Event.CONFIRM_DEBIT, attempt);
             ClaimGroup group = current.claimGroup().attempt(offerId, attempt);
             ClaimRecord target = replaceOffer(current, attempted, group,
@@ -531,8 +641,11 @@ public final class RewardClaimService {
             return;
         }
 
+        boolean accessOpen = entitlements.isOpen(current.instanceId(), current.playerId());
         EconomyGateway.TransactionResult transaction;
-        if (account instanceof Player player
+        if (!accessOpen) {
+            transaction = new EconomyGateway.TransactionResult(false, 0, 0, "reward access closed before debit");
+        } else if (account instanceof Player player
                 && !canAcceptPayloads(player, offer.items(), offerId, current.playerId())) {
             transaction = new EconomyGateway.TransactionResult(false, 0, 0, INVENTORY_FULL_DETAIL);
         } else {
@@ -576,7 +689,8 @@ public final class RewardClaimService {
                     audit(current, "DEBIT_FAILED", offerId, attempt, failedTransaction.detail()));
             persistCandidate(mutable, current, target, false, success -> complete(callback,
                     success ? ClaimResult.failure(current.instanceId(), current.playerId(), offerId,
-                            ClaimStatus.REJECTED, INSUFFICIENT_FUNDS_DETAIL)
+                            ClaimStatus.REJECTED, accessOpen ? INSUFFICIENT_FUNDS_DETAIL
+                                    : "reward entitlement is unavailable or expired")
                             : ClaimResult.failure(current.instanceId(), current.playerId(), offerId,
                             ClaimStatus.RECONCILIATION_REQUIRED,
                             "purchase failed but state persistence is uncertain")));
@@ -812,6 +926,11 @@ public final class RewardClaimService {
                 return;
             }
             clearDeliveryMarkers(player, offerId);
+            Map<String, Integer> deliveredItems = new LinkedHashMap<>();
+            offer.items().forEach(item -> deliveredItems.merge(item.caveItemId(), item.amount(), Integer::sum));
+            try { deliveryObserver.accept(new DeliveredReward(current.instanceId(), current.playerId(),
+                    offerId, offer.price(), deliveredItems)); }
+            catch (RuntimeException failure) { auditSink.accept("Reward observer failed: " + failure.getClass().getSimpleName()); }
             complete(callback, DeliveryResult.success(current.instanceId(), current.playerId(), offerId,
                     insertedAmount, "reward delivered"));
         });
@@ -994,11 +1113,23 @@ public final class RewardClaimService {
         for (RewardEntitlementService.RewardOffer reward : entitlement.offers().values()) {
             offers.put(reward.offerId(), new OfferSnapshot(reward.offerId(), entitlement.mode(), OfferState.AVAILABLE,
                     null, run.completedAt(), entitlement.mode() == OfferMode.RECOVERED ? run.completedAt() : null,
-                    entitlement.mode() == OfferMode.RECOVERED ? entitlement.outerDeadline() : null,
+                    entitlement.outerDeadline(),
                     entitlement.sessionStartedAt(), entitlement.sessionExpiresAt(),
                     highWater(run.completedAt()), null, provider, playerId, reward.price(), List.of()));
         }
         return new ClaimRecord(instanceId, playerId, offers, ClaimGroup.none(), Map.of(), List.of(), 0);
+    }
+
+    private static ClaimRecord withLiveAccess(ClaimRecord record,
+                                              RewardEntitlementService.PlayerEntitlement entitlement) {
+        if (entitlement.mode() != OfferMode.LIVE) return record;
+        Map<UUID, OfferSnapshot> offers = new LinkedHashMap<>();
+        record.offers().forEach((id, offer) -> offers.put(id, new OfferSnapshot(offer.offerId(), offer.mode(),
+                offer.state(), offer.quarantinePrior(), offer.completedAt(), offer.recoveredAt(),
+                entitlement.outerDeadline(), entitlement.sessionStartedAt(), entitlement.sessionExpiresAt(),
+                offer.clockHighWater(), offer.attemptId(), offer.provider(), offer.accountId(), offer.price(), offer.items())));
+        return new ClaimRecord(record.instanceId(), record.playerId(), offers, record.claimGroup(),
+                record.mailbox(), record.audit(), record.recordVersion());
     }
 
     private Instant highWater(Instant completedAt) {
@@ -1189,7 +1320,7 @@ public final class RewardClaimService {
 
     private static Throwable unwrap(Throwable failure) {
         Throwable current = failure;
-        while ((current instanceof CompletionException || current instanceof java.util.concurrent.ExecutionException)
+        while ((current instanceof CompletionException || current instanceof ExecutionException)
                 && current.getCause() != null) current = current.getCause();
         return current;
     }
@@ -1306,7 +1437,7 @@ public final class RewardClaimService {
             Objects.requireNonNull(audit, "audit");
             if (recordVersion < 0) throw new IllegalArgumentException("record version must not be negative");
             offers = Map.copyOf(offers);
-            mailbox = mailbox.entrySet().stream().collect(java.util.stream.Collectors.toUnmodifiableMap(
+            mailbox = mailbox.entrySet().stream().collect(Collectors.toUnmodifiableMap(
                     Map.Entry::getKey, entry -> List.copyOf(entry.getValue())));
             audit = List.copyOf(audit);
         }

@@ -69,6 +69,13 @@ public final class BukkitChunkTicketService implements CombatChunkGateway {
     }
 
     @Override
+    public boolean isLoaded(Bounds bounds) {
+        return plugin.getServer().getWorld(world.getUID()) == world
+                && chunks(bounds).stream().allMatch(chunk -> world.isChunkLoaded(chunk.x(), chunk.z())
+                        && world.getChunkAt(chunk.x(), chunk.z()).isEntitiesLoaded());
+    }
+
+    @Override
     public int release(UUID instanceId, Bounds bounds) {
         return release(instanceId, chunks(bounds));
     }

@@ -1,5 +1,6 @@
 package me.lidan.dungeonCrawlers.core.run;
 
+import me.lidan.dungeonCrawlers.config.DungeonTimings;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.ClassDefinition;
 import me.lidan.dungeonCrawlers.core.door.DoorService;
 import me.lidan.dungeonCrawlers.core.party.PartySnapshot;
@@ -19,19 +20,22 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 /** Coordinates the player-facing PREPARING phase and its one-shot start door. */
 public final class RunPreparationService {
-    public static final Duration PREPARATION_WARNING = Duration.ofMinutes(1);
-    public static final Duration PREPARATION_TIMEOUT = Duration.ofMinutes(5);
-    public static final Duration RUN_WARNING = Duration.ofMinutes(1);
-    public static final Duration RUN_TIMEOUT = Duration.ofMinutes(60);
-    public static final Duration FAILED_READING_PERIOD = Duration.ofSeconds(10);
-    public static final Duration COMPLETION_WARNING = Duration.ofMinutes(1);
-    public static final Duration COMPLETION_TIMEOUT = Duration.ofMinutes(5);
-    public static final Duration COMPLETION_FINAL_COUNTDOWN = Duration.ofSeconds(10);
+    private static final DungeonTimings DEFAULT_TIMINGS = DungeonTimings.defaults();
+    public static final Duration PREPARATION_WARNING = DEFAULT_TIMINGS.preparationWarning();
+    public static final Duration PREPARATION_TIMEOUT = DEFAULT_TIMINGS.preparationTimeout();
+    public static final Duration RUN_WARNING = DEFAULT_TIMINGS.runWarning();
+    public static final Duration RUN_TIMEOUT = DEFAULT_TIMINGS.runTimeout();
+    public static final Duration FAILED_READING_PERIOD = DEFAULT_TIMINGS.failedReadingPeriod();
+    public static final Duration COMPLETION_WARNING = DEFAULT_TIMINGS.completionWarning();
+    public static final Duration COMPLETION_TIMEOUT = DEFAULT_TIMINGS.completionTimeout();
+    public static final Duration COMPLETION_FINAL_COUNTDOWN = DEFAULT_TIMINGS.completionFinalCountdown();
 
     private final DoorService doors;
     private final CentralUpdateService updates;
@@ -41,11 +45,30 @@ public final class RunPreparationService {
     private final boolean failOnFirstRoomActivation;
     private final Consumer<String> diagnostics;
     private final Consumer<UUID> instanceCanceller;
+    private final DungeonTimings timings;
     private Consumer<UUID> failureHandler = ignored -> { };
     private Predicate<UUID> activeGroup = ignored -> true;
     private Consumer<DeadlineNotice> deadlineNotices = ignored -> { };
     private final Map<UUID, MutableRun> runs = new LinkedHashMap<>();
     private boolean frozen;
+    private Consumer<StateChange> stateObserver = ignored -> { };
+    public record StateChange(RunSnapshot snapshot, boolean closed, Instant observedAt) { }
+    public synchronized void configureStateObserver(Consumer<StateChange> observer) {
+        stateObserver = Objects.requireNonNull(observer);
+    }
+    private void publishState(MutableRun run, boolean closed) {
+        try { stateObserver.accept(new StateChange(run.snapshot(), closed, clock.instant())); }
+        catch (RuntimeException failure) { diagnose("Run observer failed: " + message(failure)); }
+    }
+
+    private Function<UUID, Optional<String>> rememberedClass = ignored -> Optional.empty();
+    private BiConsumer<UUID, String> rememberClass = (player, classId) -> { };
+
+    public synchronized void configureClassPreferences(Function<UUID, Optional<String>> read,
+                                                       BiConsumer<UUID, String> write) {
+        rememberedClass = Objects.requireNonNull(read);
+        rememberClass = Objects.requireNonNull(write);
+    }
 
     public RunPreparationService(DoorService doors, CentralUpdateService updates,
                                  StateTransitionService transitions, Clock clock,
@@ -67,6 +90,17 @@ public final class RunPreparationService {
                                  Consumer<String> diagnostics,
                                  Consumer<UUID> instanceCanceller,
                                  boolean failOnFirstRoomActivation) {
+        this(doors, updates, transitions, clock, firstRoomActivator, diagnostics, instanceCanceller,
+                failOnFirstRoomActivation, DEFAULT_TIMINGS);
+    }
+
+    public RunPreparationService(DoorService doors, CentralUpdateService updates,
+                                 StateTransitionService transitions, Clock clock,
+                                 Consumer<UUID> firstRoomActivator,
+                                 Consumer<String> diagnostics,
+                                 Consumer<UUID> instanceCanceller,
+                                 boolean failOnFirstRoomActivation,
+                                 DungeonTimings timings) {
         this.doors = Objects.requireNonNull(doors, "doors");
         this.updates = Objects.requireNonNull(updates, "updates");
         this.transitions = Objects.requireNonNull(transitions, "transitions");
@@ -75,6 +109,7 @@ public final class RunPreparationService {
         this.failOnFirstRoomActivation = failOnFirstRoomActivation;
         this.diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
         this.instanceCanceller = Objects.requireNonNull(instanceCanceller, "instanceCanceller");
+        this.timings = Objects.requireNonNull(timings, "timings");
     }
 
     /** Configures the platform callbacks used when a deadline changes the run lifecycle. */
@@ -106,12 +141,13 @@ public final class RunPreparationService {
         }
         DoorService.DoorSnapshot door = doors.register(instanceId, doorCenter, outward);
         MutableRun run = new MutableRun(instanceId, party, orderedAllowed, classes, door,
-                clock.instant().plus(PREPARATION_TIMEOUT));
+                clock.instant().plus(timings.preparationTimeout()), timings.preparationTimeout());
         if (!updates.register(instanceId, now -> update(instanceId, run, now))) {
             doors.remove(instanceId);
             return PreparationResult.failure("central update already registered for instance");
         }
         runs.put(instanceId, run);
+        publishState(run, false);
         return PreparationResult.success("preparation registered", run.snapshot());
     }
 
@@ -121,6 +157,14 @@ public final class RunPreparationService {
         if (run.state != RunState.PREPARING) return PreparationResult.failure("run is already " + run.state);
         if (run.snapshotsReady) return PreparationResult.success("snapshots already acknowledged", run.snapshot());
         run.snapshotsReady = true;
+        for (UUID playerId : run.participants) {
+            try {
+                rememberedClass.apply(playerId).filter(run.allowedClasses::contains)
+                        .filter(run.classes::containsKey).ifPresent(classId -> selectClass(instanceId, playerId, classId));
+            } catch (RuntimeException exception) {
+                diagnose("Auto Class unavailable for " + playerId + ": " + message(exception));
+            }
+        }
         return PreparationResult.success("recovery snapshots acknowledged", run.snapshot());
     }
 
@@ -130,7 +174,7 @@ public final class RunPreparationService {
         Objects.requireNonNull(classId, "classId");
         if (run == null) return ClassSelectionResult.failure("unknown preparation " + instanceId);
         if (!run.snapshotsReady) return ClassSelectionResult.failure("recovery snapshots are still pending");
-        if (run.state != RunState.PREPARING) return ClassSelectionResult.failure("run is already " + run.state);
+        if (!classSelectionOpen(run.state)) return ClassSelectionResult.failure("run is already " + run.state);
         if (!run.participants.contains(playerId)) return ClassSelectionResult.failure("player is not in this run");
         if (!run.allowedClasses.contains(classId)) return ClassSelectionResult.failure("class is not allowed: " + classId);
         if (!run.classes.containsKey(classId)) return ClassSelectionResult.failure("unknown class " + classId);
@@ -139,8 +183,18 @@ public final class RunPreparationService {
         DoorService.DoorSnapshot door = allClassesSelected
                 ? doors.setReady(instanceId) : doors.info(instanceId).orElseThrow();
         run.door = door;
+        try {
+            rememberClass.accept(playerId, classId);
+        } catch (RuntimeException exception) {
+            diagnose("Could not remember dungeon class for " + playerId + ": " + message(exception));
+        }
         return ClassSelectionResult.success(allClassesSelected
                 ? "class selected; start door is ready" : "class selected", run.snapshot(), door);
+    }
+
+    /** Class selection is intentionally available only during the existing PREPARING gate. */
+    public static boolean classSelectionOpen(RunState state) {
+        return state == RunState.PREPARING;
     }
 
     public synchronized DoorInteractionResult openDoor(UUID instanceId, UUID playerId) {
@@ -174,7 +228,7 @@ public final class RunPreparationService {
                 if (!transition.accepted()) throw new IllegalStateException(transition.detail());
                 run.state = RunState.RUNNING;
                 run.startedAt = clock.instant();
-                run.runDeadline = run.startedAt.plus(RUN_TIMEOUT);
+                run.runDeadline = run.startedAt.plus(timings.runTimeout());
             });
         } catch (RuntimeException exception) {
             String detail = exception.getMessage() == null
@@ -191,6 +245,7 @@ public final class RunPreparationService {
             return DoorInteractionResult.failure(detail);
         }
         run.door = opened.door();
+        publishState(run, false);
         return DoorInteractionResult.success(opened.detail(), opened.door(), run.snapshot());
     }
 
@@ -204,6 +259,7 @@ public final class RunPreparationService {
                 InstanceState.RUNNING, InstanceState.BOSS);
         if (!transition.accepted()) return PhaseResult.failure(transition.detail());
         run.state = RunState.BOSS;
+        publishState(run, false);
         return PhaseResult.success("boss encounter started", run.snapshot());
     }
 
@@ -219,6 +275,7 @@ public final class RunPreparationService {
                 InstanceState.BOSS, InstanceState.COMPLETION_PENDING);
         if (!transition.accepted()) return PhaseResult.failure(transition.detail());
         run.state = RunState.COMPLETION_PENDING;
+        publishState(run, false);
         return PhaseResult.success("boss defeated; completion pending", run.snapshot());
     }
 
@@ -235,8 +292,9 @@ public final class RunPreparationService {
         if (!transition.accepted()) return PhaseResult.failure(transition.detail());
         run.state = RunState.COMPLETED;
         run.completedAt = clock.instant();
-        run.completionDeadline = run.completedAt.plus(COMPLETION_TIMEOUT);
+        run.completionDeadline = run.completedAt.plus(timings.completionTimeout());
         run.lastCompletionCountdown = -1;
+        publishState(run, false);
         return PhaseResult.success("run completed; reward period started", run.snapshot());
     }
 
@@ -257,6 +315,7 @@ public final class RunPreparationService {
         return doors.lookup(Objects.requireNonNull(point, "point"))
                 .map(block -> new DoorBlockLookup(block.instanceId(), block.state()));
     }
+
 
     public synchronized Optional<UUID> instanceFor(UUID playerId) {
         Objects.requireNonNull(playerId, "playerId");
@@ -310,6 +369,7 @@ public final class RunPreparationService {
         if (run == null) return PreparationResult.success("preparation already cleaned", null);
         updates.remove(instanceId);
         doors.remove(instanceId);
+        publishState(run, true);
         return PreparationResult.success("preparation cleaned", run.snapshot());
     }
 
@@ -326,7 +386,8 @@ public final class RunPreparationService {
     }
 
     private void updatePreparing(UUID instanceId, MutableRun run, Instant now) {
-        if (!run.preparationWarningSent && inWarningWindow(now, run.preparationDeadline, PREPARATION_WARNING)) {
+        if (!run.preparationWarningSent && inWarningWindow(now, run.preparationDeadline,
+                timings.preparationWarning())) {
             run.preparationWarningSent = true;
             notifyDeadline(new DeadlineNotice(instanceId, DeadlineEvent.PREPARATION_WARNING,
                     secondsRemaining(now, run.preparationDeadline), "preparation deadline is approaching"));
@@ -340,7 +401,7 @@ public final class RunPreparationService {
 
     private void updateRunning(UUID instanceId, MutableRun run, Instant now) {
         if (run.runDeadline == null) return;
-        if (!run.runWarningSent && inWarningWindow(now, run.runDeadline, RUN_WARNING)) {
+        if (!run.runWarningSent && inWarningWindow(now, run.runDeadline, timings.runWarning())) {
             run.runWarningSent = true;
             notifyDeadline(new DeadlineNotice(instanceId, DeadlineEvent.RUN_WARNING,
                     secondsRemaining(now, run.runDeadline), "run deadline is approaching"));
@@ -371,7 +432,8 @@ public final class RunPreparationService {
             closeAfterDeadline(instanceId, run, "completed reward group is empty");
             return;
         }
-        if (!run.completionWarningSent && inWarningWindow(now, run.completionDeadline, COMPLETION_WARNING)) {
+        if (!run.completionWarningSent && inWarningWindow(now, run.completionDeadline,
+                timings.completionWarning())) {
             run.completionWarningSent = true;
             notifyDeadline(new DeadlineNotice(instanceId, DeadlineEvent.COMPLETION_WARNING,
                     secondsRemaining(now, run.completionDeadline), "reward period is ending soon"));
@@ -383,7 +445,7 @@ public final class RunPreparationService {
             return;
         }
         long remaining = secondsRemaining(now, run.completionDeadline);
-        if (remaining > 0 && remaining <= COMPLETION_FINAL_COUNTDOWN.toSeconds()
+        if (remaining > 0 && remaining <= timings.completionFinalCountdown().toSeconds()
                 && remaining != run.lastCompletionCountdown) {
             run.lastCompletionCountdown = remaining;
             notifyDeadline(new DeadlineNotice(instanceId, DeadlineEvent.COMPLETION_COUNTDOWN, remaining,
@@ -396,7 +458,8 @@ public final class RunPreparationService {
         StateTransitionService.TransitionResult transition = transitions.transition(current, InstanceState.FAILED);
         if (!transition.accepted()) throw new IllegalStateException(transition.detail());
         run.state = RunState.FAILED;
-        run.failedDeadline = now.plus(FAILED_READING_PERIOD);
+        run.failedDeadline = now.plus(timings.failedReadingPeriod());
+        publishState(run, false);
         notifyDeadline(new DeadlineNotice(run.instanceId, DeadlineEvent.RUN_FAILED, 0, detail));
         try {
             failureHandler.accept(run.instanceId);
@@ -547,14 +610,14 @@ public final class RunPreparationService {
 
         private MutableRun(UUID instanceId, PartySnapshot party, List<String> allowedClasses,
                            Map<String, ClassDefinition> classes, DoorService.DoorSnapshot door,
-                           Instant preparationDeadline) {
+                           Instant preparationDeadline, Duration preparationTimeout) {
             this.instanceId = instanceId;
             this.participants = new ArrayList<>(party.onlineMembers());
             this.allowedClasses = List.copyOf(allowedClasses);
             this.classes = Map.copyOf(classes);
             this.door = door;
             this.preparationDeadline = preparationDeadline;
-            this.lastUpdated = preparationDeadline.minus(PREPARATION_TIMEOUT);
+            this.lastUpdated = preparationDeadline.minus(preparationTimeout);
         }
 
         private RunSnapshot snapshot() {

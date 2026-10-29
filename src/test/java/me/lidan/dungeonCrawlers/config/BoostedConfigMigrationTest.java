@@ -53,6 +53,14 @@ class BoostedConfigMigrationTest {
                         BoostedConfigFactory.schemaVersion(reopened), reopened.dump()),
                 () -> assertEquals(10, reopened.getInt("backups.retention-count"), reopened.dump()),
                 () -> assertEquals("replace", reopened.getString("authoring.emerald-marker-policy"), reopened.dump()),
+                () -> assertEquals("", reopened.getString("class-selector.npc.skin"), reopened.dump()),
+                () -> assertEquals(60, reopened.getInt("timings.preparation-warning-seconds"), reopened.dump()),
+                () -> assertEquals(3_600, reopened.getInt("timings.run-timeout-seconds"), reopened.dump()),
+                () -> assertEquals(10, reopened.getInt("timings.failed-reading-period-seconds"), reopened.dump()),
+                () -> assertEquals(86_400, reopened.getInt("timings.recovered-reward-window-seconds"),
+                        reopened.dump()),
+                () -> assertEquals(480, reopened.getInt("timings.score-free-time-seconds"), reopened.dump()),
+                () -> assertEquals(5, reopened.getInt("timings.teleport-permit-seconds"), reopened.dump()),
                 () -> assertEquals("dungeon_instances", reopened.getString("generation.world"), reopened.dump()),
                 () -> assertEquals(4, reopened.getInt("generation.capacity"), reopened.dump()),
                 () -> assertEquals(10_000, reopened.getInt("generation.slot-spacing"), reopened.dump()),
@@ -88,6 +96,30 @@ class BoostedConfigMigrationTest {
                 () -> assertEquals("legacy_world", migrated.getString("fallback-spawn-world"), migrated.dump()),
                 () -> assertTrue(Files.readString(configFile).contains(
                         "schema-version: " + BoostedConfigFactory.CURRENT_SCHEMA_VERSION)));
+    }
+
+    @Test
+    void versionOneClassesReceiveSkillPercentagesAndPreserveCustomFlatStats() throws Exception {
+        Path classesFile = directory.resolve("classes.yml");
+        try (var input = getClass().getResourceAsStream("/classes.yml")) {
+            String defaults = new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            Files.writeString(classesFile, defaults.replace("schema-version: 2", "schema-version: 1")
+                    .replaceAll("    stat-percent-per-level:.*\\R", "")
+                    .replaceAll("    healing-percent-per-level:.*\\R", "")
+                    .replace("STRENGTH: 50", "STRENGTH: 77"));
+        }
+
+        try (MockedStatic<JavaPlugin> ignored = providingPlugin()) {
+            BoostedConfigFactory factory = new BoostedConfigFactory();
+            var migrated = factory.openVersionedConfig(classesFile, "classes.yml", 2);
+            assertEquals(2, BoostedConfigFactory.schemaVersion(migrated));
+            assertEquals(77, migrated.getInt("classes.berserker.stat-add.STRENGTH"));
+            assertEquals(2, migrated.getInt("classes.berserker.stat-percent-per-level.STRENGTH", -1));
+            assertEquals(2, migrated.getInt("classes.healer.healing-percent-per-level"));
+            String once = Files.readString(classesFile);
+            factory.openVersionedConfig(classesFile, "classes.yml", 2);
+            assertEquals(once, Files.readString(classesFile));
+        }
     }
 
     @Test
@@ -146,5 +178,27 @@ class BoostedConfigMigrationTest {
         JavaPlugin plugin = mock(JavaPlugin.class);
         mocked.when(() -> JavaPlugin.getProvidingPlugin(BoostedCustomConfig.class)).thenReturn(plugin);
         return mocked;
+    }
+
+    @Test
+    void floorTwoMigratesToFourWithBackupAndPreservesCustomBossAndRewards() throws Exception {
+        Path floors = directory.resolve("floors");
+        Files.createDirectories(floors);
+        Path floor = floors.resolve("floor_custom.yml");
+        String original = "schema-version: 2\nnumber: 7\nboss: { mob: CustomBoss, encounter: basic }\n"
+                + "rewards: { special: { price: 12345 } }\ndungeon-xp: { completion: 999, failure-factor: 0.2 }\n";
+        Files.writeString(floor, original);
+        try (MockedStatic<JavaPlugin> ignored = providingPlugin()) {
+            BoostedConfigFactory factory = new BoostedConfigFactory();
+            factory.migrateFloor(floor);
+            factory.migrateFloor(floor);
+            var config = factory.open(floor);
+            assertEquals(4, BoostedConfigFactory.schemaVersion(config));
+            assertTrue(config.getList("generation.room-pool").isEmpty());
+            assertEquals("CustomBoss", config.getString("boss.mob"));
+            assertEquals(12345, config.getInt("rewards.special.price"));
+            assertEquals(999, config.getInt("dungeon-xp.completion"));
+        }
+        assertEquals(original, Files.readString(directory.resolve("backups/floors-v2/floor_custom.yml")));
     }
 }

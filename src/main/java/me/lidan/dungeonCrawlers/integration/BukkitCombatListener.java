@@ -21,6 +21,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BooleanSupplier;
+import java.util.function.Predicate;
 
 /** Paper event boundary for room doors and required mob reconciliation. */
 public final class BukkitCombatListener implements Listener {
@@ -30,29 +31,33 @@ public final class BukkitCombatListener implements Listener {
     private final BooleanSupplier shuttingDown;
     private final BukkitBossIdentity bossIdentity;
     private final PortalEncounterService encounters;
+    private final Predicate<UUID> canOpenDoor;
     private final Set<UUID> unloadingWorlds = ConcurrentHashMap.newKeySet();
 
     public BukkitCombatListener(CombatRoomService combat, BukkitEntityIdentity identity,
                                 String generationWorldName, BooleanSupplier shuttingDown,
-                                BukkitBossIdentity bossIdentity, PortalEncounterService encounters) {
+                                BukkitBossIdentity bossIdentity, PortalEncounterService encounters,
+                                Predicate<UUID> canOpenDoor) {
         this.combat = Objects.requireNonNull(combat, "combat");
         this.identity = Objects.requireNonNull(identity, "identity");
         this.generationWorldName = Objects.requireNonNull(generationWorldName, "generationWorldName");
         this.shuttingDown = Objects.requireNonNull(shuttingDown, "shuttingDown");
         this.bossIdentity = Objects.requireNonNull(bossIdentity, "bossIdentity");
         this.encounters = Objects.requireNonNull(encounters, "encounters");
+        this.canOpenDoor = Objects.requireNonNull(canOpenDoor, "canOpenDoor");
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onRoomDoor(PlayerInteractEvent event) {
         if (event.getHand() == EquipmentSlot.OFF_HAND
-                || event.getAction() != Action.RIGHT_CLICK_BLOCK
+                || (event.getAction() != Action.RIGHT_CLICK_BLOCK && event.getAction() != Action.LEFT_CLICK_BLOCK)
                 || event.getClickedBlock() == null
                 || !event.getClickedBlock().getWorld().getName().equals(generationWorldName)) return;
         Point point = new Point(event.getClickedBlock().getX(), event.getClickedBlock().getY(),
                 event.getClickedBlock().getZ());
         if (!combat.isDoorAt(point)) return;
         event.setCancelled(true);
+        if (!canOpenDoor.test(event.getPlayer().getUniqueId())) return;
         CombatRoomService.ActivationResult result = combat.activateAt(point);
         if (result.successful()) {
             result.openedDoorBlocks().forEach(opened -> event.getClickedBlock().getWorld()

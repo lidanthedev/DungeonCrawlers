@@ -167,9 +167,9 @@ public final class BukkitDungeonLifecycleListener implements Listener {
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             if (!player.isOnline()) return;
             var state = lifecycle.player(instanceId, player.getUniqueId()).orElse(null);
-            if (state != null && state.state() == PlayerLifecycleService.PlayerState.GHOST
-                    && state.reviveAt() != null) {
-                BukkitGhostState.enter(player, remainingGhostDuration(state.reviveAt()));
+            if (state != null && state.state() == PlayerLifecycleService.PlayerState.GHOST) {
+                BukkitGhostState.enter(player, state.reviveAt() == null ? Duration.ofMillis(Integer.MAX_VALUE * 50L)
+                        : remainingGhostDuration(state.reviveAt()));
             }
         });
     }
