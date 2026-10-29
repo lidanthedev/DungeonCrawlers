@@ -34,13 +34,27 @@ class DungeonRewardItemsTest {
             assertEquals(64000, prices.getDouble("prices.DC_JESTER_COAT"));
             assertEquals(320000, prices.getDouble("prices.DC_RINGMASTER_CANE"));
             assertEquals(640000, prices.getDouble("prices.WITHER_SWORD"));
-            assertEquals(600, registry.get("DC_ENCORE_SCYTHE").getStats().get(StatType.DAMAGE).getValue());
+            assertEquals(2000, registry.get("DC_ENCORE_SCYTHE").getStats().get(StatType.DAMAGE).getValue());
             assertTrue(registry.get("DC_RINGMASTER_CANE").getAbilityID().startsWith("BASIC_LASER{"));
             for (var item : registry.values()) {
                 assertNotEquals(Material.ENCHANTED_BOOK, item.getBaseItem().getType());
-                assertTrue(item.getStats().get(StatType.DAMAGE).getValue() < 700);
-                assertTrue(item.getStats().get(StatType.HEALTH).getValue() < 1600);
+                assertNull(item.getDescription());
+                if (item.getType() == me.lidan.cavecrawlers.items.ItemType.ARMOR) {
+                    var minimums = Map.of(StatType.HEALTH, 3200, StatType.DEFENSE, 3200,
+                            StatType.STRENGTH, 600, StatType.INTELLIGENCE, 550,
+                            StatType.CRIT_DAMAGE, 50, StatType.CRIT_CHANCE, 20,
+                            StatType.ABILITY_DAMAGE, 20, StatType.MAGIC_FIND, 20);
+                    minimums.forEach((stat, minimum) ->
+                            assertTrue(item.getStats().get(stat).getValue() >= minimum, item.getName() + " " + stat));
+                }
             }
+            assertEquals(200, registry.get("DC_ACROBAT_BOOTS").getStats().get(StatType.SPEED).getValue());
+            String bowAbility = registry.get("DC_CARDTHROWER").getAbilityID();
+            var bowSettings = com.google.gson.JsonParser.parseString(bowAbility.substring(bowAbility.indexOf('{'))).getAsJsonObject();
+            assertEquals(3, bowSettings.get("amount").getAsInt());
+            assertEquals(3, bowSettings.get("yawDiff").getAsInt());
+            assertEquals(5, bowSettings.get("maxPower").getAsInt());
+            assertEquals("", bowSettings.get("description").getAsString());
             registry.get("DC_JESTER_CAP").setName("Admin cap");
             prices.set("prices.DC_JESTER_CAP", 123);
             assertFalse(DungeonRewardItems.register(plugin, items, prices));

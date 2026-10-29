@@ -112,7 +112,7 @@ public class BoostedConfigFactory {
     public void migrateFloor(Path path) throws IOException {
         BoostedCustomConfig config = open(path);
         int version = schemaVersion(config);
-        if (version < 1 || version > 4) return;
+        if (version < 1 || version > 5) return;
         Path backup = path.getParent().getParent().resolve("backups/floors-v" + version).resolve(path.getFileName());
         Files.createDirectories(backup.getParent());
         if (!Files.exists(backup)) Files.copy(path, backup, StandardCopyOption.COPY_ATTRIBUTES);
@@ -132,7 +132,17 @@ public class BoostedConfigFactory {
                 config.set("rewards", toPlainValues(YamlDocument.create(defaults)).get("rewards"));
             }
         }
-        config.set(VERSION_ROUTE, 5);
+        if ("floor_1".equals(config.getString("id"))) {
+            Map<String, Long> previousPrices = Map.of("gold", 200000L, "diamond", 320000L,
+                    "emerald", 640000L, "obsidian", 1280000L);
+            Map<String, Long> prices = Map.of("gold", 10000000L, "diamond", 25000000L,
+                    "emerald", 50000000L, "obsidian", 100000000L);
+            previousPrices.forEach((id, previous) -> {
+                String route = "rewards." + id + ".price";
+                if (config.getLong(route, -1) == previous) config.set(route, prices.get(id));
+            });
+        }
+        config.set(VERSION_ROUTE, 6);
         if (!config.save()) throw new IOException("failed to migrate floor " + path.getFileName());
     }
 

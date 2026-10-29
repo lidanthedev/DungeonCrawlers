@@ -1,4 +1,4 @@
-schema-version: 5
+schema-version: 6
 id: floor_1
 number: 1
 display-name: "<gold>Floor I"
@@ -44,7 +44,7 @@ rewards:
       weight: 20
   gold:
     enabled: true
-    price: 200000
+    price: 10000000
     min-score: 0
     rolls: 1
     unique: false
@@ -69,7 +69,7 @@ rewards:
       magic-find-sensitive: true
   diamond:
     enabled: true
-    price: 320000
+    price: 25000000
     min-score: 0
     rolls: 1
     unique: false
@@ -97,7 +97,7 @@ rewards:
       magic-find-sensitive: true
   emerald:
     enabled: true
-    price: 640000
+    price: 50000000
     min-score: 230
     rolls: 1
     unique: false
@@ -125,7 +125,7 @@ rewards:
       magic-find-sensitive: true
   obsidian:
     enabled: true
-    price: 1280000
+    price: 100000000
     min-score: 270
     rolls: 1
     unique: false

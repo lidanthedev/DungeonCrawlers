@@ -51,7 +51,7 @@ class ConfigLoaderTest {
     }
 
     @Test
-    void floorOnePoolsReferenceShippedGearAndDiscountedCostsExceedExpectedSellValue() throws Exception {
+    void floorOnePoolsUseServerPricesAndHypixelFloorOneScoreGates() throws Exception {
         copyDefaults();
         var loaded = loader().load(directory);
         assertTrue(loaded.successful(), loaded.errors().toString());
@@ -60,6 +60,12 @@ class ConfigLoaderTest {
                         java.nio.charset.StandardCharsets.UTF_8));
         var rewards = loaded.snapshot().floors().get("floor_1").rewards();
         assertEquals(java.util.Set.of("wooden", "gold", "diamond", "emerald", "obsidian"), rewards.keySet());
+        var prices = java.util.Map.of("wooden", 0L, "gold", 10000000L, "diamond", 25000000L,
+                "emerald", 50000000L, "obsidian", 100000000L);
+        prices.forEach((id, price) -> assertEquals(price.longValue(), rewards.get(id).price()));
+        assertEquals(0, rewards.get("wooden").minScore());
+        assertEquals(0, rewards.get("gold").minScore());
+        assertEquals(0, rewards.get("diamond").minScore());
         assertEquals(230, rewards.get("emerald").minScore());
         assertEquals(270, rewards.get("obsidian").minScore());
         for (var reward : rewards.values()) {
@@ -72,6 +78,7 @@ class ConfigLoaderTest {
                 assertEquals(1, item.maximumAmount());
                 expectedSell += item.weight() / weight * definitions.getDouble(item.itemId() + ".sell-price");
             }
+            assertTrue(reward.minScore() <= 270);
             if (reward.price() > 0) {
                 long discounted = me.lidan.dungeonCrawlers.core.difficulty.Difficulty.IMPOSSIBLE.chestPrice(reward.price(), true);
                 assertTrue(expectedSell < discounted, "Expected sell profit: " + reward);
@@ -274,7 +281,7 @@ class ConfigLoaderTest {
     @Test void difficultyConfigAndCustomFloorMigrationAreValidated() throws Exception {
         copyDefaults();
         Path floor = directory.resolve("floors/floor_1.yml");
-        String old = Files.readString(floor).replace("schema-version: 5", "schema-version: 1")
+        String old = Files.readString(floor).replace("schema-version: 6", "schema-version: 1")
                 .replace("number: 1", "number: 3").replaceAll("(?m)^dungeon-xp:\n(?:  .*\n)*", "");
         Files.writeString(floor, old);
         var loaded = loader().load(directory);

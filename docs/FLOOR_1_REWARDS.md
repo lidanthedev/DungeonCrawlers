@@ -8,62 +8,69 @@ chest choice per player per run. Rare Mask, Cane and Scythe weights respond to M
 
 ## Items and prices
 
-Verified against Modern Cave Crawl's native `plugins/CaveCrawlers/sell.yml` and item definitions
-on 2026-10-30. Evoker Boots sell for 64,000, Warden Helmet for 320,000, Wither weapons for
-640,000, and Dragon Chestplate for 1,600,000 coins. These are NPC sell values, not auction estimates.
+The combat baseline comes from the live Griffin Shop and Floor 8 shop on 2026-10-30.
+Griffin T4 armor has 3,200 Health and Defense, 600 Strength, 550 Intelligence, 50 Crit Damage,
+20 Crit Chance, 20 Ability Damage and 20 Magic Find per piece; boots add 200 Speed.
+These supported combat stats are the minimum for every reward armor piece. The obsolete
+Griffin-specific luck field is not part of the dungeon armor.
+
+Griffin T4 costs 50m per helmet/boots/sword or 55m per chestplate/leggings, plus T3 and materials.
+T5 costs another 100m or 150m, plus T4 and materials. Floor 8 swords range from Ruby's
+1,000 Damage / 500 Strength to Jasper's 2,200 / 1,100. Phobos Bow has 1,000 Damage,
+800 Strength, 70 Attack Speed, 20 Crit Chance and three arrows with yawDiff 3 / maxPower 5.
 
 | Item | Main stats | Native sell price |
 | --- | --- | ---: |
-| Jester Cap | 220 Health, 180 Defense, 35 Strength, 100 Intelligence | 64,000 |
-| Jester Coat | 350 Health, 260 Defense, 50 Strength, 80 Intelligence | 64,000 |
-| Jester Trousers | 280 Health, 220 Defense, 40 Strength, 80 Intelligence | 64,000 |
-| Acrobat Boots | 200 Health, 160 Defense, 30 Strength, 50 Intelligence, 60 Speed | 64,000 |
-| Stage Cutlass | 400 Damage, 200 Strength, 20 Crit Damage | 64,000 |
-| Cardthrower | 400 Damage, 220 Strength, 25 Crit Damage; native two-arrow shortbow | 160,000 |
-| Ringmaster Mask | 450 Health, 300 Defense, 60 Strength, 200 Intelligence | 320,000 |
-| Ringmaster's Cane | 200 Damage, 250 Intelligence, 5 Ability Damage; violet native laser, 100 mana, 1s cooldown | 320,000 |
-| Encore Scythe | 600 Damage, 300 Strength, 40 Crit Damage, 20 Attack Speed | 640,000 |
+| Jester Cap, Coat, Trousers | Griffin T4 combat baseline per piece | 64,000 each |
+| Acrobat Boots | Griffin T4 combat baseline plus 200 Speed | 64,000 |
+| Stage Cutlass | 1,700 Damage, 850 Strength, 50 Crit Damage | 64,000 |
+| Cardthrower | 1,000 Damage, 800 Strength, 40 Crit Damage, 20 Crit Chance, 70 Attack Speed; three-arrow shortbow | 160,000 |
+| Ringmaster Mask | 3,500 Health and Defense, 650 Strength and Intelligence, 60 Crit Damage, 25 Crit Chance / Ability Damage / Magic Find | 320,000 |
+| Ringmaster's Cane | 1,000 Damage, 400 Strength, 800 Intelligence, 20 Ability Damage; violet laser, 3,500 base damage, 1.5 scaling, 100 mana, 0.5s cooldown | 320,000 |
+| Encore Scythe | 2,000 Damage, 1,000 Strength, 60 Crit Damage, 20 Attack Speed | 640,000 |
 
-The common armor is around Evoker/Warden progression. Mask trades some Warden defense and
-strength for health and intelligence. Scythe is below the Wither Dagger's 700 Damage / 350 Strength;
-Cardthrower stays below the Wither Bow's three arrows at 500 Damage. Dragon armor has 1,600
-Health and Defense on one piece; Jasper Sword has 2,200 Damage and 1,100 Strength.
+Every reward item has no flavor description. Bow and Cane custom ability description strings
+are empty; native ability names, costs, cooldowns and stat/scaling tooltips remain.
+NPC sell prices retain the server's existing salvage ladder: Evoker 64k, Warden 320k, Wither 640k.
+These sell prices differ from shop acquisition prices, which determine the chest fee scale.
 
-`reward-items.yml` seeds native item files and missing `/sell` entries once. Later administrator
-item edits and sell prices survive addon and native item reloads. Native definitions remain on
-disk when the addon is disabled, so already claimed items keep their identity.
+`reward-items.yml` seeds missing native item files and `/sell` entries once. Later administrator
+edits survive addon and native item reloads. Rebalancing an already installed item requires
+backing up and updating its native CaveCrawlers item file as well as the bundled defaults.
+Native item identities remain stable, including already claimed items.
 
 ## Chests
 
-All probabilities below are per chest at zero Magic Find, before difficulty modifiers.
-The five ordinary items split their combined probability equally.
+Types and score gates follow Hypixel Floor I. Fees follow the user's server-economy requirement,
+using Griffin T5's 100m/150m shop costs as reference. No Bedrock, 301-score, S+ or debug chest.
+Existing difficulty and Runic discounts apply to these base fees.
+
+All probabilities below are per chest at zero Magic Find. The five ordinary items split their
+combined probability equally.
 
 | Chest | Base cost | Score | Ordinary gear | Cardthrower | Mask | Cane | Scythe |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | Wooden | Free | 0 | 100% | 0% | 0% | 0% | 0% |
-| Gold | 200,000 | 0 | 90% | 8% | 1% | 1% | 0% |
-| Diamond | 320,000 | 0 | 75% | 15% | 5% | 4% | 1% |
-| Emerald | 640,000 | 230 | 60% | 20% | 8% | 9% | 3% |
-| Obsidian | 1,280,000 | 270 | 40% | 25% | 13% | 15% | 7% |
+| Gold | 10,000,000 | 0 | 90% | 8% | 1% | 1% | 0% |
+| Diamond | 25,000,000 | 0 | 75% | 15% | 5% | 4% | 1% |
+| Emerald | 50,000,000 | 230 | 60% | 20% | 8% | 9% | 3% |
+| Obsidian | 100,000,000 | 270 | 40% | 25% | 13% | 15% | 7% |
 
-At zero Magic Find, the expected sell value of each paid pool is below its cost even with the
-maximum difficulty discount and Runic discount together. Players can preview and buy profitable
-individual rolls, which is intentional. Wooden guarantees one 64,000-coin item per completed run.
-Higher Magic Find changes these odds; long-term coin output still needs real run-rate measurements.
+Players preview the rolled item before choosing their one chest per run. Wooden guarantees
+one piece of T4-equivalent gear or the Cutlass per completion. Rare weights respond to Magic Find.
 
 ## Migration and validation
 
-Floor schema 5 backs up older floors before migration. Only the exact shipped wooden
-UNDEAD_ESSENCE / CRYPT_FRAGMENT placeholder pool on `floor_1` is replaced automatically.
-Custom pools, boss pointers, floor numbers and authored template references survive.
-The live server's custom placeholder/debug pool requires an explicit backed-up replacement.
+Floor schema 6 backs up older floors. The original shipped wooden essence/fragment placeholder
+pool is replaced only on floor_1. Previous shipped chest fees 200k/320k/640k/1.28m migrate to
+10m/25m/50m/100m. Custom fees, pools, bosses and template pointers survive. Already frozen
+reward entitlements retain their recorded fees; new runs use the revised configuration.
 
-Java 21 clean build passes 466 tests, including native item registration, administrator edit
-preservation, migration backups/idempotence, shipped item references, weights, score gates and
-sell-value checks. Live deployment evidence follows below. Combat feel, client visuals and
-long-term economic output require gameplay feedback.
+Regression checks cover the armor's T4 minimum, three-arrow settings, absent item descriptions,
+chest types/fees/score gates, native registration/admin edits, and migration backups/idempotence.
+Actual combat, weapon firing, GUI claims and sales require a player test.
 
-## Live evidence, 2026-10-30
+## Initial deployment evidence, 2026-10-30
 
 - Built Java 21 artifact `build/libs/DungeonCrawlers-1.0.jar`, version `1.0+33eac92`.
   SHA-256 `7d303d7da58c6949a6aabf673166322077bacd5c06a8303285d648f43af47199`.
