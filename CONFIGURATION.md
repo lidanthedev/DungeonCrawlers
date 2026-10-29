@@ -93,6 +93,9 @@ timing, cleanup and teleport safety windows, action-bar throttling, repository s
 pending recovery retention. Existing config files receive these defaults automatically when they
 migrate to schema 6.
 
+`timings.completion-timeout-seconds` and `timings.live-reward-window-seconds` must be equal and
+positive so live rewards remain available until the completed dungeon closes.
+
 Room metadata is versioned separately. Schema 3 adds the optional START-room class-selector offset; schema 2 metadata remains readable with no selector. Use the authoring commands to regenerate metadata rather than editing it by hand.
 
 Citizens is a soft dependency. No Citizens configuration is required: the plugin creates selector NPCs in a temporary in-memory registry and removes them with the run. The class GUI and class commands do not depend on Citizens.

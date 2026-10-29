@@ -51,6 +51,9 @@ public record DungeonTimings(
         requirePositive("actionBarCooldown", actionBarCooldown);
         requirePositive("persistenceShutdownGrace", persistenceShutdownGrace);
         requirePositive("pendingRecoveryMaxAge", pendingRecoveryMaxAge);
+        if (!completionTimeout.equals(liveRewardWindow)) {
+            throw new IllegalArgumentException("completionTimeout must equal liveRewardWindow");
+        }
     }
 
     public static DungeonTimings defaults() {

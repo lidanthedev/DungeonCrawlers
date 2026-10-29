@@ -4,8 +4,10 @@ Java 21 Paper addon for CaveCrawlers.
 
 Publish the native API prerequisites to Maven Local before building: `me.lidan:CaveCrawlers:dev`
 and `me.lidan:CaveCrawlAddon:1.0`, using `./gradlew publishToMavenLocal` in each repository.
-CI pins their source commits in `.github/workflows/build.yml`. The addon checkout requires
-the read-only `CAVECRAWLADDON_DEPLOY_KEY` Actions secret. Both APIs remain compile-only.
+CI pins their source commits in `.github/workflows/build.yml`. Trusted pushes use the read-only
+`CAVECRAWLADDON_DEPLOY_KEY` Actions secret to publish the addon's Maven files as a CI artifact.
+Pull requests download that artifact without the deploy key. Run a trusted push build first
+when changing the pinned addon revision or if its artifact has expired. Both APIs remain compile-only.
 
 Build and test with:
 
