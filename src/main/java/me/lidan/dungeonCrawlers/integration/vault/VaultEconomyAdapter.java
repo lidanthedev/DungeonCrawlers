@@ -1,8 +1,11 @@
 package me.lidan.dungeonCrawlers.integration.vault;
 
+import me.lidan.cavecrawlers.utils.CurrencyTransactionPrepareEvent;
+import me.lidan.dungeonCrawlers.events.DungeonCurrencyTransactionEvent;
 import me.lidan.dungeonCrawlers.integration.EconomyGateway;
 import net.milkbowl.vault.economy.Economy;
 import net.milkbowl.vault.economy.EconomyResponse;
+import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 
 import java.util.Objects;
@@ -39,15 +42,15 @@ public final class VaultEconomyAdapter implements EconomyGateway {
 
     private boolean prepare(OfflinePlayer player, double amount, boolean created) {
         return amount <= 0 || !Double.isFinite(amount)
-                || new me.lidan.cavecrawlers.utils.CurrencyTransactionPrepareEvent(player.getUniqueId(), amount,
+                || new CurrencyTransactionPrepareEvent(player.getUniqueId(), amount,
                         created, created ? "dungeon_vault_credit" : "dungeon_vault_debit", "dungeoncrawlers").callEvent();
     }
 
     private TransactionResult observe(OfflinePlayer player, EconomyResponse response, boolean created) {
         TransactionResult result = map(response);
         if (response.transactionSuccess() && response.amount > 0 && Double.isFinite(response.amount)) {
-            org.bukkit.Bukkit.getPluginManager().callEvent(
-                    new me.lidan.dungeonCrawlers.events.DungeonCurrencyTransactionEvent(
+            Bukkit.getPluginManager().callEvent(
+                    new DungeonCurrencyTransactionEvent(
                             player.getUniqueId(), response.amount, created));
         }
         return result;

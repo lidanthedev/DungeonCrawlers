@@ -1,9 +1,11 @@
 package me.lidan.dungeonCrawlers.events;
 
-import java.util.UUID;
 import org.bukkit.Bukkit;
 import org.bukkit.event.Event;
 import org.bukkit.event.HandlerList;
+
+import java.util.Objects;
+import java.util.UUID;
 
 /** Successful Vault gateway debit or credit, never an affordability check. */
 public final class DungeonCurrencyTransactionEvent extends Event {
@@ -14,7 +16,7 @@ public final class DungeonCurrencyTransactionEvent extends Event {
     public DungeonCurrencyTransactionEvent(UUID playerId, double amount, boolean created) {
         super(!Bukkit.isPrimaryThread());
         if (!Double.isFinite(amount) || amount <= 0) throw new IllegalArgumentException("positive finite amount required");
-        this.playerId = java.util.Objects.requireNonNull(playerId); this.amount = amount; this.created = created;
+        this.playerId = Objects.requireNonNull(playerId); this.amount = amount; this.created = created;
     }
     public UUID getPlayerId() { return playerId; }
     public double getAmount() { return amount; }

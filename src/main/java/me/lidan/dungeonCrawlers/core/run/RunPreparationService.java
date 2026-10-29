@@ -20,7 +20,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 /** Coordinates the player-facing PREPARING phase and its one-shot start door. */
@@ -59,11 +61,11 @@ public final class RunPreparationService {
         catch (RuntimeException failure) { diagnose("Run observer failed: " + message(failure)); }
     }
 
-    private java.util.function.Function<UUID, Optional<String>> rememberedClass = ignored -> Optional.empty();
-    private java.util.function.BiConsumer<UUID, String> rememberClass = (player, classId) -> { };
+    private Function<UUID, Optional<String>> rememberedClass = ignored -> Optional.empty();
+    private BiConsumer<UUID, String> rememberClass = (player, classId) -> { };
 
-    public synchronized void configureClassPreferences(java.util.function.Function<UUID, Optional<String>> read,
-                                                       java.util.function.BiConsumer<UUID, String> write) {
+    public synchronized void configureClassPreferences(Function<UUID, Optional<String>> read,
+                                                       BiConsumer<UUID, String> write) {
         rememberedClass = Objects.requireNonNull(read);
         rememberClass = Objects.requireNonNull(write);
     }

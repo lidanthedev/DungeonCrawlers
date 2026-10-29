@@ -14,12 +14,14 @@ import org.junit.jupiter.api.Test;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -55,12 +57,12 @@ class RunPreparationServiceTest {
         UUID first = UUID.randomUUID();
         UUID second = UUID.randomUUID();
         UUID instance = UUID.randomUUID();
-        var saved = new java.util.HashMap<UUID, String>();
+        var saved = new HashMap<UUID, String>();
         saved.put(second, "mage");
         var classes = Map.of("tank", classDefinition("tank"), "mage", classDefinition("mage"));
         var party = new PartySnapshot(first, List.of(first, second), false);
         var service = service(new AtomicInteger());
-        service.configureClassPreferences(id -> java.util.Optional.ofNullable(saved.get(id)), saved::put);
+        service.configureClassPreferences(id -> Optional.ofNullable(saved.get(id)), saved::put);
         service.registerGenerated(instance, party, List.of("tank", "mage"), classes, new Point(0, 64, 0), Facing.NORTH);
         assertTrue(service.info(instance).orElseThrow().selectedClasses().isEmpty());
         service.markSnapshotsReady(instance);
@@ -72,7 +74,7 @@ class RunPreparationServiceTest {
         service.cleanup(instance);
 
         var next = service(new AtomicInteger());
-        next.configureClassPreferences(id -> java.util.Optional.ofNullable(saved.get(id)), saved::put);
+        next.configureClassPreferences(id -> Optional.ofNullable(saved.get(id)), saved::put);
         UUID nextId = UUID.randomUUID();
         next.registerGenerated(nextId, party, List.of("tank", "mage"), classes, new Point(0, 64, 0), Facing.NORTH);
         var prepared = next.markSnapshotsReady(nextId).snapshot();
@@ -90,7 +92,7 @@ class RunPreparationServiceTest {
         UUID player = UUID.randomUUID();
         UUID instance = UUID.randomUUID();
         var service = service(new AtomicInteger());
-        service.configureClassPreferences(id -> java.util.Optional.of("mage"), (id, selected) -> { });
+        service.configureClassPreferences(id -> Optional.of("mage"), (id, selected) -> { });
         service.registerGenerated(instance, new PartySnapshot(player, List.of(player), true), List.of("tank"),
                 Map.of("tank", classDefinition("tank")), new Point(0, 64, 0), Facing.NORTH);
         service.markSnapshotsReady(instance);

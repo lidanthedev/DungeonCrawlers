@@ -1,99 +1,126 @@
 package me.lidan.dungeonCrawlers;
 
 import dev.triumphteam.gui.guis.BaseGui;
-import me.lidan.cavecrawlers.utils.MiniMessageUtils;
+import me.lidan.cavecrawlers.skills.SkillsManager;
 import me.lidan.cavecrawlers.stats.StatsManager;
-import me.lidan.dungeonCrawlers.commands.DungeonCrawlersCommand;
-import me.lidan.dungeonCrawlers.commands.DungeonAuthoringCommand;
-import me.lidan.dungeonCrawlers.commands.DungeonGenerationCommand;
-import me.lidan.dungeonCrawlers.commands.DungeonPhaseFiveCommand;
-import me.lidan.dungeonCrawlers.commands.DungeonClassMenuService;
-import me.lidan.dungeonCrawlers.commands.DungeonPhaseSixCommand;
+import me.lidan.cavecrawlers.storage.PlayerSkillsManager;
+import me.lidan.cavecrawlers.utils.BoostedCustomConfig;
+import me.lidan.cavecrawlers.utils.MiniMessageUtils;
+import me.lidan.dungeonCrawlers.authoring.RoomMarkerItemFactory;
+import me.lidan.dungeonCrawlers.authoring.TemplateAuthoringService;
+import me.lidan.dungeonCrawlers.authoring.TemplateCatalogLoader;
+import me.lidan.dungeonCrawlers.commands.AdminSuggestionProviders;
+import me.lidan.dungeonCrawlers.commands.BlessingIdSuggestionProvider;
 import me.lidan.dungeonCrawlers.commands.ClassIdSuggestionProvider;
 import me.lidan.dungeonCrawlers.commands.DifficultyIdSuggestionProvider;
+import me.lidan.dungeonCrawlers.commands.DungeonAuthoringCommand;
+import me.lidan.dungeonCrawlers.commands.DungeonClassMenuService;
+import me.lidan.dungeonCrawlers.commands.DungeonCrawlersCommand;
+import me.lidan.dungeonCrawlers.commands.DungeonDifficultyDebugCommand;
+import me.lidan.dungeonCrawlers.commands.DungeonGenerationCommand;
+import me.lidan.dungeonCrawlers.commands.DungeonPhaseEightCommand;
+import me.lidan.dungeonCrawlers.commands.DungeonPhaseElevenCommand;
+import me.lidan.dungeonCrawlers.commands.DungeonPhaseFiveCommand;
+import me.lidan.dungeonCrawlers.commands.DungeonPhaseFourCommand;
+import me.lidan.dungeonCrawlers.commands.DungeonPhaseNineCommand;
+import me.lidan.dungeonCrawlers.commands.DungeonPhaseSevenCommand;
+import me.lidan.dungeonCrawlers.commands.DungeonPhaseSixCommand;
+import me.lidan.dungeonCrawlers.commands.DungeonProgressionCommand;
+import me.lidan.dungeonCrawlers.commands.DungeonRoomPreviewCommand;
 import me.lidan.dungeonCrawlers.commands.FloorIdSuggestionProvider;
 import me.lidan.dungeonCrawlers.commands.InstanceIdSuggestionProvider;
 import me.lidan.dungeonCrawlers.commands.OfflinePlayerSuggestionProvider;
+import me.lidan.dungeonCrawlers.commands.RewardIdSuggestionProvider;
 import me.lidan.dungeonCrawlers.commands.RoomIdSuggestionProvider;
-import me.lidan.dungeonCrawlers.authoring.TemplateAuthoringService;
-import me.lidan.dungeonCrawlers.authoring.TemplateCatalogLoader;
 import me.lidan.dungeonCrawlers.compatibility.CompatibilityService;
+import me.lidan.dungeonCrawlers.config.BoostedConfigFactory;
 import me.lidan.dungeonCrawlers.config.DungeonTimings;
+import me.lidan.dungeonCrawlers.config.FoundryPack;
 import me.lidan.dungeonCrawlers.config.registry.ConfigRegistryService;
 import me.lidan.dungeonCrawlers.config.registry.EncounterRegistry;
-import me.lidan.dungeonCrawlers.config.BoostedConfigFactory;
-import me.lidan.cavecrawlers.utils.BoostedCustomConfig;
-import me.lidan.dungeonCrawlers.core.reservation.PlayerReservationService;
-import me.lidan.dungeonCrawlers.core.claim.RewardClaimService;
 import me.lidan.dungeonCrawlers.core.chunk.ChunkTicketBudget;
+import me.lidan.dungeonCrawlers.core.claim.RewardClaimService;
 import me.lidan.dungeonCrawlers.core.combat.CombatRoomService;
+import me.lidan.dungeonCrawlers.core.difficulty.Difficulty;
+import me.lidan.dungeonCrawlers.core.difficulty.DungeonProgressionService;
 import me.lidan.dungeonCrawlers.core.door.DoorService;
+import me.lidan.dungeonCrawlers.core.encounter.ChainboundEncounter;
+import me.lidan.dungeonCrawlers.core.encounter.EncounterFactoryRegistry;
+import me.lidan.dungeonCrawlers.core.encounter.RingmasterEncounter;
 import me.lidan.dungeonCrawlers.core.generation.GenerationPreparationProvider;
 import me.lidan.dungeonCrawlers.core.generation.GenerationService;
 import me.lidan.dungeonCrawlers.core.generation.SlotAllocator;
 import me.lidan.dungeonCrawlers.core.layout.LayoutPlanner;
 import me.lidan.dungeonCrawlers.core.lifecycle.PlayerLifecycleService;
+import me.lidan.dungeonCrawlers.core.portal.PortalEncounterService;
 import me.lidan.dungeonCrawlers.core.protection.TeleportPermitService;
 import me.lidan.dungeonCrawlers.core.protection.WorldProtectionService;
-import me.lidan.dungeonCrawlers.core.snapshot.PlayerSnapshotService;
-import me.lidan.dungeonCrawlers.core.secret.SecretDiscoveryService;
-import me.lidan.dungeonCrawlers.core.portal.PortalEncounterService;
+import me.lidan.dungeonCrawlers.core.reservation.PlayerReservationService;
 import me.lidan.dungeonCrawlers.core.reward.RewardEntitlementService;
-import me.lidan.dungeonCrawlers.core.score.ScoreService;
-import me.lidan.dungeonCrawlers.core.score.ScoreResultRenderer;
-import me.lidan.dungeonCrawlers.core.encounter.EncounterFactoryRegistry;
-import me.lidan.dungeonCrawlers.core.update.CentralUpdateService;
 import me.lidan.dungeonCrawlers.core.run.RunPreparationService;
+import me.lidan.dungeonCrawlers.core.score.ScoreResultRenderer;
+import me.lidan.dungeonCrawlers.core.score.ScoreService;
+import me.lidan.dungeonCrawlers.core.secret.SecretDiscoveryService;
+import me.lidan.dungeonCrawlers.core.snapshot.PlayerSnapshotService;
 import me.lidan.dungeonCrawlers.core.state.StateTransitionService;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.EmeraldPolicy;
 import me.lidan.dungeonCrawlers.core.template.TemplateValidator;
-import me.lidan.dungeonCrawlers.commands.DungeonPhaseFourCommand;
-import me.lidan.dungeonCrawlers.commands.DungeonPhaseSevenCommand;
-import me.lidan.dungeonCrawlers.commands.DungeonPhaseEightCommand;
-import me.lidan.dungeonCrawlers.commands.DungeonPhaseNineCommand;
-import me.lidan.dungeonCrawlers.commands.DungeonPhaseElevenCommand;
-import me.lidan.dungeonCrawlers.commands.RewardIdSuggestionProvider;
-import me.lidan.dungeonCrawlers.commands.BlessingIdSuggestionProvider;
-import me.lidan.dungeonCrawlers.integration.BukkitChunkTicketService;
-import me.lidan.dungeonCrawlers.integration.BukkitCombatListener;
-import me.lidan.dungeonCrawlers.integration.BukkitCombatMobGateway;
-import me.lidan.dungeonCrawlers.integration.BukkitEntityIdentity;
-import me.lidan.dungeonCrawlers.integration.BukkitProgressBarService;
+import me.lidan.dungeonCrawlers.core.update.CentralUpdateService;
+import me.lidan.dungeonCrawlers.events.DungeonRewardClaimEvent;
+import me.lidan.dungeonCrawlers.events.DungeonRewardDeliveredEvent;
+import me.lidan.dungeonCrawlers.events.DungeonRunStateChangedEvent;
 import me.lidan.dungeonCrawlers.integration.BukkitBossGateway;
 import me.lidan.dungeonCrawlers.integration.BukkitBossIdentity;
+import me.lidan.dungeonCrawlers.integration.BukkitChainboundArena;
+import me.lidan.dungeonCrawlers.integration.BukkitChunkTicketService;
+import me.lidan.dungeonCrawlers.integration.BukkitClassAbilityService;
+import me.lidan.dungeonCrawlers.integration.BukkitClassPreferences;
+import me.lidan.dungeonCrawlers.integration.BukkitCombatListener;
+import me.lidan.dungeonCrawlers.integration.BukkitCombatMobGateway;
+import me.lidan.dungeonCrawlers.integration.BukkitDifficultyService;
+import me.lidan.dungeonCrawlers.integration.BukkitDungeonActionBar;
+import me.lidan.dungeonCrawlers.integration.BukkitDungeonLifecycleListener;
+import me.lidan.dungeonCrawlers.integration.BukkitDungeonRunListener;
+import me.lidan.dungeonCrawlers.integration.BukkitEntityIdentity;
+import me.lidan.dungeonCrawlers.integration.BukkitFoundryRooms;
+import me.lidan.dungeonCrawlers.integration.BukkitGhostState;
 import me.lidan.dungeonCrawlers.integration.BukkitPortalBossListener;
 import me.lidan.dungeonCrawlers.integration.BukkitPortalParticipantGateway;
-import me.lidan.dungeonCrawlers.integration.BukkitRewardChestListener;
-import me.lidan.dungeonCrawlers.integration.BukkitRewardMailboxListener;
+import me.lidan.dungeonCrawlers.integration.BukkitProgressBarService;
 import me.lidan.dungeonCrawlers.integration.BukkitReloadProtectionListener;
-import me.lidan.dungeonCrawlers.integration.ThrottledDungeonActionBar;
+import me.lidan.dungeonCrawlers.integration.BukkitRewardChestListener;
+import me.lidan.dungeonCrawlers.integration.BukkitRewardChestVisuals;
+import me.lidan.dungeonCrawlers.integration.BukkitRewardMailboxListener;
+import me.lidan.dungeonCrawlers.integration.BukkitRingmasterArena;
 import me.lidan.dungeonCrawlers.integration.BukkitWorldProtectionListener;
-import me.lidan.dungeonCrawlers.integration.BukkitDungeonRunListener;
-import me.lidan.dungeonCrawlers.integration.BukkitDungeonLifecycleListener;
-import me.lidan.dungeonCrawlers.integration.BukkitDungeonActionBar;
-import me.lidan.dungeonCrawlers.integration.BukkitGhostState;
 import me.lidan.dungeonCrawlers.integration.ClassSelectorNpcService;
-import me.lidan.dungeonCrawlers.integration.NoOpClassSelectorNpcService;
 import me.lidan.dungeonCrawlers.integration.DebugSettings;
 import me.lidan.dungeonCrawlers.integration.DungeonMessages;
 import me.lidan.dungeonCrawlers.integration.DungeonPlaceholderExpansion;
-import me.lidan.dungeonCrawlers.authoring.RoomMarkerItemFactory;
-import me.lidan.dungeonCrawlers.integration.mythic.MythicMobsAdapter;
+import me.lidan.dungeonCrawlers.integration.NoOpClassSelectorNpcService;
+import me.lidan.dungeonCrawlers.integration.ThrottledDungeonActionBar;
 import me.lidan.dungeonCrawlers.integration.cave.CaveActionBarAdapter;
 import me.lidan.dungeonCrawlers.integration.cave.CaveItemsAdapter;
+import me.lidan.dungeonCrawlers.integration.cave.DungeonSupportItems;
+import me.lidan.dungeonCrawlers.integration.citizens.CitizensClassSelectorNpcService;
+import me.lidan.dungeonCrawlers.integration.mythic.MythicMobsAdapter;
 import me.lidan.dungeonCrawlers.integration.parties.PartyProviders;
+import me.lidan.dungeonCrawlers.integration.vault.VaultEconomyAdapter;
 import me.lidan.dungeonCrawlers.integration.worldedit.FaweGenerationAdapter;
 import me.lidan.dungeonCrawlers.integration.worldedit.JigsawMarkerPlacementListener;
 import me.lidan.dungeonCrawlers.integration.worldedit.WorldEditAdapter;
 import me.lidan.dungeonCrawlers.persistence.DurableRepository;
 import me.lidan.dungeonCrawlers.persistence.FileDurableRepository;
-import org.bukkit.Bukkit;
-import org.bukkit.event.Listener;
-import org.bukkit.entity.Player;
-import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.plugin.RegisteredServiceProvider;
-import net.milkbowl.vault.economy.Economy;
 import net.kyori.adventure.title.Title;
+import net.milkbowl.vault.economy.Economy;
+import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.World;
+import org.bukkit.entity.Player;
+import org.bukkit.event.Listener;
+import org.bukkit.plugin.RegisteredServiceProvider;
+import org.bukkit.plugin.java.JavaPlugin;
 import revxrsal.commands.Lamp;
 import revxrsal.commands.annotation.SuggestWith;
 import revxrsal.commands.bukkit.BukkitLamp;
@@ -108,16 +135,20 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.UUID;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 public final class DungeonCrawlers extends JavaPlugin {
-    private me.lidan.dungeonCrawlers.integration.BukkitFoundryRooms foundryRooms;
+    private BukkitFoundryRooms foundryRooms;
     private Lamp.Builder<BukkitCommandActor> commandHandlerBuilder;
     private ConfigRegistryService configRegistry;
     private PlayerReservationService reservations;
@@ -127,7 +158,7 @@ public final class DungeonCrawlers extends JavaPlugin {
     private TemplateAuthoringService authoring;
     private GenerationService generation;
     private ExecutorService generationExecutor;
-    private java.time.Clock phaseClock;
+    private Clock phaseClock;
     private String generationWorldName;
     private CentralUpdateService centralUpdates;
     private DoorService doors;
@@ -145,17 +176,17 @@ public final class DungeonCrawlers extends JavaPlugin {
     private BukkitProgressBarService progressBars;
     private SecretDiscoveryService phaseSeven;
     private PortalEncounterService phaseNine;
-    private me.lidan.dungeonCrawlers.integration.BukkitRewardChestVisuals rewardChestVisuals;
+    private BukkitRewardChestVisuals rewardChestVisuals;
     private DungeonPhaseElevenCommand phaseElevenCommand;
     private RewardEntitlementService rewards;
     private RewardClaimService claims;
     private BukkitBossIdentity bossIdentity;
     private MythicMobsAdapter mythicMobs;
     private PlayerLifecycleService lifecycle;
-    private me.lidan.dungeonCrawlers.core.difficulty.DungeonProgressionService progression;
-    private me.lidan.dungeonCrawlers.integration.BukkitDifficultyService difficultyService;
-    private me.lidan.dungeonCrawlers.integration.BukkitClassAbilityService classAbilities;
-    private me.lidan.dungeonCrawlers.integration.cave.DungeonSupportItems supportItems;
+    private DungeonProgressionService progression;
+    private BukkitDifficultyService difficultyService;
+    private BukkitClassAbilityService classAbilities;
+    private DungeonSupportItems supportItems;
     private DebugSettings debugSettings;
     private DungeonPlaceholderExpansion placeholderExpansion;
     private DungeonTimings timings;
@@ -163,9 +194,9 @@ public final class DungeonCrawlers extends JavaPlugin {
     private final Map<UUID, ScoreService.FinalScoreSnapshot> latestScores = new ConcurrentHashMap<>();
     private volatile boolean disabling;
 
-    public java.util.Optional<me.lidan.dungeonCrawlers.core.generation.GenerationService.LayoutContext>
-            getRunLayout(java.util.UUID instanceId) {
-        return generation == null ? java.util.Optional.empty() : generation.layoutContext(instanceId);
+    public Optional<GenerationService.LayoutContext>
+            getRunLayout(UUID instanceId) {
+        return generation == null ? Optional.empty() : generation.layoutContext(instanceId);
     }
 
     @Override
@@ -271,7 +302,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         initializePhaseFourServices(worldName);
     }
 
-    private java.time.Clock phaseClock() {
+    private Clock phaseClock() {
         if (phaseClock == null) phaseClock = Clock.systemUTC();
         return phaseClock;
     }
@@ -286,7 +317,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         int maximumPerInstance = configRegistry.snapshot().floors().values().stream()
                 .mapToInt(floor -> floor.limits().maxLoadedChunksPerInstance()).max().orElse(256);
         int maximumTotal = Math.multiplyExact(maximumPerInstance, generation.slots().size());
-        org.bukkit.World world = getServer().getWorld(worldName);
+        World world = getServer().getWorld(worldName);
         if (world == null) throw new IllegalStateException("generation world disappeared during Phase 4 setup");
         mythicMobs = new MythicMobsAdapter();
         chunkTickets = new BukkitChunkTicketService(this, world,
@@ -305,28 +336,28 @@ public final class DungeonCrawlers extends JavaPlugin {
                     cancelDeadlineInstance(instanceId);
                 }, true, timings);
         runPreparation.configureStateObserver(change -> getServer().getPluginManager().callEvent(
-                new me.lidan.dungeonCrawlers.events.DungeonRunStateChangedEvent(change)));
-        var classPreferences = new me.lidan.dungeonCrawlers.integration.BukkitClassPreferences(this);
+                new DungeonRunStateChangedEvent(change)));
+        var classPreferences = new BukkitClassPreferences(this);
         runPreparation.configureClassPreferences(classPreferences::read, classPreferences::write);
-        rewardChestVisuals = new me.lidan.dungeonCrawlers.integration.BukkitRewardChestVisuals(
+        rewardChestVisuals = new BukkitRewardChestVisuals(
                 instance -> runPreparation.info(instance).isPresent());
         phaseSeven = new SecretDiscoveryService(configRegistry::snapshot);
         lifecycle = new PlayerLifecycleService(centralUpdates, phaseClock(), this::handleLifecycleNotice, timings);
         bossIdentity = new BukkitBossIdentity(this);
         var bossGateway = new BukkitBossGateway(getServer(), this::generationWorld, mythicMobs, bossIdentity);
         var encounterFactories = EncounterFactoryRegistry.withBasic();
-        encounterFactories.register(me.lidan.dungeonCrawlers.core.encounter.RingmasterEncounter.ID, context ->
-                new me.lidan.dungeonCrawlers.core.encounter.RingmasterEncounter(context,
-                        new me.lidan.dungeonCrawlers.integration.BukkitRingmasterArena(context, this,
+        encounterFactories.register(RingmasterEncounter.ID, context ->
+                new RingmasterEncounter(context,
+                        new BukkitRingmasterArena(context, this,
                                 runPreparation, lifecycle, mythicMobs, difficultyService), phaseClock()));
-        encounterFactories.register(me.lidan.dungeonCrawlers.core.encounter.ChainboundEncounter.ID, context -> {
+        encounterFactories.register(ChainboundEncounter.ID, context -> {
             boolean impossible = generation.layoutContext(context.instanceId()).orElseThrow().difficulty().tier()
-                    == me.lidan.dungeonCrawlers.core.difficulty.Difficulty.IMPOSSIBLE;
+                    == Difficulty.IMPOSSIBLE;
             try {
-                var settings = me.lidan.dungeonCrawlers.config.FoundryPack.load(configFactory,
+                var settings = FoundryPack.load(configFactory,
                         getDataFolder().toPath().resolve("foundry.yml"));
-                return new me.lidan.dungeonCrawlers.core.encounter.ChainboundEncounter(context,
-                        new me.lidan.dungeonCrawlers.integration.BukkitChainboundArena(context, this, generation,
+                return new ChainboundEncounter(context,
+                        new BukkitChainboundArena(context, this, generation,
                                 runPreparation, lifecycle, teleportPermits, phaseClock()), settings, impossible, phaseClock());
             } catch (IOException exception) { throw new IllegalStateException(exception); }
         });
@@ -343,19 +374,19 @@ public final class DungeonCrawlers extends JavaPlugin {
                 () -> {
                     RegisteredServiceProvider<Economy> registration = getServer().getServicesManager()
                             .getRegistration(Economy.class);
-                    return registration == null ? null : new me.lidan.dungeonCrawlers.integration.vault.VaultEconomyAdapter(
+                    return registration == null ? null : new VaultEconomyAdapter(
                             registration.getProvider());
                 }, callback -> getServer().getScheduler().runTask(this, callback),
                 detail -> getLogger().warning(detail));
-        claims.configureClaimGuard(request -> new me.lidan.dungeonCrawlers.events.DungeonRewardClaimEvent(request).callEvent());
+        claims.configureClaimGuard(request -> new DungeonRewardClaimEvent(request).callEvent());
         claims.configureDeliveryObserver(delivery -> getServer().getPluginManager().callEvent(
-                new me.lidan.dungeonCrawlers.events.DungeonRewardDeliveredEvent(delivery)));
-        progression = new me.lidan.dungeonCrawlers.core.difficulty.DungeonProgressionService(durableRepository);
-        difficultyService = new me.lidan.dungeonCrawlers.integration.BukkitDifficultyService(
+                new DungeonRewardDeliveredEvent(delivery)));
+        progression = new DungeonProgressionService(durableRepository);
+        difficultyService = new BukkitDifficultyService(
                 this, generation, runPreparation, lifecycle, claims);
         combatGateway.configureDifficulty(difficultyService::spawn);
         bossGateway.configureDifficulty(difficultyService::spawn);
-        foundryRooms = new me.lidan.dungeonCrawlers.integration.BukkitFoundryRooms(this, generation, runPreparation,
+        foundryRooms = new BukkitFoundryRooms(this, generation, runPreparation,
                 lifecycle, combat, teleportPermits, phaseClock(), worldName);
         combat.configureObjectives(foundryRooms::complete, foundryRooms::cleanup);
         getServer().getPluginManager().registerEvents(foundryRooms, this);
@@ -479,7 +510,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         saveDefaultResourceIfMissing("floors/floor_3.yml");
         saveDefaultResourceIfMissing("rooms_foundry.yml");
         saveDefaultResourceIfMissing("foundry.yml");
-        try { me.lidan.dungeonCrawlers.config.FoundryPack.installTemplates(this); }
+        try { FoundryPack.installTemplates(this); }
         catch (IOException exception) { throw new IllegalStateException("Cannot install Foundry templates", exception); }
         saveDefaultResourceIfMissing("config.yml");
     }
@@ -514,7 +545,7 @@ public final class DungeonCrawlers extends JavaPlugin {
 
     private void registerCommands() {
         // Register commands
-        me.lidan.dungeonCrawlers.commands.AdminSuggestionProviders.register(commandHandlerBuilder, combat,
+        AdminSuggestionProviders.register(commandHandlerBuilder, combat,
                 runPreparation, new CaveItemsAdapter()::ids, mythicMobs::ids,
                 difficultyService::enemyIds, claims::reconciliationIds);
         commandHandlerBuilder.suggestionProviders().addProviderForAnnotation(SuggestWith.class, annotation -> {
@@ -525,7 +556,7 @@ public final class DungeonCrawlers extends JavaPlugin {
             if (annotation.value() != InstanceIdSuggestionProvider.class) return null;
             return new InstanceIdSuggestionProvider<BukkitCommandActor>(() -> generation.instances().stream()
                     .map(GenerationService.InstanceSnapshot::instanceId)
-                    .map(java.util.UUID::toString)
+                    .map(UUID::toString)
                     .toList());
         });
         commandHandlerBuilder.suggestionProviders().addProviderForAnnotation(SuggestWith.class, annotation -> {
@@ -548,7 +579,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         commandHandlerBuilder.suggestionProviders().addProviderForAnnotation(SuggestWith.class, annotation -> {
             if (annotation.value() != OfflinePlayerSuggestionProvider.class) return null;
             return new OfflinePlayerSuggestionProvider<BukkitCommandActor>(() -> Bukkit.getOnlinePlayers().stream()
-                    .map(Player::getName).filter(java.util.Objects::nonNull).toList());
+                    .map(Player::getName).filter(Objects::nonNull).toList());
         });
         commandHandlerBuilder.suggestionProviders().addProviderForAnnotation(SuggestWith.class, annotation -> {
             if (annotation.value() != RewardIdSuggestionProvider.class) return null;
@@ -577,7 +608,7 @@ public final class DungeonCrawlers extends JavaPlugin {
                 this::hasCompletionPending, debugSettings::enabled, debugSettings::setEnabled, scoreService));
         commandHandler.register(new DungeonAuthoringCommand(this, mainConfig, configRegistry, reservations, authoring,
                 generation::activeTemplateIds, progressBars));
-        var roomPreview = new me.lidan.dungeonCrawlers.commands.DungeonRoomPreviewCommand(configRegistry,
+        var roomPreview = new DungeonRoomPreviewCommand(configRegistry,
                 generation, phaseFiveCommand, getServer(), generationWorldName, teleportPermits, phaseClock(),
                 timings.teleportPermit(), callback -> getServer().getScheduler().runTaskLater(this, callback, 3L), progressBars);
         commandHandler.register(roomPreview);
@@ -589,8 +620,8 @@ public final class DungeonCrawlers extends JavaPlugin {
                 debugSettings::enabled, lifecycle, phaseSeven, latestScores::get, combat, phaseNine,
                 timings.teleportPermit()));
         commandHandler.register(phaseFiveCommand);
-        commandHandler.register(new me.lidan.dungeonCrawlers.commands.DungeonProgressionCommand(configRegistry, progression));
-        commandHandler.register(new me.lidan.dungeonCrawlers.commands.DungeonDifficultyDebugCommand(
+        commandHandler.register(new DungeonProgressionCommand(configRegistry, progression));
+        commandHandler.register(new DungeonDifficultyDebugCommand(
                 difficultyService, debugSettings::enabled, runPreparation, phaseFiveCommand));
         commandHandler.register(new DungeonPhaseSixCommand(combat, runPreparation, debugSettings::enabled));
         commandHandler.register(new DungeonPhaseSevenCommand(phaseSeven, runPreparation, debugSettings::enabled));
@@ -617,11 +648,11 @@ public final class DungeonCrawlers extends JavaPlugin {
                         || phaseSeven.secrets(instance).stream().anyMatch(secret -> secret.worldPoint().equals(point))));
         registerEvent(new BukkitDungeonRunListener(phaseFiveCommand, runPreparation, generationWorldName, phaseSeven));
         registerEvent(difficultyService);
-        classAbilities = new me.lidan.dungeonCrawlers.integration.BukkitClassAbilityService(this,
+        classAbilities = new BukkitClassAbilityService(this,
                 runPreparation, lifecycle, generation, configRegistry, entityIdentity, bossIdentity,
                 difficultyService, phaseClock(), generationWorldName);
         registerEvent(classAbilities);
-        supportItems = new me.lidan.dungeonCrawlers.integration.cave.DungeonSupportItems(this,
+        supportItems = new DungeonSupportItems(this,
                 classAbilities::activateSupport);
         supportItems.register();
         registerEvent(new BukkitDungeonLifecycleListener(lifecycle, runPreparation, this, phaseClock(),
@@ -642,8 +673,8 @@ public final class DungeonCrawlers extends JavaPlugin {
         Bukkit.getOnlinePlayers().forEach(rewardMailboxListener::recover);
     }
 
-    private org.bukkit.World generationWorld() {
-        org.bukkit.World world = getServer().getWorld(generationWorldName);
+    private World generationWorld() {
+        World world = getServer().getWorld(generationWorldName);
         if (world == null) throw new IllegalStateException("generation world is not loaded: " + generationWorldName);
         return world;
     }
@@ -652,7 +683,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         var context = generation.layoutContext(snapshot.instanceId()).orElse(null);
         var run = runPreparation.info(snapshot.instanceId()).orElse(null);
         var lifecycleSnapshot = lifecycle.info(snapshot.instanceId()).orElse(null);
-        org.bukkit.World world = getServer().getWorld(generationWorldName);
+        World world = getServer().getWorld(generationWorldName);
         if (context == null || run == null || lifecycleSnapshot == null || world == null) return false;
         if (!lifecycle.complete(snapshot.instanceId()).successful()) return false;
         List<RewardEntitlementService.Participant> participants = rewardParticipants(run, lifecycleSnapshot);
@@ -663,15 +694,15 @@ public final class DungeonCrawlers extends JavaPlugin {
                 context.floor().rewards(), context.difficulty().tier()));
         var dungeonXp = recordProgression(snapshot.instanceId(), true, null);
         var point = snapshot.rewardChest();
-        world.getBlockAt(point.x(), point.y(), point.z()).setType(org.bukkit.Material.ENDER_CHEST, false);
+        world.getBlockAt(point.x(), point.y(), point.z()).setType(Material.ENDER_CHEST, false);
         try {
-            rewardChestVisuals.show(snapshot.instanceId(), new org.bukkit.Location(world, point.x(), point.y(), point.z()));
+            rewardChestVisuals.show(snapshot.instanceId(), new Location(world, point.x(), point.y(), point.z()));
         } catch (RuntimeException error) {
             getLogger().warning("instance=" + snapshot.instanceId() + " reward chest visual failed: " + error.getMessage());
         }
         participants.stream().map(RewardEntitlementService.Participant::playerId)
                 .map(getServer()::getPlayer)
-                .filter(java.util.Objects::nonNull)
+                .filter(Objects::nonNull)
                 .forEach(player -> DungeonMessages.send(player, ScoreResultRenderer.render(score,
                         scoreService.freeTime(), scoreService.penaltyInterval(), context.floor().displayName(),
                         context.difficulty().tier().displayName(), dungeonXp.getOrDefault(player.getUniqueId(), 0D))));
@@ -697,7 +728,7 @@ public final class DungeonCrawlers extends JavaPlugin {
             List<RewardEntitlementService.Participant> participants = rewardParticipants(run, lifecycleSnapshot);
             rewards.register(new RewardEntitlementService.Completion(instanceId, context.seed(), failedAt,
                     score.finalSnapshot(), participants, context.floor().rewards(), context.difficulty().tier()));
-            run.participants().stream().map(getServer()::getPlayer).filter(java.util.Objects::nonNull)
+            run.participants().stream().map(getServer()::getPlayer).filter(Objects::nonNull)
                     .forEach(player -> DungeonMessages.send(player, ScoreResultRenderer.render(score,
                             scoreService.freeTime(), scoreService.penaltyInterval(), context.floor().displayName(),
                             context.difficulty().tier().displayName(), dungeonXp.getOrDefault(player.getUniqueId(), 0D))));
@@ -710,10 +741,10 @@ public final class DungeonCrawlers extends JavaPlugin {
     private List<RewardEntitlementService.Participant> rewardParticipants(
             RunPreparationService.RunSnapshot run, PlayerLifecycleService.InstanceSnapshot lifecycleSnapshot) {
         var lifecyclePlayers = lifecycleSnapshot.players().stream().collect(
-                java.util.stream.Collectors.toMap(PlayerLifecycleService.PlayerSnapshot::playerId, value -> value));
+                Collectors.toMap(PlayerLifecycleService.PlayerSnapshot::playerId, value -> value));
         return run.participants().stream()
                 .map(lifecyclePlayers::get)
-                .filter(java.util.Objects::nonNull)
+                .filter(Objects::nonNull)
                 .filter(player -> player.state() != PlayerLifecycleService.PlayerState.REMOVED)
                 .map(player -> new RewardEntitlementService.Participant(player.playerId(), true,
                         getServer().getPlayer(player.playerId()) != null,
@@ -725,14 +756,14 @@ public final class DungeonCrawlers extends JavaPlugin {
                                                      PlayerLifecycleService.InstanceSnapshot lifecycleSnapshot,
                                                      boolean successful, Instant endedAt) {
         var lifecyclePlayers = lifecycleSnapshot.players().stream().collect(
-                java.util.stream.Collectors.toMap(PlayerLifecycleService.PlayerSnapshot::playerId, value -> value));
+                Collectors.toMap(PlayerLifecycleService.PlayerSnapshot::playerId, value -> value));
         int totalSecrets = phaseSeven.info(run.instanceId()).map(value -> value.secrets().size()).orElse(0);
         int foundSecrets = phaseSeven.info(run.instanceId()).map(value -> (int) value.secrets().stream()
                 .filter(SecretDiscoveryService.SecretSnapshot::discovered).count()).orElse(0);
-        int deaths = run.participants().stream().map(lifecyclePlayers::get).filter(java.util.Objects::nonNull)
+        int deaths = run.participants().stream().map(lifecyclePlayers::get).filter(Objects::nonNull)
                 .mapToInt(PlayerLifecycleService.PlayerSnapshot::deaths).sum();
         boolean runicPet = run.participants().stream().map(lifecyclePlayers::get)
-                .filter(java.util.Objects::nonNull)
+                .filter(Objects::nonNull)
                 .filter(player -> player.state() != PlayerLifecycleService.PlayerState.REMOVED)
                 .anyMatch(player -> difficultyService.activeRunicPet(player.playerId()));
         Duration elapsed = run.startedAt() == null ? Duration.ZERO
@@ -761,7 +792,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         RunPreparationService.RunSnapshot run = runPreparation.info(notice.instanceId()).orElse(null);
         if (run == null) return;
         List<Player> players = run.participants().stream().map(getServer()::getPlayer)
-                .filter(java.util.Objects::nonNull).toList();
+                .filter(Objects::nonNull).toList();
         switch (notice.event()) {
             case PREPARATION_WARNING -> notifyDeadline(players,
                     "<yellow>Class selection closes in <white>" + formatSeconds(notice.secondsRemaining())
@@ -811,7 +842,7 @@ public final class DungeonCrawlers extends JavaPlugin {
 
     private void notifyCombatRoom(CombatRoomService.RoomNotice notice) {
         generation.info(notice.instanceId()).ifPresent(instance -> instance.participants().forEach(playerId -> {
-            org.bukkit.entity.Player player = getServer().getPlayer(playerId);
+            Player player = getServer().getPlayer(playerId);
             if (player == null) return;
             String message = notice.unlockedRoom() < 0
                     ? "<green>Room <white>" + notice.clearedRoom() + "</white> cleared.</green>"
@@ -862,7 +893,7 @@ public final class DungeonCrawlers extends JavaPlugin {
                 lifecycle.info(notice.instanceId()).ifPresent(snapshot -> snapshot.players().stream()
                         .filter(value -> value.state() == PlayerLifecycleService.PlayerState.GHOST)
                         .map(value -> getServer().getPlayer(value.playerId()))
-                        .filter(java.util.Objects::nonNull)
+                        .filter(Objects::nonNull)
                         .forEach(BukkitGhostState::exit));
                 RunPreparationService.RunSnapshot run = runPreparation.info(notice.instanceId()).orElse(null);
                 boolean allParticipantsOffline = allParticipantsOffline(notice.instanceId());
@@ -947,7 +978,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         var context = generation.layoutContext(instance).orElse(null);
         var run = runPreparation.info(instance).orElse(null);
         if (context == null || !context.progressionEnabled() || run == null || run.startedAt() == null) return Map.of();
-        Map<UUID, Double> dungeonXp = new java.util.HashMap<>();
+        Map<UUID, Double> dungeonXp = new HashMap<>();
         for (UUID participant : onlyPlayer == null ? run.participants() : List.of(onlyPlayer)) {
             if (onlyPlayer == null && lifecycle.player(instance, participant)
                     .map(value -> value.state() == PlayerLifecycleService.PlayerState.REMOVED).orElse(true)) continue;
@@ -957,10 +988,10 @@ public final class DungeonCrawlers extends JavaPlugin {
         return dungeonXp;
     }
 
-    void awardDungeonXp(me.lidan.dungeonCrawlers.core.difficulty.DungeonProgressionService.Outcome outcome) {
+    void awardDungeonXp(DungeonProgressionService.Outcome outcome) {
         Player player = getServer().getPlayer(outcome.player());
         if (player == null || !player.isOnline()) return;
-        var nativeSkills = me.lidan.cavecrawlers.skills.SkillsManager.getInstance();
+        var nativeSkills = SkillsManager.getInstance();
         var skill = nativeSkills.getSkillInfo("dungeon");
         if (skill == null) return;
         try {
@@ -971,7 +1002,7 @@ public final class DungeonCrawlers extends JavaPlugin {
     }
 
     private void deliverDungeonXp() {
-        var nativeProfiles = me.lidan.cavecrawlers.storage.PlayerSkillsManager.getInstance();
+        var nativeProfiles = PlayerSkillsManager.getInstance();
         for (Player player : getServer().getOnlinePlayers()) {
             if (nativeProfiles.canPersistPlayer(player.getUniqueId())) {
                 progression.deliver(player.getUniqueId(), this::awardDungeonXp);
@@ -1021,7 +1052,7 @@ public final class DungeonCrawlers extends JavaPlugin {
                     .flatMap(instance -> instance.players().stream())
                     .filter(value -> value.state() == PlayerLifecycleService.PlayerState.GHOST)
                     .map(value -> getServer().getPlayer(value.playerId()))
-                    .filter(java.util.Objects::nonNull)
+                    .filter(Objects::nonNull)
                     .forEach(BukkitGhostState::exit);
         }
         int restored = phaseFiveCommand == null ? 0 : phaseFiveCommand.restoreOnlinePlayersForDisable();
@@ -1077,7 +1108,7 @@ public final class DungeonCrawlers extends JavaPlugin {
             return new NoOpClassSelectorNpcService();
         }
         try {
-            ClassSelectorNpcService service = new me.lidan.dungeonCrawlers.integration.citizens.CitizensClassSelectorNpcService(
+            ClassSelectorNpcService service = new CitizensClassSelectorNpcService(
                     this, classMenuService::open, configuredClassSelectorSkin());
             getLogger().info("Class Selector NPC: Yes");
             return service;

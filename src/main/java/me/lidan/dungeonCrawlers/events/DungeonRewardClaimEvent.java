@@ -6,6 +6,8 @@ import org.bukkit.event.Cancellable;
 import org.bukkit.event.Event;
 import org.bukkit.event.HandlerList;
 
+import java.util.Objects;
+
 /** Cancellable request before a new reward purchase, never an owned reward delivery. */
 public final class DungeonRewardClaimEvent extends Event implements Cancellable {
     private static final HandlerList HANDLERS = new HandlerList();
@@ -13,7 +15,7 @@ public final class DungeonRewardClaimEvent extends Event implements Cancellable 
     private boolean cancelled;
     public DungeonRewardClaimEvent(ClaimRequest request) {
         super(!Bukkit.isPrimaryThread());
-        this.request = java.util.Objects.requireNonNull(request);
+        this.request = Objects.requireNonNull(request);
     }
     public ClaimRequest getRequest() { return request; }
     @Override public boolean isCancelled() { return cancelled; }

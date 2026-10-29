@@ -2,13 +2,13 @@ package me.lidan.dungeonCrawlers.core.claim;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonDeserializationContext;
+import com.google.gson.JsonDeserializer;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
-import com.google.gson.JsonDeserializationContext;
-import com.google.gson.JsonDeserializer;
 import com.google.gson.JsonSerializationContext;
 import com.google.gson.JsonSerializer;
 import me.lidan.dungeonCrawlers.core.reward.RewardEntitlementService;
@@ -21,6 +21,7 @@ import me.lidan.dungeonCrawlers.persistence.DurableRepository;
 import me.lidan.dungeonCrawlers.persistence.DurableSubmission;
 import me.lidan.dungeonCrawlers.persistence.DurableWrite;
 import me.lidan.dungeonCrawlers.persistence.model.CompletedRunRecordCodec;
+import org.bukkit.NamespacedKey;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
@@ -28,7 +29,6 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
-import org.bukkit.NamespacedKey;
 
 import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
@@ -38,18 +38,23 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * Owns the paid reward claim boundary.
@@ -92,9 +97,9 @@ public final class RewardClaimService {
         public DeliveredReward { items = Map.copyOf(items); }
     }
     public record ClaimRequest(UUID instanceId, UUID playerId, UUID offerId, String rewardId, long price) { }
-    private java.util.function.Predicate<ClaimRequest> claimGuard = ignored -> true;
-    private final java.util.Set<String> checkingClaims = new java.util.HashSet<>();
-    public void configureClaimGuard(java.util.function.Predicate<ClaimRequest> guard) {
+    private Predicate<ClaimRequest> claimGuard = ignored -> true;
+    private final Set<String> checkingClaims = new HashSet<>();
+    public void configureClaimGuard(Predicate<ClaimRequest> guard) {
         claimGuard = Objects.requireNonNull(guard);
     }
     private Consumer<DeliveredReward> deliveryObserver = ignored -> { };
@@ -1315,7 +1320,7 @@ public final class RewardClaimService {
 
     private static Throwable unwrap(Throwable failure) {
         Throwable current = failure;
-        while ((current instanceof CompletionException || current instanceof java.util.concurrent.ExecutionException)
+        while ((current instanceof CompletionException || current instanceof ExecutionException)
                 && current.getCause() != null) current = current.getCause();
         return current;
     }
@@ -1432,7 +1437,7 @@ public final class RewardClaimService {
             Objects.requireNonNull(audit, "audit");
             if (recordVersion < 0) throw new IllegalArgumentException("record version must not be negative");
             offers = Map.copyOf(offers);
-            mailbox = mailbox.entrySet().stream().collect(java.util.stream.Collectors.toUnmodifiableMap(
+            mailbox = mailbox.entrySet().stream().collect(Collectors.toUnmodifiableMap(
                     Map.Entry::getKey, entry -> List.copyOf(entry.getValue())));
             audit = List.copyOf(audit);
         }

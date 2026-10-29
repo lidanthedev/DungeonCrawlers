@@ -5,8 +5,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.RewardDefinition;
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.RewardItem;
-import me.lidan.dungeonCrawlers.core.reward.RewardEntitlementService;
 import me.lidan.dungeonCrawlers.core.difficulty.Difficulty;
+import me.lidan.dungeonCrawlers.core.reward.RewardEntitlementService;
 import me.lidan.dungeonCrawlers.core.reward.RewardModels.ItemPayload;
 import me.lidan.dungeonCrawlers.core.score.DungeonRank;
 import me.lidan.dungeonCrawlers.core.score.ScoreService;
@@ -20,31 +20,32 @@ import me.lidan.dungeonCrawlers.persistence.DurableWriteReceipt;
 import org.bukkit.Material;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.inventory.ItemStack;
-import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockbukkit.mockbukkit.MockBukkit;
 import org.mockbukkit.mockbukkit.entity.PlayerMock;
+import org.mockito.Mockito;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -338,10 +339,10 @@ class RewardClaimServiceTest {
         claims.deliver(INSTANCE, PLAYER, online, delivery::set);
 
         assertTrue(delivery.get().successful(), delivery.get().detail());
-        assertTrue(java.util.Arrays.stream(online.getInventory().getContents())
+        assertTrue(Arrays.stream(online.getInventory().getContents())
                 .anyMatch(item -> item != null && item.getType() == Material.GOLD_INGOT));
-        ItemStack delivered = java.util.Arrays.stream(online.getInventory().getContents())
-                .filter(java.util.Objects::nonNull)
+        ItemStack delivered = Arrays.stream(online.getInventory().getContents())
+                .filter(Objects::nonNull)
                 .filter(item -> item.getType() == Material.GOLD_INGOT)
                 .findFirst().orElseThrow();
         assertFalse(RewardClaimService.isPending(delivered));
@@ -456,7 +457,7 @@ class RewardClaimServiceTest {
         PlayerMock online = new PlayerMock(MockBukkit.getMock(), "Claimant", PLAYER);
         MockBukkit.getMock().addPlayer(online);
         ItemStack[] full = new ItemStack[online.getInventory().getSize()];
-        java.util.Arrays.fill(full, new ItemStack(Material.STONE, 64));
+        Arrays.fill(full, new ItemStack(Material.STONE, 64));
         full[0] = new ItemStack(Material.GOLD_INGOT, 63);
         online.getInventory().setContents(full);
         AtomicInteger withdrawals = new AtomicInteger();
@@ -501,7 +502,7 @@ class RewardClaimServiceTest {
 
         assertTrue(claim.get().successful(), claim.get().detail());
         ItemStack[] full = new ItemStack[online.getInventory().getSize()];
-        java.util.Arrays.fill(full, new ItemStack(Material.STONE, 64));
+        Arrays.fill(full, new ItemStack(Material.STONE, 64));
         online.getInventory().setContents(full);
         AtomicReference<RewardClaimService.DeliveryResult> delivery = new AtomicReference<>();
 
@@ -702,8 +703,8 @@ class RewardClaimServiceTest {
             public boolean isConfigured(String itemId) { return true; }
 
             @Override
-            public java.util.Optional<ItemStack> build(String itemId, int amount) {
-                return java.util.Optional.of(new ItemStack(itemId.equals("GOLD") ? Material.GOLD_INGOT : Material.OAK_LOG,
+            public Optional<ItemStack> build(String itemId, int amount) {
+                return Optional.of(new ItemStack(itemId.equals("GOLD") ? Material.GOLD_INGOT : Material.OAK_LOG,
                         amount));
             }
         };
@@ -719,7 +720,7 @@ class RewardClaimServiceTest {
         claims.grantLoot(drop, player, "RUNIC_FRAGMENT", 4);
         assertTrue(claims.info(drop, player.getUniqueId()).isPresent());
         player.getInventory().clear(); claims.deliverPending(player); claims.grantLoot(drop, player, "RUNIC_FRAGMENT", 4);
-        int amount = Arrays.stream(player.getInventory().getContents()).filter(java.util.Objects::nonNull)
+        int amount = Arrays.stream(player.getInventory().getContents()).filter(Objects::nonNull)
                 .mapToInt(ItemStack::getAmount).sum();
         assertEquals(4, amount);
     }
