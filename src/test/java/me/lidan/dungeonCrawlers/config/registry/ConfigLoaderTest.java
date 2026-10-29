@@ -1,6 +1,9 @@
 package me.lidan.dungeonCrawlers.config.registry;
 
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.RoomType;
+import me.lidan.cavecrawlers.utils.BoostedCustomConfig;
+import org.bukkit.plugin.java.JavaPlugin;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -14,9 +17,20 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 
 class ConfigLoaderTest {
     @TempDir Path directory;
+
+    @BeforeAll
+    static void initializeNativeConfigWithoutDependingOnTestOrder() throws Exception {
+        try (var nativePlugin = mockStatic(JavaPlugin.class)) {
+            nativePlugin.when(() -> JavaPlugin.getProvidingPlugin(BoostedCustomConfig.class))
+                    .thenReturn(mock(JavaPlugin.class));
+            Class.forName(BoostedCustomConfig.class.getName());
+        }
+    }
 
     @Test
     void builtInPackLoadsWithDefaultsAndStableHash() throws Exception {
