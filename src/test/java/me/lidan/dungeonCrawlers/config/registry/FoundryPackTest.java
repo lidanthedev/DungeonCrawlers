@@ -54,7 +54,7 @@ class FoundryPackTest {
         Files.writeString(file, "schema-version: 3\nnumber: 3\nboss: { mob: AdminBoss }\ngeneration: { rooms: 12 }\n");
         var factory = new BoostedConfigFactory(); factory.migrateFloor(file);
         var config = factory.open(file);
-        assertEquals(4, BoostedConfigFactory.schemaVersion(config));
+        assertEquals(5, BoostedConfigFactory.schemaVersion(config));
         assertEquals("AdminBoss", config.getString("boss.mob"));
         assertEquals(12, config.getInt("generation.rooms"));
         assertTrue(config.getList("generation.room-pool").isEmpty());

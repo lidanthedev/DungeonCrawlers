@@ -1,0 +1,117 @@
+# Native CaveCrawlers items; installed once, preserving later administrator edits.
+# Prices calibrated against live Evoker (64k), Warden (320k) and Wither (640k) gear.
+DC_JESTER_CAP:
+  name: Jester Cap
+  material: LEATHER_HELMET
+  type: ARMOR
+  rarity: RARE
+  description: Discarded stagewear from the Mad Ringmaster's troupe.
+  stats:
+    HEALTH: 220
+    DEFENSE: 180
+    STRENGTH: 35
+    INTELLIGENCE: 100
+  sell-price: 64000
+  color: 9713340
+DC_JESTER_COAT:
+  name: Jester Coat
+  material: LEATHER_CHESTPLATE
+  type: ARMOR
+  rarity: RARE
+  description: Discarded stagewear from the Mad Ringmaster's troupe.
+  stats:
+    HEALTH: 350
+    DEFENSE: 260
+    STRENGTH: 50
+    INTELLIGENCE: 80
+  sell-price: 64000
+  color: 9713340
+DC_JESTER_TROUSERS:
+  name: Jester Trousers
+  material: LEATHER_LEGGINGS
+  type: ARMOR
+  rarity: RARE
+  description: Discarded stagewear from the Mad Ringmaster's troupe.
+  stats:
+    HEALTH: 280
+    DEFENSE: 220
+    STRENGTH: 40
+    INTELLIGENCE: 80
+  sell-price: 64000
+  color: 2433077
+DC_ACROBAT_BOOTS:
+  name: Acrobat Boots
+  material: LEATHER_BOOTS
+  type: ARMOR
+  rarity: RARE
+  description: Discarded stagewear from the Mad Ringmaster's troupe.
+  stats:
+    HEALTH: 200
+    DEFENSE: 160
+    STRENGTH: 30
+    INTELLIGENCE: 50
+    SPEED: 60
+  sell-price: 64000
+  color: 14174309
+DC_STAGE_CUTLASS:
+  name: Stage Cutlass
+  material: IRON_SWORD
+  type: SWORD
+  rarity: RARE
+  description: A dull prop blade with one surprisingly sharp edge.
+  stats:
+    DAMAGE: 400
+    STRENGTH: 200
+    CRIT_DAMAGE: 20
+  sell-price: 64000
+DC_CARDTHROWER:
+  name: Cardthrower
+  material: BOW
+  type: BOW
+  rarity: EPIC
+  description: The house always deals twice.
+  stats:
+    DAMAGE: 400
+    STRENGTH: 220
+    CRIT_DAMAGE: 25
+  sell-price: 160000
+  ability: MULTI_SHORT_BOW{amount:2,yawDiff:8,description:"Instantly shoots two arrows
+    in a card fan."}
+DC_RINGMASTER_MASK:
+  name: Ringmaster Mask
+  material: LEATHER_HELMET
+  type: ARMOR
+  rarity: EPIC
+  description: The painted smile left behind after the encore.
+  stats:
+    HEALTH: 450
+    DEFENSE: 300
+    STRENGTH: 60
+    INTELLIGENCE: 200
+  sell-price: 320000
+  color: 15259834
+DC_RINGMASTER_CANE:
+  name: Ringmaster's Cane
+  material: BLAZE_ROD
+  type: WAND
+  rarity: EPIC
+  description: A flash of violet light. The next act starts now.
+  stats:
+    DAMAGE: 200
+    INTELLIGENCE: 250
+    ABILITY_DAMAGE: 5
+  sell-price: 320000
+  ability: BASIC_LASER{particle:WITCH,name:"Spotlight",cost:100,cooldown:1000,baseAbilityDamage:1500,abilityScaling:1.0,description:"Fire
+    a violet spotlight at your target."}
+DC_ENCORE_SCYTHE:
+  name: Encore Scythe
+  material: IRON_HOE
+  type: SWORD
+  rarity: EPIC
+  description: The final curtain falls with a crooked blade.
+  stats:
+    DAMAGE: 600
+    STRENGTH: 300
+    CRIT_DAMAGE: 40
+    ATTACK_SPEED: 20
+  sell-price: 640000

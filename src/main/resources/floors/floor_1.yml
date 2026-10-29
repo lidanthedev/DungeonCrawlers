@@ -1,4 +1,4 @@
-schema-version: 4
+schema-version: 5
 id: floor_1
 number: 1
 display-name: "<gold>Floor I"
@@ -32,8 +32,125 @@ rewards:
     rolls: 1
     unique: false
     items:
-      - { item: UNDEAD_ESSENCE, weight: 70, amount: "3-8" }
-      - { item: CRYPT_FRAGMENT, weight: 30, magic-find-sensitive: true }
+    - item: DC_JESTER_CAP
+      weight: 20
+    - item: DC_JESTER_COAT
+      weight: 20
+    - item: DC_JESTER_TROUSERS
+      weight: 20
+    - item: DC_ACROBAT_BOOTS
+      weight: 20
+    - item: DC_STAGE_CUTLASS
+      weight: 20
+  gold:
+    enabled: true
+    price: 200000
+    min-score: 0
+    rolls: 1
+    unique: false
+    items:
+    - item: DC_JESTER_CAP
+      weight: 18
+    - item: DC_JESTER_COAT
+      weight: 18
+    - item: DC_JESTER_TROUSERS
+      weight: 18
+    - item: DC_ACROBAT_BOOTS
+      weight: 18
+    - item: DC_STAGE_CUTLASS
+      weight: 18
+    - item: DC_CARDTHROWER
+      weight: 8
+    - item: DC_RINGMASTER_MASK
+      weight: 1
+      magic-find-sensitive: true
+    - item: DC_RINGMASTER_CANE
+      weight: 1
+      magic-find-sensitive: true
+  diamond:
+    enabled: true
+    price: 320000
+    min-score: 0
+    rolls: 1
+    unique: false
+    items:
+    - item: DC_JESTER_CAP
+      weight: 15
+    - item: DC_JESTER_COAT
+      weight: 15
+    - item: DC_JESTER_TROUSERS
+      weight: 15
+    - item: DC_ACROBAT_BOOTS
+      weight: 15
+    - item: DC_STAGE_CUTLASS
+      weight: 15
+    - item: DC_CARDTHROWER
+      weight: 15
+    - item: DC_RINGMASTER_MASK
+      weight: 5
+      magic-find-sensitive: true
+    - item: DC_RINGMASTER_CANE
+      weight: 4
+      magic-find-sensitive: true
+    - item: DC_ENCORE_SCYTHE
+      weight: 1
+      magic-find-sensitive: true
+  emerald:
+    enabled: true
+    price: 640000
+    min-score: 230
+    rolls: 1
+    unique: false
+    items:
+    - item: DC_JESTER_CAP
+      weight: 12
+    - item: DC_JESTER_COAT
+      weight: 12
+    - item: DC_JESTER_TROUSERS
+      weight: 12
+    - item: DC_ACROBAT_BOOTS
+      weight: 12
+    - item: DC_STAGE_CUTLASS
+      weight: 12
+    - item: DC_CARDTHROWER
+      weight: 20
+    - item: DC_RINGMASTER_MASK
+      weight: 8
+      magic-find-sensitive: true
+    - item: DC_RINGMASTER_CANE
+      weight: 9
+      magic-find-sensitive: true
+    - item: DC_ENCORE_SCYTHE
+      weight: 3
+      magic-find-sensitive: true
+  obsidian:
+    enabled: true
+    price: 1280000
+    min-score: 270
+    rolls: 1
+    unique: false
+    items:
+    - item: DC_JESTER_CAP
+      weight: 8
+    - item: DC_JESTER_COAT
+      weight: 8
+    - item: DC_JESTER_TROUSERS
+      weight: 8
+    - item: DC_ACROBAT_BOOTS
+      weight: 8
+    - item: DC_STAGE_CUTLASS
+      weight: 8
+    - item: DC_CARDTHROWER
+      weight: 25
+    - item: DC_RINGMASTER_MASK
+      weight: 13
+      magic-find-sensitive: true
+    - item: DC_RINGMASTER_CANE
+      weight: 15
+      magic-find-sensitive: true
+    - item: DC_ENCORE_SCYTHE
+      weight: 7
+      magic-find-sensitive: true
 dungeon-xp:
   completion: 100
   failure-factor: 0.10

@@ -1,6 +1,7 @@
 package me.lidan.dungeonCrawlers.config;
 
 import me.lidan.cavecrawlers.boostedyaml.block.implementation.Section;
+import me.lidan.cavecrawlers.boostedyaml.YamlDocument;
 import me.lidan.cavecrawlers.boostedyaml.settings.loader.LoaderSettings;
 import me.lidan.cavecrawlers.boostedyaml.settings.updater.UpdaterSettings;
 import me.lidan.cavecrawlers.utils.BasicDefaultVersioning;
@@ -111,7 +112,7 @@ public class BoostedConfigFactory {
     public void migrateFloor(Path path) throws IOException {
         BoostedCustomConfig config = open(path);
         int version = schemaVersion(config);
-        if (version < 1 || version > 3) return;
+        if (version < 1 || version > 4) return;
         Path backup = path.getParent().getParent().resolve("backups/floors-v" + version).resolve(path.getFileName());
         Files.createDirectories(backup.getParent());
         if (!Files.exists(backup)) Files.copy(path, backup, StandardCopyOption.COPY_ATTRIBUTES);
@@ -119,7 +120,19 @@ public class BoostedConfigFactory {
         if (!config.contains("dungeon-xp.completion", true)) config.set("dungeon-xp.completion", 100.0 * number * number);
         if (!config.contains("dungeon-xp.failure-factor", true)) config.set("dungeon-xp.failure-factor", .10);
         if (!config.contains("generation.room-pool", true)) config.set("generation.room-pool", List.of());
-        config.set(VERSION_ROUTE, 4);
+        // Replace only the shipped placeholder pool; custom rewards and authored room references survive.
+        Map<String, Object> placeholder = Map.of("wooden", Map.of("enabled", true, "price", 0,
+                "min-score", 0, "rolls", 1, "unique", false, "items", List.of(
+                        Map.of("item", "UNDEAD_ESSENCE", "weight", 70, "amount", "3-8"),
+                        Map.of("item", "CRYPT_FRAGMENT", "weight", 30, "magic-find-sensitive", true))));
+        if ("floor_1".equals(config.getString("id"))
+                && placeholder.equals(toPlainValues(config).get("rewards"))) {
+            try (InputStream defaults = BoostedConfigFactory.class.getClassLoader().getResourceAsStream("floors/floor_1.yml")) {
+                if (defaults == null) throw new IOException("missing bundled Floor 1 defaults");
+                config.set("rewards", toPlainValues(YamlDocument.create(defaults)).get("rewards"));
+            }
+        }
+        config.set(VERSION_ROUTE, 5);
         if (!config.save()) throw new IOException("failed to migrate floor " + path.getFileName());
     }
 
