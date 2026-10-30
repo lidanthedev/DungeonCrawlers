@@ -120,3 +120,25 @@ Actual combat, weapon firing, GUI claims and sales require a player test.
   Cane and Scythe passed native item serialization probes with the revised definitions.
 - The menu ordering regression verifies Wooden/Gold/Diamond/Emerald/Obsidian from shuffled input,
   including locked high-score chests. No new player dungeon run or visual GUI check was performed.
+
+## Starter mage deployment, 2026-10-30
+
+- User requested Griffin T5 armor with additional Intelligence and Ability Damage. Verified all
+  four live T5 armor files: 3,600 Health/Defense, 700 Strength, 600 Intelligence, 20 Ability Damage,
+  50 Crit Damage, 20 Crit Chance and 25 Magic Find; boots have 200 Speed.
+- Ordinary reward armor now has 1,000 Intelligence and 40 Ability Damage per piece on that T5
+  baseline. Mask has 3,800 Health/Defense, 750 Strength, 1,200 Intelligence, 50 Ability Damage,
+  60 Crit Damage, 25 Crit Chance and 30 Magic Find. Cane has 1,200 Intelligence / 40 Ability Damage.
+  Four ordinary pieces total 4,000 Intelligence / 160 Ability Damage before class/other bonuses.
+- Built and uploaded version `1.0+f7649e9`, SHA-256
+  `977ff1ecbca711b8f03fbf7ad9f849b028fff90fad8d5f34271f3215e44305a8`.
+  Java 21 build passed all 468 tests; the committed artifact passed the external API shading check.
+  Six native definitions were backed up under `backups/rewards-mage-t5-20261030/` and updated.
+- All six changed items passed live build/serialization probes. The newer live core already
+  coordinates addon reloads; an unnecessary additional addon reload caused duplicate dynamic-stat
+  registrations. A single `cc reload all` restored every addon successfully at 18:12:48 UTC.
+  Do not follow the newer core's coordinated reload with another `cc reload addons`.
+- Operations at 18:13:10 UTC: zero instances/reservations, starts Enabled, recovery Idle,
+  no blockers. Config and representative item probes passed again after recovery.
+  Chest prices, score gates and descriptions retain their prior configuration.
+- No live combat or damage-output calibration was performed for these mage stats.
