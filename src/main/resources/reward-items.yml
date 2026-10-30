@@ -1,5 +1,5 @@
 # Native CaveCrawlers definitions; installed once, preserving later administrator edits.
-# Combat stats use live Griffin T4, Floor 8 and Phobos shop gear as the baseline.
+# Armor uses Griffin T5 combat stats with extra Intelligence and Ability Damage for mages.
 # Sell prices remain calibrated against native NPC sell values.
 DC_JESTER_CAP:
   name: Jester Cap
@@ -7,14 +7,14 @@ DC_JESTER_CAP:
   type: ARMOR
   rarity: EPIC
   stats:
-    HEALTH: 3200
-    DEFENSE: 3200
-    STRENGTH: 600
-    INTELLIGENCE: 550
+    HEALTH: 3600
+    DEFENSE: 3600
+    STRENGTH: 700
+    INTELLIGENCE: 1000
     CRIT_DAMAGE: 50
     CRIT_CHANCE: 20
-    ABILITY_DAMAGE: 20
-    MAGIC_FIND: 20
+    ABILITY_DAMAGE: 40
+    MAGIC_FIND: 25
   sell-price: 64000
   color: 9713340
 DC_JESTER_COAT:
@@ -23,14 +23,14 @@ DC_JESTER_COAT:
   type: ARMOR
   rarity: EPIC
   stats:
-    HEALTH: 3200
-    DEFENSE: 3200
-    STRENGTH: 600
-    INTELLIGENCE: 550
+    HEALTH: 3600
+    DEFENSE: 3600
+    STRENGTH: 700
+    INTELLIGENCE: 1000
     CRIT_DAMAGE: 50
     CRIT_CHANCE: 20
-    ABILITY_DAMAGE: 20
-    MAGIC_FIND: 20
+    ABILITY_DAMAGE: 40
+    MAGIC_FIND: 25
   sell-price: 64000
   color: 9713340
 DC_JESTER_TROUSERS:
@@ -39,14 +39,14 @@ DC_JESTER_TROUSERS:
   type: ARMOR
   rarity: EPIC
   stats:
-    HEALTH: 3200
-    DEFENSE: 3200
-    STRENGTH: 600
-    INTELLIGENCE: 550
+    HEALTH: 3600
+    DEFENSE: 3600
+    STRENGTH: 700
+    INTELLIGENCE: 1000
     CRIT_DAMAGE: 50
     CRIT_CHANCE: 20
-    ABILITY_DAMAGE: 20
-    MAGIC_FIND: 20
+    ABILITY_DAMAGE: 40
+    MAGIC_FIND: 25
   sell-price: 64000
   color: 2433077
 DC_ACROBAT_BOOTS:
@@ -55,14 +55,14 @@ DC_ACROBAT_BOOTS:
   type: ARMOR
   rarity: EPIC
   stats:
-    HEALTH: 3200
-    DEFENSE: 3200
-    STRENGTH: 600
-    INTELLIGENCE: 550
+    HEALTH: 3600
+    DEFENSE: 3600
+    STRENGTH: 700
+    INTELLIGENCE: 1000
     CRIT_DAMAGE: 50
     CRIT_CHANCE: 20
-    ABILITY_DAMAGE: 20
-    MAGIC_FIND: 20
+    ABILITY_DAMAGE: 40
+    MAGIC_FIND: 25
     SPEED: 200
   sell-price: 64000
   color: 14174309
@@ -95,14 +95,14 @@ DC_RINGMASTER_MASK:
   type: ARMOR
   rarity: EPIC
   stats:
-    HEALTH: 3500
-    DEFENSE: 3500
-    STRENGTH: 650
-    INTELLIGENCE: 650
+    HEALTH: 3800
+    DEFENSE: 3800
+    STRENGTH: 750
+    INTELLIGENCE: 1200
     CRIT_DAMAGE: 60
     CRIT_CHANCE: 25
-    ABILITY_DAMAGE: 25
-    MAGIC_FIND: 25
+    ABILITY_DAMAGE: 50
+    MAGIC_FIND: 30
   sell-price: 320000
   color: 15259834
 DC_RINGMASTER_CANE:
@@ -113,8 +113,8 @@ DC_RINGMASTER_CANE:
   stats:
     DAMAGE: 1000
     STRENGTH: 400
-    INTELLIGENCE: 800
-    ABILITY_DAMAGE: 20
+    INTELLIGENCE: 1200
+    ABILITY_DAMAGE: 40
   sell-price: 320000
   ability: BASIC_LASER{particle:WITCH,name:"Spotlight",cost:100,cooldown:500,baseAbilityDamage:3500,abilityScaling:1.5,description:""}
 DC_ENCORE_SCYTHE:

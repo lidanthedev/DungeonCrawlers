@@ -40,14 +40,18 @@ class DungeonRewardItemsTest {
                 assertNotEquals(Material.ENCHANTED_BOOK, item.getBaseItem().getType());
                 assertNull(item.getDescription());
                 if (item.getType() == me.lidan.cavecrawlers.items.ItemType.ARMOR) {
-                    var minimums = Map.of(StatType.HEALTH, 3200, StatType.DEFENSE, 3200,
-                            StatType.STRENGTH, 600, StatType.INTELLIGENCE, 550,
+                    var minimums = Map.of(StatType.HEALTH, 3600, StatType.DEFENSE, 3600,
+                            StatType.STRENGTH, 700, StatType.INTELLIGENCE, 1000,
                             StatType.CRIT_DAMAGE, 50, StatType.CRIT_CHANCE, 20,
-                            StatType.ABILITY_DAMAGE, 20, StatType.MAGIC_FIND, 20);
+                            StatType.ABILITY_DAMAGE, 40, StatType.MAGIC_FIND, 25);
                     minimums.forEach((stat, minimum) ->
                             assertTrue(item.getStats().get(stat).getValue() >= minimum, item.getName() + " " + stat));
                 }
             }
+            assertEquals(1200, registry.get("DC_RINGMASTER_MASK").getStats().get(StatType.INTELLIGENCE).getValue());
+            assertEquals(50, registry.get("DC_RINGMASTER_MASK").getStats().get(StatType.ABILITY_DAMAGE).getValue());
+            assertEquals(1200, registry.get("DC_RINGMASTER_CANE").getStats().get(StatType.INTELLIGENCE).getValue());
+            assertEquals(40, registry.get("DC_RINGMASTER_CANE").getStats().get(StatType.ABILITY_DAMAGE).getValue());
             assertEquals(200, registry.get("DC_ACROBAT_BOOTS").getStats().get(StatType.SPEED).getValue());
             String bowAbility = registry.get("DC_CARDTHROWER").getAbilityID();
             var bowSettings = com.google.gson.JsonParser.parseString(bowAbility.substring(bowAbility.indexOf('{'))).getAsJsonObject();

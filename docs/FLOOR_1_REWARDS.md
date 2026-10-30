@@ -9,9 +9,10 @@ chest choice per player per run. Rare Mask, Cane and Scythe weights respond to M
 ## Items and prices
 
 The combat baseline comes from the live Griffin Shop and Floor 8 shop on 2026-10-30.
-Griffin T4 armor has 3,200 Health and Defense, 600 Strength, 550 Intelligence, 50 Crit Damage,
-20 Crit Chance, 20 Ability Damage and 20 Magic Find per piece; boots add 200 Speed.
-These supported combat stats are the minimum for every reward armor piece. The obsolete
+Griffin T5 armor has 3,600 Health and Defense, 700 Strength, 600 Intelligence, 50 Crit Damage,
+20 Crit Chance, 20 Ability Damage and 25 Magic Find per piece; boots add 200 Speed.
+Reward armor keeps at least this combat baseline and increases Intelligence to 1,000 and
+Ability Damage to 40 per ordinary piece for a starter mage set. The obsolete
 Griffin-specific luck field is not part of the dungeon armor.
 
 Griffin T4 costs 50m per helmet/boots/sword or 55m per chestplate/leggings, plus T3 and materials.
@@ -21,12 +22,12 @@ T5 costs another 100m or 150m, plus T4 and materials. Floor 8 swords range from 
 
 | Item | Main stats | Native sell price |
 | --- | --- | ---: |
-| Jester Cap, Coat, Trousers | Griffin T4 combat baseline per piece | 64,000 each |
-| Acrobat Boots | Griffin T4 combat baseline plus 200 Speed | 64,000 |
+| Jester Cap, Coat, Trousers | T5 combat baseline, 1,000 Intelligence, 40 Ability Damage per piece | 64,000 each |
+| Acrobat Boots | T5 combat baseline, 1,000 Intelligence, 40 Ability Damage, 200 Speed | 64,000 |
 | Stage Cutlass | 1,700 Damage, 850 Strength, 50 Crit Damage | 64,000 |
 | Cardthrower | 1,000 Damage, 800 Strength, 40 Crit Damage, 20 Crit Chance, 70 Attack Speed; three-arrow shortbow | 160,000 |
-| Ringmaster Mask | 3,500 Health and Defense, 650 Strength and Intelligence, 60 Crit Damage, 25 Crit Chance / Ability Damage / Magic Find | 320,000 |
-| Ringmaster's Cane | 1,000 Damage, 400 Strength, 800 Intelligence, 20 Ability Damage; violet laser, 3,500 base damage, 1.5 scaling, 100 mana, 0.5s cooldown | 320,000 |
+| Ringmaster Mask | 3,800 Health and Defense, 750 Strength, 1,200 Intelligence, 50 Ability Damage, 60 Crit Damage, 25 Crit Chance, 30 Magic Find | 320,000 |
+| Ringmaster's Cane | 1,000 Damage, 400 Strength, 1,200 Intelligence, 40 Ability Damage; violet laser, 3,500 base damage, 1.5 scaling, 100 mana, 0.5s cooldown | 320,000 |
 | Encore Scythe | 2,000 Damage, 1,000 Strength, 60 Crit Damage, 20 Attack Speed | 640,000 |
 
 Every reward item has no flavor description. Bow and Cane custom ability description strings
@@ -59,7 +60,7 @@ combined probability equally.
 | Obsidian | 100,000,000 | 270 | 40% | 25% | 13% | 15% | 7% |
 
 Players preview the rolled item before choosing their one chest per run. Wooden guarantees
-one piece of T4-equivalent gear or the Cutlass per completion. Rare weights respond to Magic Find.
+one piece of T5-based mage gear or the Cutlass per completion. Rare weights respond to Magic Find.
 
 ## Migration and validation
 
@@ -68,7 +69,7 @@ pool is replaced only on floor_1. Previous shipped chest fees 200k/320k/640k/1.2
 10m/25m/50m/100m. Custom fees, pools, bosses and template pointers survive. Already frozen
 reward entitlements retain their recorded fees; new runs use the revised configuration.
 
-Regression checks cover the armor's T4 minimum, three-arrow settings, absent item descriptions,
+Regression checks cover the armor's T5 combat and mage-stat minimums, three-arrow settings, absent item descriptions,
 chest types/fees/score gates, native registration/admin edits, and migration backups/idempotence.
 Actual combat, weapon firing, GUI claims and sales require a player test.
 
