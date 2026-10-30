@@ -44,6 +44,8 @@ Native item identities remain stable, including already claimed items.
 Types and score gates follow Hypixel Floor I. Fees follow the user's server-economy requirement,
 using Griffin T5's 100m/150m shop costs as reference. No Bedrock, 301-score, S+ or debug chest.
 Existing difficulty and Runic discounts apply to these base fees.
+The overview orders offers by score requirement, then price, then reward ID, so the three
+zero-score chests appear Wooden, Gold, Diamond regardless of map iteration order.
 
 All probabilities below are per chest at zero Magic Find. The five ordinary items split their
 combined probability equally.
@@ -96,3 +98,24 @@ Actual combat, weapon firing, GUI claims and sales require a player test.
   contains all nine exact prices from the table above.
 - No player inventory, balance, or dungeon run was used for these smoke checks. Actual GUI sale,
   reward claim, weapon firing, client appearance and mid-game combat balance remain unverified.
+
+## Rebalance and ordering deployment, 2026-10-30
+
+- Deployed version `1.0+c20897d`; JAR SHA-256
+  `a3a7f49a35325fc2513ddf364e0f762c4bedad1efc030ee14affca3f13a10038`.
+  Java 21 build passed 468 tests with zero failures/errors/skips and no external API shading.
+- Updated all nine native item files after verifying their backups in
+  `plugins/DungeonCrawlers/backups/rewards-rebalance-20261030/`.
+  The installer intentionally preserves existing native definitions, so uploading defaults alone
+  would not apply the revised stats, three-arrow settings or removed descriptions.
+- Floor schema 6 migrated the original fees to Free/10m/25m/50m/100m. Verified live file gates
+  0/0/0/230/270, exactly five chests and no locked/expensive debug chest. Authored room pointers survive.
+- `cc reload all` followed by `cc reload addons` loaded the updated addon at 11:44:03 UTC.
+  Legacy stat warnings, watchdog dumps during reload and Essentials asynchronous command-list
+  exceptions appeared during plugin unloading. Reload completed without a restart; all addons
+  reported ready at 11:44:10 UTC.
+- Operations at 11:45:01 UTC: zero instances/reservations, recovery Idle, starts Enabled,
+  no recovery blockers. Configuration validation passed at 11:45:14 UTC. Cardthrower, Jester Coat,
+  Cane and Scythe passed native item serialization probes with the revised definitions.
+- The menu ordering regression verifies Wooden/Gold/Diamond/Emerald/Obsidian from shuffled input,
+  including locked high-score chests. No new player dungeon run or visual GUI check was performed.
