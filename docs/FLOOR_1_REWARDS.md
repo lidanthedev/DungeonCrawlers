@@ -143,3 +143,21 @@ Actual combat, weapon firing, GUI claims and sales require a player test.
   no blockers. Config and representative item probes passed again after recovery.
   Chest prices, score gates and descriptions retain their prior configuration.
 - No live combat or damage-output calibration was performed for these mage stats.
+
+## Ability description correction, 2026-10-31
+
+The user's no-description requirement applies to `ItemInfo.description`, which is explicitly
+null on all nine bundled items. It does not apply to ability descriptions. Restored Cardthrower's
+"Instantly shoots 3 arrows." and the Cane's "Fire a violet spotlight at your target." in both
+bundled defaults and existing native definitions; stats, arrow count and costs are unchanged.
+Regression coverage checks both ability strings and null item descriptions together.
+
+Java 21 build passed 468 tests, zero failures/errors/skips, and the external API shading check.
+Deployed version `1.0+00a1168`, SHA-256
+`d4aacc59093e4e0f3d9067d9fae8c49ebfd64c82e9673cc0737d4f356e27c01f`.
+Native backups are `backups/DC_CARDTHROWER-before-ability-description-20261031.yml` and
+`backups/DC_RINGMASTER_CANE-before-ability-description-20261031.yml` under DungeonCrawlers.
+The coordinated reload reported all addons ready at 02:34:54 UTC. Both native files retain
+`description: null` and nonempty ability text; both live item serialization probes pass.
+Config is valid and operations have starts enabled with no recovery blockers. Client tooltip
+appearance was not visually inspected.
