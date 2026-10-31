@@ -17,6 +17,7 @@ DC_JESTER_CAP:
     MAGIC_FIND: 25
   sell-price: 64000
   color: 9713340
+  description: null
 DC_JESTER_COAT:
   name: Jester Coat
   material: LEATHER_CHESTPLATE
@@ -33,6 +34,7 @@ DC_JESTER_COAT:
     MAGIC_FIND: 25
   sell-price: 64000
   color: 9713340
+  description: null
 DC_JESTER_TROUSERS:
   name: Jester Trousers
   material: LEATHER_LEGGINGS
@@ -49,6 +51,7 @@ DC_JESTER_TROUSERS:
     MAGIC_FIND: 25
   sell-price: 64000
   color: 2433077
+  description: null
 DC_ACROBAT_BOOTS:
   name: Acrobat Boots
   material: LEATHER_BOOTS
@@ -66,6 +69,7 @@ DC_ACROBAT_BOOTS:
     SPEED: 200
   sell-price: 64000
   color: 14174309
+  description: null
 DC_STAGE_CUTLASS:
   name: Stage Cutlass
   material: IRON_SWORD
@@ -76,6 +80,7 @@ DC_STAGE_CUTLASS:
     STRENGTH: 850
     CRIT_DAMAGE: 50
   sell-price: 64000
+  description: null
 DC_CARDTHROWER:
   name: Cardthrower
   material: BOW
@@ -88,7 +93,8 @@ DC_CARDTHROWER:
     CRIT_CHANCE: 20
     ATTACK_SPEED: 70
   sell-price: 160000
-  ability: MULTI_SHORT_BOW{amount:3,yawDiff:3,maxPower:5,description:""}
+  ability: MULTI_SHORT_BOW{amount:3,yawDiff:3,maxPower:5,description:"Instantly shoots 3 arrows."}
+  description: null
 DC_RINGMASTER_MASK:
   name: Ringmaster Mask
   material: LEATHER_HELMET
@@ -105,6 +111,7 @@ DC_RINGMASTER_MASK:
     MAGIC_FIND: 30
   sell-price: 320000
   color: 15259834
+  description: null
 DC_RINGMASTER_CANE:
   name: Ringmaster's Cane
   material: BLAZE_ROD
@@ -116,7 +123,8 @@ DC_RINGMASTER_CANE:
     INTELLIGENCE: 1200
     ABILITY_DAMAGE: 40
   sell-price: 320000
-  ability: BASIC_LASER{particle:WITCH,name:"Spotlight",cost:100,cooldown:500,baseAbilityDamage:3500,abilityScaling:1.5,description:""}
+  ability: BASIC_LASER{particle:WITCH,name:"Spotlight",cost:100,cooldown:500,baseAbilityDamage:3500,abilityScaling:1.5,description:"Fire a violet spotlight at your target."}
+  description: null
 DC_ENCORE_SCYTHE:
   name: Encore Scythe
   material: IRON_HOE
@@ -128,3 +136,4 @@ DC_ENCORE_SCYTHE:
     CRIT_DAMAGE: 60
     ATTACK_SPEED: 20
   sell-price: 640000
+  description: null

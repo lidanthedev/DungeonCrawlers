@@ -58,7 +58,10 @@ class DungeonRewardItemsTest {
             assertEquals(3, bowSettings.get("amount").getAsInt());
             assertEquals(3, bowSettings.get("yawDiff").getAsInt());
             assertEquals(5, bowSettings.get("maxPower").getAsInt());
-            assertEquals("", bowSettings.get("description").getAsString());
+            assertEquals("Instantly shoots 3 arrows.", bowSettings.get("description").getAsString());
+            String caneAbility = registry.get("DC_RINGMASTER_CANE").getAbilityID();
+            var caneSettings = com.google.gson.JsonParser.parseString(caneAbility.substring(caneAbility.indexOf('{'))).getAsJsonObject();
+            assertEquals("Fire a violet spotlight at your target.", caneSettings.get("description").getAsString());
             registry.get("DC_JESTER_CAP").setName("Admin cap");
             prices.set("prices.DC_JESTER_CAP", 123);
             assertFalse(DungeonRewardItems.register(plugin, items, prices));

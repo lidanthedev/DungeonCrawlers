@@ -30,8 +30,9 @@ T5 costs another 100m or 150m, plus T4 and materials. Floor 8 swords range from 
 | Ringmaster's Cane | 1,000 Damage, 400 Strength, 1,200 Intelligence, 40 Ability Damage; violet laser, 3,500 base damage, 1.5 scaling, 100 mana, 0.5s cooldown | 320,000 |
 | Encore Scythe | 2,000 Damage, 1,000 Strength, 60 Crit Damage, 20 Attack Speed | 640,000 |
 
-Every reward item has no flavor description. Bow and Cane custom ability description strings
-are empty; native ability names, costs, cooldowns and stat/scaling tooltips remain.
+Every reward item has `description: null`. Ability descriptions are retained: Cardthrower says
+"Instantly shoots 3 arrows." and the Cane says "Fire a violet spotlight at your target."
+Native ability names, costs, cooldowns and stat/scaling tooltips remain.
 NPC sell prices retain the server's existing salvage ladder: Evoker 64k, Warden 320k, Wither 640k.
 These sell prices differ from shop acquisition prices, which determine the chest fee scale.
 
