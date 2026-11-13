@@ -1,0 +1,186 @@
+schema-version: 6
+id: floor_1
+number: 2
+display-name: <gold>Floor I
+templates:
+  start: f1start
+  portal: f1portal
+  boss: ringmaster_grand_preview
+  boss-offset:
+  - 0
+  - 0
+  - 3000
+generation:
+  rooms: 8
+  minibosses: 1
+  final-miniboss: true
+  max-attempts-per-position: 64
+  collision-padding: 1
+  room-pool: []
+mobs:
+  normal:
+  - DCF1_CryptLurker
+  - DCF1_CryptUndead
+  - DCF1_CryptDreadlord
+  - DCF1_TankZombie
+  - DCF1_ZombieGrunt
+  - DCF1_UndeadSkeleton
+  - DCF1_ScaredSkeleton
+  - DCF1_SkeletonGrunt
+  - DCF1_SkeletonSoldier
+  - DCF1_Sniper
+  - DCF1_CryptSouleater
+  - DCF1_LonelySpider
+  - DCF1_CellarSpider
+  - DCF1_Prince
+  - DCF1_Admin
+  miniboss:
+  - DCF1_LostAdventurerYoung
+  - DCF1_LostAdventurerUnstable
+  - DCF1_LostAdventurerHoly
+  - DCF1_LostAdventurerSuperior
+  - DCF1_AngryArchaeologist
+boss:
+  mob: MadRingmaster
+  encounter: ringmaster
+classes:
+  allowed:
+  - berserker
+  - mage
+  - tank
+  - healer
+  - archer
+blessings:
+- id: crypt_strength
+  weight: 70
+- id: crypt_vitality
+  weight: 30
+rewards:
+  wooden:
+    enabled: true
+    price: 0
+    min-score: 0
+    rolls: 1
+    unique: false
+    items:
+    - item: UNDEAD_ESSENCE
+      weight: 20
+  gold:
+    enabled: true
+    price: 10000000
+    min-score: 0
+    rolls: 1
+    unique: false
+    items:
+    - item: DC_JESTER_CAP
+      weight: 18
+    - item: DC_JESTER_COAT
+      weight: 18
+    - item: DC_JESTER_TROUSERS
+      weight: 18
+    - item: DC_ACROBAT_BOOTS
+      weight: 18
+    - item: DC_STAGE_CUTLASS
+      weight: 18
+    - item: DC_CARDTHROWER
+      weight: 8
+    - item: DC_RINGMASTER_MASK
+      weight: 1
+      magic-find-sensitive: true
+    - item: DC_RINGMASTER_CANE
+      weight: 1
+      magic-find-sensitive: true
+  diamond:
+    enabled: true
+    price: 25000000
+    min-score: 0
+    rolls: 1
+    unique: false
+    items:
+    - item: DC_JESTER_CAP
+      weight: 15
+    - item: DC_JESTER_COAT
+      weight: 15
+    - item: DC_JESTER_TROUSERS
+      weight: 15
+    - item: DC_ACROBAT_BOOTS
+      weight: 15
+    - item: DC_STAGE_CUTLASS
+      weight: 15
+    - item: DC_CARDTHROWER
+      weight: 15
+    - item: DC_RINGMASTER_MASK
+      weight: 5
+      magic-find-sensitive: true
+    - item: DC_RINGMASTER_CANE
+      weight: 4
+      magic-find-sensitive: true
+    - item: DC_ENCORE_SCYTHE
+      weight: 1
+      magic-find-sensitive: true
+  emerald:
+    enabled: true
+    price: 50000000
+    min-score: 230
+    rolls: 1
+    unique: false
+    items:
+    - item: DC_JESTER_CAP
+      weight: 12
+    - item: DC_JESTER_COAT
+      weight: 12
+    - item: DC_JESTER_TROUSERS
+      weight: 12
+    - item: DC_ACROBAT_BOOTS
+      weight: 12
+    - item: DC_STAGE_CUTLASS
+      weight: 12
+    - item: DC_CARDTHROWER
+      weight: 20
+    - item: DC_RINGMASTER_MASK
+      weight: 8
+      magic-find-sensitive: true
+    - item: DC_RINGMASTER_CANE
+      weight: 9
+      magic-find-sensitive: true
+    - item: DC_ENCORE_SCYTHE
+      weight: 3
+      magic-find-sensitive: true
+  obsidian:
+    enabled: true
+    price: 100000000
+    min-score: 270
+    rolls: 1
+    unique: false
+    items:
+    - item: DC_JESTER_CAP
+      weight: 8
+    - item: DC_JESTER_COAT
+      weight: 8
+    - item: DC_JESTER_TROUSERS
+      weight: 8
+    - item: DC_ACROBAT_BOOTS
+      weight: 8
+    - item: DC_STAGE_CUTLASS
+      weight: 8
+    - item: DC_CARDTHROWER
+      weight: 25
+    - item: DC_RINGMASTER_MASK
+      weight: 13
+      magic-find-sensitive: true
+    - item: DC_RINGMASTER_CANE
+      weight: 15
+      magic-find-sensitive: true
+    - item: DC_ENCORE_SCYTHE
+      weight: 7
+      magic-find-sensitive: true
+limits:
+  max-party-size: 5
+  max-template-dimension: 512
+  max-template-volume: 16777216
+  max-loaded-chunks-per-instance: 256
+  mob-respawn-retries: 2
+  repository-queue-capacity: 1000
+dungeon-xp:
+  completion: 100.0
+  failure-factor: 0.1

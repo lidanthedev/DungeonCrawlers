@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -19,6 +20,38 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CombatRoomServiceTest {
+    @Test
+    void everyPoolEntryCanAppearAtASingleMarkerAndSeededChoicesSurviveRespawn() {
+        var normalPool = List.of("lurker", "grunt", "sniper");
+        var minibossPool = List.of("young", "unstable", "holy", "superior", "archaeologist");
+        Set<String> normalChoices = new HashSet<>();
+        Set<String> minibossChoices = new HashSet<>();
+        Bounds bounds = new Bounds(new Point(0, 0, 0), new Point(4, 4, 4));
+        var room = new GenerationService.CombatRoom(1, "mini", MINIBOSS, bounds,
+                List.of(new Point(1, 1, 1)), List.of(new Point(2, 1, 2)));
+        for (long seed = 0; seed < 64; seed++) {
+            FakeMobs mobs = new FakeMobs();
+            CombatRoomService service = new CombatRoomService(mobs, new FakeChunks(), ignored -> { });
+            UUID first = UUID.randomUUID();
+            UUID replay = UUID.randomUUID();
+            for (UUID id : List.of(first, replay)) {
+                assertTrue(service.register(new GenerationService.CombatPlan(id, seed, List.of(room), List.of(),
+                        normalPool, minibossPool, 1)).successful());
+            }
+            var chosen = service.rooms(first).getFirst().requiredMobs().stream().map(mob -> mob.mobId()).toList();
+            assertEquals(chosen, service.rooms(replay).getFirst().requiredMobs().stream().map(mob -> mob.mobId()).toList());
+            normalChoices.add(chosen.getFirst());
+            minibossChoices.add(chosen.getLast());
+            assertTrue(service.activateFirst(first).successful());
+            UUID entity = service.rooms(first).getFirst().requiredMobs().getLast().entityId();
+            assertTrue(service.onRemoved(first, 1, entity).accepted());
+            assertEquals(chosen, service.rooms(first).getFirst().requiredMobs().stream().map(mob -> mob.mobId()).toList());
+            service.cleanupAll();
+        }
+        assertEquals(Set.copyOf(normalPool), normalChoices);
+        assertEquals(Set.copyOf(minibossPool), minibossChoices);
+    }
+
     @Test
     void objectiveHoldsRoomClearUntilEnemiesAndPuzzleAreBothDoneAndCleansWithInstance() {
         UUID instance = UUID.randomUUID();

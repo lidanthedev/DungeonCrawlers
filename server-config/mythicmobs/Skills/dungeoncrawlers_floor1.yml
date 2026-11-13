@@ -1,0 +1,170 @@
+# Floor I room roster, adapted to CaveCrawlers stats. No boss or Watcher changes.
+# Roster: https://hypixelskyblock.minecraft.wiki/w/Catacombs_Mobs
+# Crypt Undead, Prince and Admin use room markers in place of Hypixel tomb triggers.
+DCF1_BoneOnce:
+  Conditions:
+  - targetwithin{d=24} true
+  - variableisset{var=caster.dcf1_bone} false
+  TargetConditions:
+  - lineofsight true
+  Skills:
+  - setvariable{var=caster.dcf1_bone;type=BOOLEAN;value=true} @self
+  - sound{s=entity.skeleton.shoot;v=0.8;p=0.6} @self
+  - delay 12
+  - projectile{bulletType=ITEM;material=BONE;onHit=DCF1_BoneHit;v=18;i=1;hR=0.5;vR=0.8;mr=24;syo=1.4;tyo=1;hitPlayers=true;hitNonPlayers=false;stopAtBlock=true;stopAtEntity=true}
+DCF1_BoneHit:
+  TargetConditions:
+  - isPlayer true
+  Skills:
+  - damage{a=900000}
+DCF1_Skull:
+  Conditions:
+  - targetwithin{d=28} true
+  TargetConditions:
+  - lineofsight true
+  Skills:
+  - sound{s=entity.wither.shoot;v=0.5;p=1.2} @self
+  - delay 15
+  - projectile{bulletType=ITEM;material=WITHER_SKELETON_SKULL;onTick=DCF1_SkullTrail;onHit=DCF1_SkullHit;v=12;i=2;hR=0.6;vR=0.8;mr=28;syo=1.5;tyo=1;hitPlayers=true;hitNonPlayers=false;stopAtBlock=true;stopAtEntity=true}
+DCF1_SkullTrail:
+  Skills:
+  - particles{p=SMOKE;a=2;hS=0.1;vS=0.1} @origin
+DCF1_SkullHit:
+  TargetConditions:
+  - isPlayer true
+  Skills:
+  - damage{a=750000}
+DCF1_ScaredShot:
+  Conditions:
+  - targetwithin{d=28} true
+  TargetConditions:
+  - lineofsight true
+  Skills:
+  - sound{s=entity.skeleton.shoot;v=0.7;p=1} @self
+  - shoot{type=ARROW;damage=350000;velocity=1.2;accuracy=0.95;pickup=false;expiration=20}
+DCF1_GruntShot:
+  Conditions:
+  - targetwithin{d=28} true
+  TargetConditions:
+  - lineofsight true
+  Skills:
+  - sound{s=entity.skeleton.shoot;v=0.7;p=1} @self
+  - shoot{type=ARROW;damage=400000;velocity=1.6;accuracy=0.95;pickup=false;expiration=20}
+DCF1_SoldierShot:
+  Conditions:
+  - targetwithin{d=28} true
+  TargetConditions:
+  - lineofsight true
+  Skills:
+  - sound{s=entity.skeleton.shoot;v=0.7;p=1} @self
+  - shoot{type=ARROW;damage=550000;velocity=1.8;accuracy=0.95;pickup=false;expiration=20}
+DCF1_SniperShot:
+  Conditions:
+  - targetwithin{d=48} true
+  TargetConditions:
+  - lineofsight true
+  Skills:
+  - sound{s=entity.skeleton.shoot;v=0.7;p=1} @self
+  - shoot{type=ARROW;damage=950000;velocity=3;accuracy=0.95;pickup=false;expiration=20}
+DCF1_UndeadBow:
+  Conditions:
+  - targetwithin{d=28} true
+  - targetwithin{d=4} false
+  TargetConditions:
+  - lineofsight true
+  Skills:
+  - sound{s=entity.skeleton.shoot;v=0.7;p=1} @self
+  - shoot{type=ARROW;damage=650000;velocity=1.6;accuracy=0.95;pickup=false;expiration=20}
+DCF1_AdventurerBow:
+  Conditions:
+  - targetwithin{d=28} true
+  - targetwithin{d=4} false
+  TargetConditions:
+  - lineofsight true
+  Skills:
+  - sound{s=entity.skeleton.shoot;v=0.7;p=1} @self
+  - shoot{type=ARROW;damage=800000;velocity=1.8;accuracy=0.95;pickup=false;expiration=20}
+DCF1_Flee:
+  Conditions:
+  - healthpercent{p=<0.3} true
+  - variableisset{var=caster.dcf1_flee} false
+  Skills:
+  - setvariable{var=caster.dcf1_flee;type=BOOLEAN;value=true} @self
+  - runaitargetselector{target=clear} @self
+  - runaitargetselector{target=players} @self
+  - runaigoalselector{goal=clear} @self
+  - runaigoalselector{goal=fleeplayers} @self
+DCF1_SpiderLeap:
+  Conditions:
+  - targetwithin{d=10} true
+  TargetConditions:
+  - lineofsight true
+  Skills:
+  - sound{s=entity.spider.ambient;v=0.8;p=0.7} @self
+  - delay 10
+  - leap{velocity=120}
+DCF1_DragonBreath:
+  Conditions:
+  - targetwithin{d=5} true
+  Skills:
+  - sound{s=entity.ender_dragon.growl;v=0.7;p=1.5} @self
+  - particles{p=FLAME;a=20;hS=0.5;vS=0.5} @self
+  - delay 20
+  - damage{a=1500000} @PlayersInRadius{r=4}
+  - throw{velocity=6;velocityY=2} @PlayersInRadius{r=4}
+DCF1_DragonBreathSuperior:
+  Conditions:
+  - targetwithin{d=5} true
+  Skills:
+  - sound{s=entity.ender_dragon.growl;v=0.7;p=1.5} @self
+  - particles{p=FLAME;a=20;hS=0.5;vS=0.5} @self
+  - delay 20
+  - damage{a=2250000} @PlayersInRadius{r=4}
+  - throw{velocity=6;velocityY=2} @PlayersInRadius{r=4}
+DCF1_Apple:
+  Cooldown: 12
+  Conditions:
+  - healthpercent{p=<0.5} true
+  - variableinrange{var=caster.dcf1_heals;value=0-3} true
+  Skills:
+  - variableadd{var=caster.dcf1_heals;amount=1} @self
+  - equip{item=GOLDEN_APPLE HAND} @self
+  - potion{type=SLOW;duration=30;level=3} @self
+  - sound{s=entity.generic.eat;v=1;p=1} @self
+  - delay 30
+  - healpercent{m=0.3} @self
+  - particles{p=HEART;a=6;hS=0.5;vS=0.5} @self
+  - equip{item=DIAMOND_SWORD HAND} @self
+DCF1_HealingPotion:
+  Cooldown: 12
+  Conditions:
+  - healthpercent{p=<0.5} true
+  - variableinrange{var=caster.dcf1_heals;value=0-3} true
+  Skills:
+  - variableadd{var=caster.dcf1_heals;amount=1} @self
+  - equip{item=POTION HAND} @self
+  - potion{type=SLOW;duration=30;level=3} @self
+  - sound{s=entity.generic.drink;v=1;p=1} @self
+  - delay 30
+  - healpercent{m=0.3} @self
+  - particles{p=HEART;a=6;hS=0.5;vS=0.5} @self
+  - equip{item=DIAMOND_SWORD HAND} @self
+DCF1_YoungSpeed:
+  Conditions:
+  - healthpercent{p=>0.5} true
+  Skills:
+  - potion{type=SPEED;duration=40;level=1} @self
+DCF1_HolyRegen:
+  Conditions:
+  - healthpercent{p=<1} true
+  - targetwithin{d=32} true
+  Skills:
+  - healpercent{m=0.015} @self
+DCF1_UnstableLightning:
+  Conditions:
+  - targetwithin{d=4} true
+  Skills:
+  - sound{s=entity.lightning_bolt.thunder;v=0.5;p=1.4} @self
+  - particles{p=ELECTRIC_SPARK;a=20;hS=2;vS=0.5} @self
+  - delay 20
+  - percentdamage{percent=0.1} @PlayersInRadius{r=4}
