@@ -31,9 +31,42 @@ Combat requirements select from the entire normal or miniboss pool with the
 existing named random streams, seeded by run and room. A small room can therefore
 select entries beyond the beginning of its pool. Respawns retain the original
 choice, and a repeated seed reproduces the choices.
+This selector correction applies to every floor's configured pools.
 
 Before replacing config, back it up and retain the newest two copies. Upload via
 the configured `lagless:` rclone remote with `--inplace --contimeout 15s --timeout
 30s`, then download and compare. Follow the CaveCrawlers server skill's activity
 checks and countdown rules before loading MythicMobs definitions and reloading the
 addon. Confirm actual enable completion and `/dungeon config validate` success.
+
+## Live verification, 2026-11-13
+
+- Java 21 `clean build --no-daemon` passed all 469 tests and external API shading
+  verification. The new regression covers full pool reachability at single markers,
+  seeded replay and unchanged types after respawn. `graphify update .` completed.
+- Deployed source commit `0ec7e9f`, plugin `1.0+0ec7e9f`, to CaveCrawl Beta.
+  The uploaded JAR was downloaded and byte-compared. SHA-256:
+  `c96dd7996b0dd2eec01ec9e3fd4a083709f96674beb199430da89a76045a9b4c`.
+- The three live config files were downloaded and byte-compared. The previous floor
+  file is `plugins/DungeonCrawlers/backups/floor_1-before-hypixel-roster-20261113.yml`.
+  The two newest direct floor backups remain on the server; older direct copies
+  were retained locally before rotation.
+- Before reload, only vanished LidanTheGamer was online, active dungeon instances
+  were zero, and Kuudra reported `running=false`. Reload was immediate. MythicMobs
+  completed with 228 mobs and 344 skills. The final addon reload enabled
+  DungeonCrawlers, loaded three floors and 26 rooms, enabled starts with no recovery
+  blockers, and completed FishingAddon's `Fishing content loaded.` callback.
+- Debug Floor 1 seed `1113` generated 12 placements. Normal room activation and
+  administrative progression spawned all 15 ordinary types, plus Archaeologist,
+  Unstable and Holy minibosses. Young and Superior also passed direct spawn checks.
+  A damaged Young probe healed from 9,000,000 to 10,800,000 health under the live
+  server's healing rules. No errors named this pack or its `DCF1_` IDs.
+- The initial generated floor file had a duplicate `boss` key and was rejected at
+  enable. Its replacement passed strict duplicate-key parsing and live validation;
+  DungeonCrawlers was re-enabled successfully before further tests.
+- Test-instance cleanup completed. Final checks reported zero active instances,
+  no tagged probes, valid config, starts enabled and no recovery blockers. Existing
+  unrelated MythicMobs definitions still report Jasper, platypus, RRT and STATE
+  warnings. The first global reload also logged an unknown persisted `RUNIC_PET`.
+- Full Survival clears, every special attack, exact Hypixel AI and multiplayer
+  balance remain unverified. Testing used administrative activation and clears.
