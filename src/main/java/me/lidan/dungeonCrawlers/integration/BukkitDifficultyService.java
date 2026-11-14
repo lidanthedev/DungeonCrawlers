@@ -142,7 +142,8 @@ public final class BukkitDifficultyService implements Listener, AutoCloseable {
         }
         return magicFind.getOrDefault(instance, Map.of()).getOrDefault(player, 0D);
     }
-    @EventHandler(priority = EventPriority.LOWEST)
+    // LOWEST class kill healing still needs this ownership record.
+    @EventHandler(priority = EventPriority.LOW)
     public void death(EntityDeathEvent event) {
         Enemy enemy = enemies.remove(event.getEntity().getUniqueId());
         glow.removeEntry(event.getEntity().getUniqueId().toString());

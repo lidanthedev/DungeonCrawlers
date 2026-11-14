@@ -205,7 +205,7 @@ public final class DungeonClassMenuService implements Listener {
                 });
     }
 
-    private static List<net.kyori.adventure.text.Component> classLore(ClassDefinition definition,
+    static List<net.kyori.adventure.text.Component> classLore(ClassDefinition definition,
                                                                    int dungeonLevel, boolean selected) {
         List<net.kyori.adventure.text.Component> lore = new ArrayList<>();
         lore.add(MiniMessageUtils.miniMessage("<gray>Requirement: <green>Allowed on this floor</green></gray>"));
@@ -223,6 +223,11 @@ public final class DungeonClassMenuService implements Listener {
                     + amount(definition.healingPercentPerLevel()) + "% per level</gray></green>"));
         }
         String abilityName = BukkitClassAbilityService.abilityName(definition.id());
+        String passive = BukkitClassAbilityService.passiveDescription(definition.id(), dungeonLevel);
+        if (!passive.isEmpty()) {
+            lore.add(MiniMessageUtils.miniMessage("<gold>Class passive</gold>"));
+            for (String line : passive.split("; ")) lore.add(MiniMessageUtils.miniMessage("<gray>" + line + "</gray>"));
+        }
         if (!abilityName.isEmpty()) {
             lore.add(MiniMessageUtils.miniMessage("<gold>" + abilityName + " <yellow>DROP</yellow></gold>"));
             lore.add(MiniMessageUtils.miniMessage("<gray>Cooldown: "

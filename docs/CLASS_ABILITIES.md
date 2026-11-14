@@ -6,9 +6,58 @@ Class bonuses use the player's Dungeon skill level, from 0 through 60. Each clas
 | --- | --- | --- | --- | --- |
 | Berserker | Strength | Bloodrage | +25% strength and outgoing damage, plus 1% per Dungeon level, for 10 seconds | 30 seconds |
 | Mage | Intelligence | Stormcall | One lightning strike against every dungeon enemy in the current room; 10 seconds of glowing | 25 seconds |
-| Tank | Defense, health | Iron Challenge | Every enemy in the current room targets the Tank; 50% less incoming damage for 10 seconds | 35 seconds |
+| Tank | Defense, health | Iron Challenge | Every room enemy targets the Tank; 50% to 60% less incoming damage for 10 seconds, based on Dungeon level | 35 seconds |
 | Archer | Crit damage | Cataclysm Arrow | Fire an explosive arrow; an 8-block spherical blast hits dungeon enemies in the impact room | 30 seconds |
-| Healer | Health, outgoing healing | Lifesurge | Fully heal living party members anywhere in the same run; regenerate 8% of their maximum health each second for 10 seconds | 60 seconds |
+| Healer | Health, outgoing healing | Lifesurge | Fully heal living party members in the same run; regenerate 2% to 5% maximum health per second for 10 seconds before outgoing healing bonuses | 60 seconds |
+
+## Class passive update, 2026-11-14
+
+All progression uses the native Dungeon skill, clamped to levels 0 through 60. Existing
+configured flat bonuses and primary-stat scaling remain unchanged.
+
+| Class | Passive at level 0 | Passive at level 60 |
+| --- | --- | --- |
+| Berserker | Dungeon kills heal 2% maximum health | Dungeon kills heal 5% maximum health |
+| Mage | 25% faster mana regeneration | 100% faster mana regeneration |
+| Tank | Redirect 80% of nearby allies' damage within 8 blocks | Same 80% redirect within 12 blocks |
+| Healer | 25% faster health regeneration within 12 blocks | 100% faster health regeneration within 12 blocks |
+| Archer | +15 Attack Speed while holding a bow | +45 Attack Speed while holding a bow |
+
+Berserker kill healing triggers at most once per second, preventing a room-wide
+kill from immediately refilling health. Only owned dungeon enemies count, including
+boss performers. The Ringmaster's first-life transition does not award healing.
+
+Mage and Healer bonuses supplement the native once-per-second rates of 2% maximum
+mana and 1% maximum health plus 1.5 health. A Healer helps themselves and living
+allies in the same run and world. Only the strongest nearby aura applies. These
+bonuses stop outside RUNNING/BOSS, on death, in spectator mode and after departure.
+
+Archer's bonus adds Attack Speed points, rather than multiplying a base stat that
+can be zero. The native total cap remains 100. CaveCrawlers shortbows already use
+that stat for their shot cooldown; this does not alter vanilla bow draw time.
+
+Tank's 80% redirect and 50%-maximum-health per-hit cap do not scale with level.
+The nearest eligible Tank receives a single transfer after the ally's mitigation;
+the ally keeps 20% of that hit. Transfers use native damage events without applying
+defense a second time, and honor the Tank's active reduction, absorption and hit
+cap. Tanks do not redirect to other Tanks. Invulnerable, creative, spectator,
+offline, foreign-run and ghost Tanks cannot protect allies. Ordinary hit-immunity
+ticks cannot swallow redirected damage. If another listener cancels the transfer,
+the ally retains the original damage; a Tank becoming a dungeon ghost still
+absorbs its share. The cap prevents a one-shot from full health, but several hits
+or a hit while already injured can still defeat the Tank.
+
+Stormcall and Cataclysm Arrow gain another 0.5% damage per Dungeon level, reaching
+30% at level 60, in addition to their existing intelligence/strength scaling.
+Iron Challenge improves from 50% to 60% reduction over the same levels. Lifesurge
+still fully heals the party, but its ten-second regeneration is now 2% to 5% per
+second before the configured outgoing healing bonus. Its 60-second cooldown is
+unchanged. This replaces the former flat 8% regeneration so the new passive and
+existing Healer scaling do not make recovery excessive. Bloodrage keeps its
+existing 25% plus 1% per level strength/damage burst and 30-second cooldown.
+
+The class menu shows each current passive, radius, limit and level-adjusted active
+effect. No new configuration fields or migration are required.
 
 Stormcall uses CaveCrawlers ability damage with base 4,000 and Intelligence scaling 10. Cataclysm Arrow uses base 4,000 and Strength scaling 10. Both use the native projectile damage path for damage attribution and difficulty modifiers, including while holding a bow. Blasts do not break blocks or damage party members.
 

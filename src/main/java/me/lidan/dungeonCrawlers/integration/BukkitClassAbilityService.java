@@ -35,6 +35,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
@@ -47,9 +48,11 @@ import org.bukkit.potion.PotionEffectType;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -73,6 +76,8 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
     private final Map<UUID, Taunt> taunts = new HashMap<>();
     private final Map<UUID, Shot> arrows = new HashMap<>();
     private final Map<BannerKey, BannerField> banners = new HashMap<>();
+    private final Map<UUID, Instant> killHeals = new HashMap<>();
+    private final Map<UUID, EntityDamageEvent> transfers = new HashMap<>();
 
     public BukkitClassAbilityService(Plugin plugin, RunPreparationService runs, PlayerLifecycleService lifecycle,
                                      GenerationService generation, ConfigRegistryService config,
@@ -111,12 +116,33 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
     public static String abilityDescription(String classId, int level) {
         return switch (classId) {
             case "berserker" -> "+" + (25 + Math.clamp(level, 0, 60)) + "% strength and damage for 10s.";
-            case "mage" -> "Lightning strikes every room enemy; intelligence scaling, glowing for 10s.";
-            case "tank" -> "Taunt every room enemy; take 50% less damage for 10s.";
-            case "archer" -> "Fire a strength-scaled explosive arrow with an 8-block blast.";
-            case "healer" -> "Fully heal your party; regenerate 8% health each second for 10s.";
+            case "mage" -> "Lightning strikes every room enemy; +" + number((DungeonClassScaling.abilityPower(level) - 1) * 100)
+                    + "% level damage, intelligence scaling; glowing for 10s.";
+            case "tank" -> "Taunt every room enemy; take " + number(DungeonClassScaling.tankReduction(level) * 100) + "% less damage for 10s.";
+            case "archer" -> "Fire a strength-scaled arrow with an 8-block blast; +"
+                    + number((DungeonClassScaling.abilityPower(level) - 1) * 100) + "% level damage.";
+            case "healer" -> "Fully heal your party; regenerate " + number(DungeonClassScaling.lifesurgeRegeneration(level))
+                    + "% health each second for 10s, before healing bonuses.";
             default -> "";
         };
+    }
+
+    public static String passiveDescription(String classId, int level) {
+        return switch (classId) {
+            case "berserker" -> "Dungeon kills heal " + number(DungeonClassScaling.killHealing(level))
+                    + "% of your max health; triggers at most once per second.";
+            case "mage" -> "Regenerate mana " + number(DungeonClassScaling.regenerationBonus(level) * 100) + "% faster.";
+            case "tank" -> "Redirect 80% of nearby allies' damage to you; protect allies within " + number(DungeonClassScaling.tankRadius(level))
+                    + " blocks; take at most 50% max health per hit; only one Tank protects each hit.";
+            case "healer" -> "You and allies within 12 blocks; regenerate health "
+                    + number(DungeonClassScaling.regenerationBonus(level) * 100) + "% faster; only the strongest Healer aura applies.";
+            case "archer" -> "+" + number(DungeonClassScaling.bowAttackSpeed(level)) + " Attack Speed while holding a bow; maximum total Attack Speed: 100.";
+            default -> "";
+        };
+    }
+
+    private static String number(double value) {
+        return String.format(Locale.ROOT, "%.1f", value);
     }
 
     @EventHandler(priority = EventPriority.LOW)
@@ -166,12 +192,12 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
                     mob.getWorld().strikeLightningEffect(mob.getLocation());
                     mob.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, 200, 0));
                 }
-                damage(player, mobs, new AbilityDamage(player, 4000, 10).calculate());
+                damage(player, mobs, new AbilityDamage(player, 4000, 10).calculate() * DungeonClassScaling.abilityPower(level));
             }
             case "tank" -> {
                 mobs = roomMobs(player, instance);
                 if (mobs.isEmpty()) return noEnemies(player);
-                effect(player, "iron_challenge", instance, Map.of(), Map.of(), 0, .5, 0, 1);
+                effect(player, "iron_challenge", instance, Map.of(), Map.of(), 0, DungeonClassScaling.tankReduction(level), 0, 1);
                 for (Mob mob : mobs) {
                     Taunt previous = taunts.get(mob.getUniqueId());
                     taunts.put(mob.getUniqueId(), new Taunt(instance, player.getUniqueId(),
@@ -186,14 +212,14 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
                 arrow.setPickupStatus(Arrow.PickupStatus.DISALLOWED);
                 arrow.getPersistentDataContainer().set(classArrow, PersistentDataType.BYTE, (byte) 1);
                 arrows.put(arrow.getUniqueId(), new Shot(instance, player.getUniqueId(),
-                        new AbilityDamage(player, 4000, 10, StatType.STRENGTH, false).calculate(),
+                        new AbilityDamage(player, 4000, 10, StatType.STRENGTH, false).calculate() * DungeonClassScaling.abilityPower(level),
                         clock.instant().plusSeconds(10)));
             }
             case "healer" -> {
                 double healing = healingMultiplier(player, instance);
                 for (Player member : party(player, instance, 0)) {
                     heal(member, 100);
-                    effect(member, "lifesurge", instance, Map.of(), Map.of(), 0, 0, 8, healing);
+                    effect(member, "lifesurge", instance, Map.of(), Map.of(), 0, 0, DungeonClassScaling.lifesurgeRegeneration(level), healing);
                 }
             }
             default -> { return false; }
@@ -306,12 +332,18 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onStats(StatsCalculateEvent event) {
+        Player player = event.getPlayer();
+        UUID instance = activeInstance(player);
+        boolean bowBonus = instance != null && selected(player, instance, "archer")
+                && player.getInventory().getItemInMainHand().getType() == Material.BOW;
+        if (bowBonus) event.getStats().get(StatType.ATTACK_SPEED)
+                .add(DungeonClassScaling.bowAttackSpeed(DungeonClassScaling.dungeonLevel(player)));
         List<Effect> active = activeEffects(event.getPlayer());
         for (Effect effect : active) {
             effect.statAdd().forEach((type, amount) -> event.getStats().get(type).add(amount));
             effect.stats().forEach((type, percent) -> event.getStats().get(type).multiply(1 + percent));
         }
-        if (active.stream().anyMatch(effect -> effect.stats().containsKey(StatType.SPEED))) {
+        if (bowBonus || active.stream().anyMatch(effect -> effect.stats().containsKey(StatType.SPEED))) {
             // Cave clamps before StatsCalculateEvent; Tailwind must preserve those native caps.
             event.getStats().get(StatType.SPEED).setValue(Math.min(StatsManager.SPEED_LIMIT, event.getStats().get(StatType.SPEED).getValue()));
             event.getStats().get(StatType.ATTACK_SPEED).setValue(Math.min(StatsManager.ATTACK_SPEED_LIMIT, event.getStats().get(StatType.ATTACK_SPEED).getValue()));
@@ -330,8 +362,67 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onIncoming(EntityDamageEvent event) {
         if (!(event.getEntity() instanceof Player player)) return;
+        if (event.isCancelled()) return;
+        if (transfers.containsKey(player.getUniqueId())) transfers.put(player.getUniqueId(), event);
         double reduction = activeEffects(player).stream().mapToDouble(Effect::reduction).max().orElse(0);
         event.setDamage(event.getDamage() * (1 - reduction));
+        UUID instance = activeInstance(player);
+        if (instance == null || event.getFinalDamage() <= 0) return;
+        if (selected(player, instance, "tank")) {
+            limitFinalDamage(event, StatsManager.getMaxHealth(player) * .5);
+            return;
+        }
+        Player tank = party(player, instance, 12).stream()
+                .filter(other -> !other.equals(player) && selected(other, instance, "tank")
+                        && !other.isInvulnerable() && (other.getGameMode() == GameMode.SURVIVAL || other.getGameMode() == GameMode.ADVENTURE)
+                        && other.getLocation().distanceSquared(player.getLocation())
+                        <= Math.pow(DungeonClassScaling.tankRadius(DungeonClassScaling.dungeonLevel(other)), 2))
+                .min(Comparator.comparingDouble(other -> other.getLocation().distanceSquared(player.getLocation())))
+                .orElse(null);
+        if (tank == null) return;
+        double remaining = event.getFinalDamage() * .2;
+        if (transferDamage(tank, instance, event.getFinalDamage() * .8)) limitFinalDamage(event, remaining);
+    }
+
+    @SuppressWarnings("deprecation")
+    private static void limitFinalDamage(EntityDamageEvent event, double limit) {
+        if (event.getFinalDamage() <= limit) return;
+        // Preserve armor and absorption already applied to this hit.
+        event.setDamage(EntityDamageEvent.DamageModifier.BASE, event.getDamage() - event.getFinalDamage() + limit);
+    }
+
+    private boolean transferDamage(Player tank, UUID instance, double amount) {
+        UUID id = tank.getUniqueId();
+        int previousTicks = tank.getNoDamageTicks();
+        transfers.put(id, null);
+        try {
+            // Shared hits cannot disappear into the Tank's ordinary hit immunity window.
+            tank.setNoDamageTicks(0);
+            tank.damage(amount);
+            EntityDamageEvent hit = transfers.get(id);
+            return hit != null && (!hit.isCancelled() || lifecycle.player(instance, id)
+                    .filter(state -> state.state() == PlayerLifecycleService.PlayerState.GHOST).isPresent());
+        } finally {
+            transfers.remove(id);
+            tank.setNoDamageTicks(Math.max(previousTicks, tank.getNoDamageTicks()));
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onKill(EntityDeathEvent event) {
+        Player killer = event.getEntity().getKiller();
+        UUID instance = activeInstance(killer);
+        if (instance == null || !selected(killer, instance, "berserker") || !belongsTo(event.getEntity(), instance)) return;
+        if (Byte.valueOf((byte) 1).equals(event.getEntity().getPersistentDataContainer().get(
+                new NamespacedKey(plugin, "ringmaster_first_life"), PersistentDataType.BYTE))) return;
+        Instant now = clock.instant();
+        if (now.isBefore(killHeals.getOrDefault(killer.getUniqueId(), Instant.MIN))) return;
+        killHeals.put(killer.getUniqueId(), now.plusSeconds(1));
+        heal(killer, DungeonClassScaling.killHealing(DungeonClassScaling.dungeonLevel(killer)));
+    }
+
+    private boolean selected(Player player, UUID instance, String classId) {
+        return runs.info(instance).map(run -> classId.equals(run.selectedClasses().get(player.getUniqueId()))).orElse(false);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -445,7 +536,8 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
     }
 
     private UUID activeInstance(Player player) {
-        if (player == null || !player.isOnline() || player.isDead() || !player.getWorld().getName().equals(worldName)) return null;
+        if (player == null || !player.isOnline() || player.isDead() || player.getGameMode() == GameMode.SPECTATOR
+                || !player.getWorld().getName().equals(worldName)) return null;
         UUID instance = runs.instanceFor(player.getUniqueId()).orElse(null);
         if (instance == null) return null;
         var run = runs.info(instance).orElse(null);
@@ -481,6 +573,8 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
     /** Called once per second by the existing plugin task. */
     public void tick() {
         Instant now = clock.instant();
+        tickPassives();
+        killHeals.entrySet().removeIf(entry -> !now.isBefore(entry.getValue()));
         banners.entrySet().removeIf(entry -> {
             BannerField field = entry.getValue();
             Player caster = plugin.getServer().getPlayer(entry.getKey().player());
@@ -522,6 +616,27 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
         });
     }
 
+    private void tickPassives() {
+        for (var run : runs.snapshots()) {
+            for (UUID id : run.participants()) {
+                Player player = plugin.getServer().getPlayer(id);
+                if (!run.instanceId().equals(activeInstance(player))) continue;
+                if (selected(player, run.instanceId(), "mage")) {
+                    var stats = StatsManager.getInstance().getStats(player);
+                    double maximum = stats.get(StatType.INTELLIGENCE).getValue();
+                    var mana = stats.get(StatType.MANA);
+                    mana.setValue(Math.min(maximum, mana.getValue() + maximum * .02
+                            * DungeonClassScaling.regenerationBonus(DungeonClassScaling.dungeonLevel(player))));
+                }
+                double bonus = party(player, run.instanceId(), 12).stream()
+                        .filter(healer -> selected(healer, run.instanceId(), "healer"))
+                        .mapToDouble(healer -> DungeonClassScaling.regenerationBonus(DungeonClassScaling.dungeonLevel(healer)))
+                        .max().orElse(0);
+                if (bonus > 0) StatsManager.healPlayer(player, (StatsManager.getMaxHealth(player) * .01 + 1.5) * bonus);
+            }
+        }
+    }
+
     private boolean validTaunt(Taunt taunt, Player tank) {
         return tank != null && taunt.instance().equals(activeInstance(tank)) && clock.instant().isBefore(taunt.expires());
     }
@@ -540,7 +655,7 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
         arrows.keySet().forEach(id -> { Entity arrow = plugin.getServer().getEntity(id); if (arrow != null) arrow.remove(); });
         banners.values().forEach(field -> field.visual().close());
         banners.clear();
-        taunts.clear(); arrows.clear(); effects.clear();
+        taunts.clear(); arrows.clear(); effects.clear(); killHeals.clear(); transfers.clear();
         buffedPlayers.stream().map(plugin.getServer()::getPlayer)
                 .filter(player -> player != null && player.isOnline() && !player.isDead())
                 .forEach(player -> StatsManager.getInstance().calculateStats(player));
