@@ -368,6 +368,8 @@ public final class BukkitClassAbilityService implements Listener, AutoCloseable 
         event.setDamage(event.getDamage() * (1 - reduction));
         UUID instance = activeInstance(player);
         if (instance == null || event.getFinalDamage() <= 0) return;
+        // Kill commands and the void must stay lethal; never cap or share them.
+        if (event.getCause() == EntityDamageEvent.DamageCause.KILL || event.getCause() == EntityDamageEvent.DamageCause.VOID) return;
         if (selected(player, instance, "tank")) {
             limitFinalDamage(event, StatsManager.getMaxHealth(player) * .5);
             return;

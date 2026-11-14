@@ -785,6 +785,22 @@ class BukkitClassAbilityServiceTest {
         verify(tank, times(1)).damage(anyDouble());
     }
 
+    @Test
+    void killAndVoidDamageBypassTankCapAndSharing() {
+        Player tank = player(4, 64, 0, instance, PlayerLifecycleService.PlayerState.ALIVE);
+        select(Map.of(source.getUniqueId(), "mage", tank.getUniqueId(), "tank"),
+                RunPreparationService.RunState.RUNNING, List.of(source, tank));
+        for (var cause : List.of(EntityDamageEvent.DamageCause.KILL, EntityDamageEvent.DamageCause.VOID)) {
+            var ally = new EntityDamageEvent(source, cause, mock(DamageSource.class), 800);
+            service.onIncoming(ally);
+            assertEquals(800, ally.getFinalDamage(), .001);
+            var direct = new EntityDamageEvent(tank, cause, mock(DamageSource.class), 5000);
+            service.onIncoming(direct);
+            assertEquals(5000, direct.getFinalDamage(), .001);
+        }
+        verify(tank, never()).damage(anyDouble());
+    }
+
     private static EntityDamageEvent incoming(Player player, double damage) {
         return new EntityDamageEvent(player, EntityDamageEvent.DamageCause.CUSTOM, mock(DamageSource.class), damage);
     }
