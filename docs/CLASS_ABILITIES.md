@@ -59,6 +59,45 @@ existing 25% plus 1% per level strength/damage burst and 30-second cooldown.
 The class menu shows each current passive, radius, limit and level-adjusted active
 effect. No new configuration fields or migration are required.
 
+### Validation on Lagless, 2026-11-14
+
+- Java 21 `clean build --no-daemon` passed all 478 tests and external API shading
+  verification. New coverage includes kill ownership/cooldown/ghost/first-life
+  guards, bounded mana recovery, aura distance and strongest-Healer selection,
+  bow-only Attack Speed and its cap, nearest-Tank sharing, no transfer chains,
+  cancellation, armor/absorption, fatal transfer and level-aware class lore.
+  `graphify update .` completed.
+- Source commit `18ca140` on `feat/class-passives` was built and deployed as
+  `1.0+18ca140` to CaveCrawl Beta, Lagless `8c4cafbc`. The remote JAR was downloaded
+  and byte-compared. SHA-256:
+  `f8d6970803eb08e4dbe362f68888454081adbc27ac696c3dbb950f8dfc29e4b2`.
+- Only LidanTheGamer was online; dungeon instances were zero and Kuudra was not
+  running. Immediate `cc reload all` completed with the actual DungeonCrawlers
+  enable/config load, starts enabled, all telemetry integrations ready and
+  `Fishing content loaded.` Config remained schema 2 with administrator values.
+- At native Dungeon level 12, a full-health Tank had 36,386.56 maximum health.
+  A one-billion generic damage hit left 18,560.645 health after a native regen
+  tick; lifecycle reported ALIVE with zero deaths. An owned, weakened dungeon
+  Skeleton Soldier was then killed as Berserker and health recovery was observed.
+- Healer was confirmed through `dungeoncrawlers_player_class_id` before activation;
+  its passive recovered health while injured. Archer showed 0 Attack Speed with
+  an empty hand, 21 with a tagged temporary bow, and 0 after that bow was removed.
+  Mage mana rose from 14,365.28 to 15,314.11 against a maximum of 16,943.36, matching
+  two native-plus-passive regeneration cycles at the level-12 40% bonus.
+- Player-only checks used the authorized LidanTheGamer sender in debug runs.
+  Wait for preparation to finish and verify the selected class before opening
+  the start door; an early selection can precede saved-preference restoration.
+  All test instances completed cleanup. Final checks found zero active instances,
+  valid config, starts enabled, no recovery blockers, no test bow, unchanged
+  Survival mode and Dungeon level 12. No new exceptions occurred during testing.
+- PlugMan reload briefly emitted Essentials `AsyncPlayerSendCommandsEvent`
+  exceptions while command providers were being replaced. Actual plugin loading
+  and subsequent console/player commands completed successfully, with no recurrence
+  during the tests. This change does not alter Essentials or PlugMan.
+- Full-party balance, simultaneous live Tank sharing and client tooltip layout
+  remain unverified. Those sharing rules are covered by automated event/lifecycle
+  tests; the live Tank test establishes the direct-hit cap.
+
 Stormcall uses CaveCrawlers ability damage with base 4,000 and Intelligence scaling 10. Cataclysm Arrow uses base 4,000 and Strength scaling 10. Both use the native projectile damage path for damage attribution and difficulty modifiers, including while holding a bow. Blasts do not break blocks or damage party members.
 
 The Healer percentage increases outgoing healing from these dungeon abilities and the [support items](CLASS_SUPPORT_ITEMS.md). Each heal uses its recipient's maximum health. Regeneration uses the strongest active regeneration effect; damage reduction uses the strongest active reduction effect. Repeated copies of the same support ability refresh its effect rather than multiplying it.
