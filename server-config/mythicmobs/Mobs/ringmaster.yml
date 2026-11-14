@@ -17,6 +17,7 @@ MadRingmaster:
     Despawn: false
     KnockbackResistance: 1
     FollowRange: 32
+    MaxCombatDistance: 32
   AIGoalSelectors:
   - clear
   - meleeattack
@@ -47,6 +48,7 @@ MadRingmasterEncore:
     Despawn: false
     KnockbackResistance: 1
     FollowRange: 32
+    MaxCombatDistance: 32
   AIGoalSelectors:
   - clear
   - meleeattack

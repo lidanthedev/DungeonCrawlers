@@ -3,6 +3,7 @@ package me.lidan.dungeonCrawlers.integration;
 import io.lumine.mythic.bukkit.MythicBukkit;
 import me.lidan.cavecrawlers.utils.MiniMessageUtils;
 import me.lidan.dungeonCrawlers.core.encounter.EncounterFactory.EncounterContext;
+import me.lidan.dungeonCrawlers.core.encounter.PerchGuard;
 import me.lidan.dungeonCrawlers.core.encounter.RingmasterEncounter;
 import me.lidan.dungeonCrawlers.core.encounter.RingmasterGeometry;
 import me.lidan.dungeonCrawlers.core.lifecycle.PlayerLifecycleService;
@@ -60,6 +61,7 @@ public final class BukkitRingmasterArena implements RingmasterEncounter.Arena, L
     private final List<BukkitRingmasterVisuals.Rig> attackRigs = new ArrayList<>();
     private final List<BukkitRingmasterVisuals.Rig> horses = new ArrayList<>();
     private final Map<UUID, Long> sweepHits = new HashMap<>();
+    private final PerchGuard perch = new PerchGuard();
     private final int partySize;
     private List<Player> audience = List.of();
     private UUID boss;
@@ -166,6 +168,8 @@ public final class BukkitRingmasterArena implements RingmasterEncounter.Arena, L
             return;
         }
         List<Player> players = audience;
+        if (!opening) for (Player player : players)
+            if (perch.pull(player.getUniqueId(), player.getY() - center.getY(), time)) pullDown(player);
         performers.removeIf(id -> {
             Entity entity = plugin.getServer().getEntity(id);
             if (!(entity instanceof Mob mob) || !entity.isValid() || entity.isDead()) return true;
@@ -454,6 +458,12 @@ public final class BukkitRingmasterArena implements RingmasterEncounter.Arena, L
         }
     }
 
+    private void pullDown(Player player) {
+        Vector toward = boss().getLocation().toVector().subtract(player.getLocation().toVector());
+        player.setVelocity(toward.normalize().multiply(2.5));
+        player.sendActionBar(MiniMessageUtils.miniMessage("<light_purple>The Ringmaster yanks you back into the ring!</light_purple>"));
+        player.playSound(player.getLocation(), Sound.ENTITY_FISHING_BOBBER_RETRIEVE, 1F, .6F);
+    }
     private void hit(Player player, double damage) { if (alive(player)) player.damage(damage, boss()); }
     private void pulse(Location at, double radius, double damage, List<Player> players) {
         for (Player p : players) if (onFloor(p.getLocation()) && horizontalDistanceSquared(p.getLocation(), at) <= radius * radius) hit(p, damage);
@@ -557,7 +567,7 @@ public final class BukkitRingmasterArena implements RingmasterEncounter.Arena, L
             Entity entity = plugin.getServer().getEntity(id);
             if (entity != null && !mythic.remove(entity)) entity.remove();
         }
-        performers.clear(); bullets.clear(); drops.clear(); attackRigs.clear(); horses.clear(); sweepHits.clear();
+        performers.clear(); bullets.clear(); drops.clear(); attackRigs.clear(); horses.clear(); sweepHits.clear(); perch.clear();
         if (visuals != null) visuals.clear();
         bossRig = null; movie = null; sweepRig = null; transitionAt = 0; attack = null;
     }

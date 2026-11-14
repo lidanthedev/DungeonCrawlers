@@ -10,6 +10,7 @@ import me.lidan.dungeonCrawlers.core.encounter.ChainboundEncounter.Stage;
 import me.lidan.dungeonCrawlers.core.encounter.EncounterFactory.EncounterContext;
 import me.lidan.dungeonCrawlers.core.encounter.FoundryGeometry;
 import me.lidan.dungeonCrawlers.core.encounter.CounterweightTrial;
+import me.lidan.dungeonCrawlers.core.encounter.PerchGuard;
 import me.lidan.dungeonCrawlers.core.generation.GenerationService;
 import me.lidan.dungeonCrawlers.core.lifecycle.PlayerLifecycleService;
 import me.lidan.dungeonCrawlers.core.protection.TeleportPermitService;
@@ -61,6 +62,7 @@ public final class BukkitChainboundArena implements ChainboundEncounter.Arena, L
     private final TeleportPermitService permits;
     private final Clock clock;
     private final Map<UUID, Long> hitTimes = new HashMap<>();
+    private final PerchGuard perch = new PerchGuard();
     private final Set<Player> barViewers = new HashSet<>();
     private final List<Location> brands = new ArrayList<>();
     private final Map<UUID, Location> tethers = new LinkedHashMap<>();
@@ -258,7 +260,7 @@ public final class BukkitChainboundArena implements ChainboundEncounter.Arena, L
                 if (player.getY() < floor().getY() - .5 || horizontal(player.getLocation(), center) > 33 * 33) {
                     teleport(player, floor().add(0, 0, 5));
                     hit(player, settings.damage() * .5, time);
-                }
+                } else if (perch.pull(player.getUniqueId(), player.getY() - floor().getY(), time)) pullDown(player);
             }
         }
         if (attack != null) tickAttack(time, fighters);
@@ -501,6 +503,12 @@ public final class BukkitChainboundArena implements ChainboundEncounter.Arena, L
     }
 
     private boolean grounded(Player player) { return player.getY() <= floor().getY() + .55; }
+    private void pullDown(Player player) {
+        Vector toward = boss().getLocation().toVector().subtract(player.getLocation().toVector());
+        player.setVelocity(toward.normalize().multiply(2.5));
+        player.sendActionBar(MiniMessageUtils.miniMessage("<aqua>Veyra's chains drag you back down!</aqua>"));
+        player.playSound(player.getLocation(), Sound.BLOCK_CHAIN_PLACE, 1F, .6F);
+    }
     private Location floor() { return center.clone().add(0, lowered ? -FoundryGeometry.DROP : 0, 0); }
     private void cancelAttack() {
         if (bridgeRetracted && scene != null) scene.drawBridge(bridge, false);
@@ -601,7 +609,7 @@ public final class BukkitChainboundArena implements ChainboundEncounter.Arena, L
         finally {
             barViewers.forEach(p -> p.hideBossBar(bar)); barViewers.clear();
             if (registered) HandlerList.unregisterAll(this);
-            registered = false; hitTimes.clear(); brands.clear(); tethers.clear(); counterweightTrial = null; audience = List.of();
+            registered = false; hitTimes.clear(); perch.clear(); brands.clear(); tethers.clear(); counterweightTrial = null; audience = List.of();
         }
     }
 }
