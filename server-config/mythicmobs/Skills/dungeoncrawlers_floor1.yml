@@ -80,7 +80,7 @@ DCF1_MinibossVolley:
   Conditions:
   - hasaura{n=DCF1_BUSY} false
   - targetwithin{d=28} true
-  - (variableisset{var=caster.dcf1_melee} false || targetwithin{d=12} false) true
+  - (variableisset{var=caster.dcf1_melee} false || targetwithin{d=8} false) true
   TargetConditions:
   - lineofsight true
   Skills:

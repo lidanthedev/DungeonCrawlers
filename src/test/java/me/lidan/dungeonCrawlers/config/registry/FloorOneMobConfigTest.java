@@ -25,7 +25,7 @@ class FloorOneMobConfigTest {
         assertEquals(5, skills.getInt("DCF1_MinibossVolley.Cooldown"));
         assertTrue(skills.getStringList("DCF1_MinibossVolley.Conditions").containsAll(List.of(
                 idle, "targetwithin{d=28} true",
-                "(variableisset{var=caster.dcf1_melee} false || targetwithin{d=12} false) true")));
+                "(variableisset{var=caster.dcf1_melee} false || targetwithin{d=8} false) true")));
         assertTrue(skills.getStringList("DCF1_MinibossVolley.TargetConditions").contains("lineofsight true"));
         var volley = skills.getStringList("DCF1_MinibossVolley.Skills");
         assertEquals(List.of("aura{n=DCF1_BUSY;d=22} @self", "equip{item=BOW HAND} @self"), volley.subList(0, 2));
