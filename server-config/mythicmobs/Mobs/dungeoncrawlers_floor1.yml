@@ -1,6 +1,6 @@
 # Floor I room roster, adapted to CaveCrawlers stats. No boss or Watcher changes.
 # Roster: https://hypixelskyblock.minecraft.wiki/w/Catacombs_Mobs
-# Crypt Undead, Prince and Admin use room markers in place of Hypixel tomb triggers.
+# Crypt Undead, Prince and Crypt Guard use room markers in place of Hypixel tomb triggers.
 DCF1_CryptLurker:
   Type: ZOMBIE
   Display: '&8[Floor 1] &7Crypt Lurker'
@@ -528,8 +528,7 @@ DCF1_LostAdventurerYoung:
   Skills:
   - setvariable{var=caster.dcf1_heals;type=INTEGER;value=0} @self ~onSpawn
   - skill{s=DCF1_DragonBreath} @target ~onTimer:120
-  - skill{s=DCF1_AdventurerMelee} @target ~onTimer:10
-  - skill{s=DCF1_AdventurerBow} @target ~onTimer:20
+  - skill{s=DCF1_MinibossOpener} @target ~onTimer:20
   - skill{s=DCF1_Apple} @target ~onTimer:20
   - skill{s=DCF1_YoungSpeed} @target ~onTimer:20
   DamageModifiers:
@@ -569,8 +568,7 @@ DCF1_LostAdventurerUnstable:
   Skills:
   - setvariable{var=caster.dcf1_heals;type=INTEGER;value=0} @self ~onSpawn
   - skill{s=DCF1_DragonBreath} @target ~onTimer:120
-  - skill{s=DCF1_AdventurerMelee} @target ~onTimer:10
-  - skill{s=DCF1_AdventurerBow} @target ~onTimer:20
+  - skill{s=DCF1_MinibossOpener} @target ~onTimer:20
   - skill{s=DCF1_Apple} @target ~onTimer:20
   - skill{s=DCF1_UnstableLightning} @target ~onTimer:140
   DamageModifiers:
@@ -610,8 +608,7 @@ DCF1_LostAdventurerHoly:
   Skills:
   - setvariable{var=caster.dcf1_heals;type=INTEGER;value=0} @self ~onSpawn
   - skill{s=DCF1_DragonBreath} @target ~onTimer:120
-  - skill{s=DCF1_AdventurerMelee} @target ~onTimer:10
-  - skill{s=DCF1_AdventurerBow} @target ~onTimer:20
+  - skill{s=DCF1_MinibossOpener} @target ~onTimer:20
   - skill{s=DCF1_Apple} @target ~onTimer:20
   - skill{s=DCF1_HolyRegen} @target ~onTimer:60
   DamageModifiers:
@@ -651,8 +648,7 @@ DCF1_LostAdventurerSuperior:
   Skills:
   - setvariable{var=caster.dcf1_heals;type=INTEGER;value=0} @self ~onSpawn
   - skill{s=DCF1_DragonBreathSuperior} @target ~onTimer:120
-  - skill{s=DCF1_AdventurerMelee} @target ~onTimer:10
-  - skill{s=DCF1_AdventurerBow} @target ~onTimer:20
+  - skill{s=DCF1_MinibossOpener} @target ~onTimer:20
   - skill{s=DCF1_Apple} @target ~onTimer:20
   DamageModifiers:
   - ENTITY_ATTACK 0.5
@@ -678,9 +674,7 @@ DCF1_AngryArchaeologist:
   AIGoalSelectors:
   - 0 clear
   - 1 float
-  - 2 meleeattack
-  - 3 movetowardstarget
-  - 4 lookatplayers
+  - 2 lookatplayers
   AITargetSelectors:
   - 0 clear
   - 1 players
@@ -690,10 +684,11 @@ DCF1_AngryArchaeologist:
   - DIAMOND_CHESTPLATE CHEST
   - DIAMOND_LEGGINGS LEGS
   - DIAMOND_BOOTS FEET
-  - DIAMOND_SWORD HAND
+  - BOW HAND
   Skills:
   - setvariable{var=caster.dcf1_heals;type=INTEGER;value=0} @self ~onSpawn
   - potion{type=DAMAGE_RESISTANCE;duration=100;level=1} @self ~onSpawn
+  - skill{s=DCF1_MinibossOpener} @target ~onTimer:20
   - skill{s=DCF1_HealingPotion} @target ~onTimer:20
   DamageModifiers:
   - ENTITY_ATTACK 0.2

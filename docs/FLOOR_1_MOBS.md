@@ -8,14 +8,14 @@ Normal enemies: Crypt Lurker, Crypt Undead, Crypt Dreadlord, Tank Zombie, Zombie
 Grunt, Undead Skeleton, Scared Skeleton, Skeleton Grunt, Skeleton Soldier, Sniper,
 Crypt Souleater, Lonely Spider, Cellar Spider, Prince and Crypt Guard.
 
-Minibosses: Young, Unstable, Holy and Superior Lost Adventurers, plus Angry
-Archaeologist. Adventurers start holding bows, shoot every two seconds at targets
-between six and 28 blocks away, and switch permanently to swords when their target
-comes within six blocks. They retain dragon breath and at most four golden-apple
-heals; healing restores the weapon for the current phase. Young gains speed above
-half health, Unstable has a nearby lightning pulse, Holy regenerates, and Superior
-has stronger breath. Archaeologist
-has stronger damage reduction, diamond armor and limited healing potions.
+Minibosses are Young, Unstable, Holy and Superior Lost Adventurers, plus Angry
+Archaeologist. All five open with three arrows, firing one every four ticks
+once they see a target within 28 blocks. After the third shot they draw swords
+and rush with four seconds of Speed II. They gain Resistance IV during their
+1.5-second golden apple or potion animation, then resume sword combat.
+Young gains speed above half health, Unstable has a nearby lightning pulse,
+Holy regenerates, and Superior has stronger breath. Archaeologist has stronger
+damage reduction and diamond armor.
 
 As of 2026-11-20, all 20 room mobs have 25% higher base damage. Their explicit
 projectile, breath and lightning damage values also increased by 25%; health is
