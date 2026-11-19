@@ -100,7 +100,7 @@ DCF1_MinibossOpener:
 DCF1_MinibossArrow:
   Skills:
   - sound{s=entity.skeleton.shoot;v=0.7;p=1} @self
-  - shoot{type=ARROW;damage=1000000;velocity=1.8;accuracy=0.95;pickup=false;expiration=20}
+  - shoot{type=ARROW;damage=1000000;velocity=1.8;accuracy=1;calculatefiringangle=true;pickup=false;expiration=20}
 DCF1_Flee:
   Conditions:
   - healthpercent{p=<0.3} true
@@ -149,14 +149,12 @@ DCF1_Apple:
   Skills:
   - variableadd{var=caster.dcf1_heals;amount=1} @self
   - equip{item=GOLDEN_APPLE HAND} @self
-  - equip{item=SHIELD OFFHAND} @self
   - potion{type=SLOW;duration=30;level=3} @self
   - potion{type=DAMAGE_RESISTANCE;duration=30;level=3} @self
   - sound{s=entity.generic.eat;v=1;p=1;repeat=2;repeatInterval=10} @self
   - delay 30
   - healpercent{m=0.3} @self
   - particles{p=HEART;a=6;hS=0.5;vS=0.5} @self
-  - equip{item=AIR OFFHAND} @self
   - equip{item=DIAMOND_SWORD HAND} @self
 DCF1_HealingPotion:
   Cooldown: 12
