@@ -5,7 +5,7 @@ DCF1_CryptLurker:
   Type: ZOMBIE
   Display: '&8[Floor 1] &7Crypt Lurker'
   Health: 4500000
-  Damage: 450000
+  Damage: 562500
   Faction: DC_FLOOR1
   Options:
     AlwaysShowName: true
@@ -35,7 +35,7 @@ DCF1_CryptUndead:
   Type: ZOMBIE
   Display: '&8[Floor 1] &7Crypt Undead'
   Health: 8000000
-  Damage: 650000
+  Damage: 812500
   Faction: DC_FLOOR1
   Options:
     AlwaysShowName: true
@@ -73,7 +73,7 @@ DCF1_CryptDreadlord:
   Type: ZOMBIE
   Display: '&8[Floor 1] &7Crypt Dreadlord'
   Health: 6500000
-  Damage: 500000
+  Damage: 625000
   Faction: DC_FLOOR1
   Options:
     AlwaysShowName: true
@@ -107,7 +107,7 @@ DCF1_TankZombie:
   Type: ZOMBIE
   Display: '&8[Floor 1] &7Tank Zombie'
   Health: 1500000
-  Damage: 300000
+  Damage: 375000
   Faction: DC_FLOOR1
   Options:
     AlwaysShowName: true
@@ -146,7 +146,7 @@ DCF1_ZombieGrunt:
   Type: ZOMBIE
   Display: '&8[Floor 1] &7Zombie Grunt'
   Health: 4000000
-  Damage: 400000
+  Damage: 500000
   Faction: DC_FLOOR1
   Options:
     AlwaysShowName: true
@@ -178,7 +178,7 @@ DCF1_UndeadSkeleton:
   Type: SKELETON
   Display: '&8[Floor 1] &7Undead Skeleton'
   Health: 9000000
-  Damage: 650000
+  Damage: 812500
   Faction: DC_FLOOR1
   Options:
     AlwaysShowName: true
@@ -212,7 +212,7 @@ DCF1_ScaredSkeleton:
   Type: SKELETON
   Display: '&8[Floor 1] &7Scared Skeleton'
   Health: 4500000
-  Damage: 350000
+  Damage: 437500
   Faction: DC_FLOOR1
   Options:
     AlwaysShowName: true
@@ -242,7 +242,7 @@ DCF1_SkeletonGrunt:
   Type: SKELETON
   Display: '&8[Floor 1] &7Skeleton Grunt'
   Health: 5000000
-  Damage: 400000
+  Damage: 500000
   Faction: DC_FLOOR1
   Options:
     AlwaysShowName: true
@@ -275,7 +275,7 @@ DCF1_SkeletonSoldier:
   Type: SKELETON
   Display: '&8[Floor 1] &7Skeleton Soldier'
   Health: 7500000
-  Damage: 550000
+  Damage: 687500
   Faction: DC_FLOOR1
   Options:
     AlwaysShowName: true
@@ -308,7 +308,7 @@ DCF1_Sniper:
   Type: SKELETON
   Display: '&8[Floor 1] &7Sniper'
   Health: 3500000
-  Damage: 950000
+  Damage: 1187500
   Faction: DC_FLOOR1
   Options:
     AlwaysShowName: true
@@ -337,7 +337,7 @@ DCF1_CryptSouleater:
   Type: SKELETON
   Display: '&8[Floor 1] &7Crypt Souleater'
   Health: 6000000
-  Damage: 500000
+  Damage: 625000
   Faction: DC_FLOOR1
   Options:
     AlwaysShowName: true
@@ -367,7 +367,7 @@ DCF1_LonelySpider:
   Type: CAVE_SPIDER
   Display: '&8[Floor 1] &7Lonely Spider'
   Health: 2000000
-  Damage: 250000
+  Damage: 312500
   Faction: DC_FLOOR1
   Options:
     AlwaysShowName: true
@@ -395,7 +395,7 @@ DCF1_CellarSpider:
   Type: SPIDER
   Display: '&8[Floor 1] &7Cellar Spider'
   Health: 7000000
-  Damage: 600000
+  Damage: 750000
   Faction: DC_FLOOR1
   Options:
     AlwaysShowName: true
@@ -423,7 +423,7 @@ DCF1_Prince:
   Type: ZOMBIE
   Display: '&8[Floor 1] &7Prince'
   Health: 10000000
-  Damage: 700000
+  Damage: 875000
   Faction: DC_FLOOR1
   Options:
     AlwaysShowName: true
@@ -461,7 +461,7 @@ DCF1_Admin:
   Type: ZOMBIE
   Display: '&8[Floor 1] &7Admin'
   Health: 8000000
-  Damage: 650000
+  Damage: 812500
   Faction: DC_FLOOR1
   Options:
     AlwaysShowName: true
@@ -499,7 +499,7 @@ DCF1_LostAdventurerYoung:
   Type: ZOMBIE
   Display: '&8[Floor 1] &7Lost Adventurer (Young)'
   Health: 20000000
-  Damage: 1000000
+  Damage: 1250000
   Faction: DC_FLOOR1
   Options:
     AlwaysShowName: true
@@ -514,9 +514,7 @@ DCF1_LostAdventurerYoung:
   AIGoalSelectors:
   - 0 clear
   - 1 float
-  - 2 meleeattack
-  - 3 movetowardstarget
-  - 4 lookatplayers
+  - 2 lookatplayers
   AITargetSelectors:
   - 0 clear
   - 1 players
@@ -526,11 +524,12 @@ DCF1_LostAdventurerYoung:
   - LEATHER_CHESTPLATE{color=WHITE} CHEST
   - LEATHER_LEGGINGS{color=WHITE} LEGS
   - LEATHER_BOOTS{color=WHITE} FEET
-  - DIAMOND_SWORD HAND
+  - BOW HAND
   Skills:
   - setvariable{var=caster.dcf1_heals;type=INTEGER;value=0} @self ~onSpawn
   - skill{s=DCF1_DragonBreath} @target ~onTimer:120
-  - skill{s=DCF1_AdventurerBow} @target ~onTimer:80
+  - skill{s=DCF1_AdventurerMelee} @target ~onTimer:10
+  - skill{s=DCF1_AdventurerBow} @target ~onTimer:20
   - skill{s=DCF1_Apple} @target ~onTimer:20
   - skill{s=DCF1_YoungSpeed} @target ~onTimer:20
   DamageModifiers:
@@ -541,7 +540,7 @@ DCF1_LostAdventurerUnstable:
   Type: ZOMBIE
   Display: '&8[Floor 1] &7Lost Adventurer (Unstable)'
   Health: 20000000
-  Damage: 1000000
+  Damage: 1250000
   Faction: DC_FLOOR1
   Options:
     AlwaysShowName: true
@@ -556,9 +555,7 @@ DCF1_LostAdventurerUnstable:
   AIGoalSelectors:
   - 0 clear
   - 1 float
-  - 2 meleeattack
-  - 3 movetowardstarget
-  - 4 lookatplayers
+  - 2 lookatplayers
   AITargetSelectors:
   - 0 clear
   - 1 players
@@ -568,11 +565,12 @@ DCF1_LostAdventurerUnstable:
   - LEATHER_CHESTPLATE{color=PURPLE} CHEST
   - LEATHER_LEGGINGS{color=PURPLE} LEGS
   - LEATHER_BOOTS{color=PURPLE} FEET
-  - DIAMOND_SWORD HAND
+  - BOW HAND
   Skills:
   - setvariable{var=caster.dcf1_heals;type=INTEGER;value=0} @self ~onSpawn
   - skill{s=DCF1_DragonBreath} @target ~onTimer:120
-  - skill{s=DCF1_AdventurerBow} @target ~onTimer:80
+  - skill{s=DCF1_AdventurerMelee} @target ~onTimer:10
+  - skill{s=DCF1_AdventurerBow} @target ~onTimer:20
   - skill{s=DCF1_Apple} @target ~onTimer:20
   - skill{s=DCF1_UnstableLightning} @target ~onTimer:140
   DamageModifiers:
@@ -583,7 +581,7 @@ DCF1_LostAdventurerHoly:
   Type: ZOMBIE
   Display: '&8[Floor 1] &7Lost Adventurer (Holy)'
   Health: 20000000
-  Damage: 1000000
+  Damage: 1250000
   Faction: DC_FLOOR1
   Options:
     AlwaysShowName: true
@@ -598,9 +596,7 @@ DCF1_LostAdventurerHoly:
   AIGoalSelectors:
   - 0 clear
   - 1 float
-  - 2 meleeattack
-  - 3 movetowardstarget
-  - 4 lookatplayers
+  - 2 lookatplayers
   AITargetSelectors:
   - 0 clear
   - 1 players
@@ -610,11 +606,12 @@ DCF1_LostAdventurerHoly:
   - LEATHER_CHESTPLATE{color=GREEN} CHEST
   - LEATHER_LEGGINGS{color=GREEN} LEGS
   - LEATHER_BOOTS{color=GREEN} FEET
-  - DIAMOND_SWORD HAND
+  - BOW HAND
   Skills:
   - setvariable{var=caster.dcf1_heals;type=INTEGER;value=0} @self ~onSpawn
   - skill{s=DCF1_DragonBreath} @target ~onTimer:120
-  - skill{s=DCF1_AdventurerBow} @target ~onTimer:80
+  - skill{s=DCF1_AdventurerMelee} @target ~onTimer:10
+  - skill{s=DCF1_AdventurerBow} @target ~onTimer:20
   - skill{s=DCF1_Apple} @target ~onTimer:20
   - skill{s=DCF1_HolyRegen} @target ~onTimer:60
   DamageModifiers:
@@ -625,7 +622,7 @@ DCF1_LostAdventurerSuperior:
   Type: ZOMBIE
   Display: '&8[Floor 1] &7Lost Adventurer (Superior)'
   Health: 24000000
-  Damage: 1200000
+  Damage: 1500000
   Faction: DC_FLOOR1
   Options:
     AlwaysShowName: true
@@ -640,9 +637,7 @@ DCF1_LostAdventurerSuperior:
   AIGoalSelectors:
   - 0 clear
   - 1 float
-  - 2 meleeattack
-  - 3 movetowardstarget
-  - 4 lookatplayers
+  - 2 lookatplayers
   AITargetSelectors:
   - 0 clear
   - 1 players
@@ -652,11 +647,12 @@ DCF1_LostAdventurerSuperior:
   - LEATHER_CHESTPLATE{color=YELLOW} CHEST
   - LEATHER_LEGGINGS{color=YELLOW} LEGS
   - LEATHER_BOOTS{color=YELLOW} FEET
-  - DIAMOND_SWORD HAND
+  - BOW HAND
   Skills:
   - setvariable{var=caster.dcf1_heals;type=INTEGER;value=0} @self ~onSpawn
   - skill{s=DCF1_DragonBreathSuperior} @target ~onTimer:120
-  - skill{s=DCF1_AdventurerBow} @target ~onTimer:80
+  - skill{s=DCF1_AdventurerMelee} @target ~onTimer:10
+  - skill{s=DCF1_AdventurerBow} @target ~onTimer:20
   - skill{s=DCF1_Apple} @target ~onTimer:20
   DamageModifiers:
   - ENTITY_ATTACK 0.5
@@ -666,7 +662,7 @@ DCF1_AngryArchaeologist:
   Type: ZOMBIE
   Display: '&8[Floor 1] &7Angry Archaeologist'
   Health: 8000000
-  Damage: 1000000
+  Damage: 1250000
   Faction: DC_FLOOR1
   Options:
     AlwaysShowName: true

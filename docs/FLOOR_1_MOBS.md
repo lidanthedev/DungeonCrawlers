@@ -9,10 +9,17 @@ Grunt, Undead Skeleton, Scared Skeleton, Skeleton Grunt, Skeleton Soldier, Snipe
 Crypt Souleater, Lonely Spider, Cellar Spider, Prince and Admin.
 
 Minibosses: Young, Unstable, Holy and Superior Lost Adventurers, plus Angry
-Archaeologist. Adventurers have dragon breath, ranged attacks and at most four
-golden-apple heals. Young gains speed above half health, Unstable has a nearby
-lightning pulse, Holy regenerates, and Superior has stronger breath. Archaeologist
+Archaeologist. Adventurers start holding bows, shoot every two seconds at targets
+between six and 28 blocks away, and switch permanently to swords when their target
+comes within six blocks. They retain dragon breath and at most four golden-apple
+heals; healing restores the weapon for the current phase. Young gains speed above
+half health, Unstable has a nearby lightning pulse, Holy regenerates, and Superior
+has stronger breath. Archaeologist
 has stronger damage reduction, diamond armor and limited healing potions.
+
+As of 2026-11-20, all 20 room mobs have 25% higher base damage. Their explicit
+projectile, breath and lightning damage values also increased by 25%; health is
+unchanged.
 
 These are config adaptations using vanilla entities and MythicMobs mechanics.
 Crypt Undead, Prince and Admin spawn at room markers rather than exploded tombs.
@@ -70,3 +77,31 @@ addon. Confirm actual enable completion and `/dungeon config validate` success.
   warnings. The first global reload also logged an unknown persisted `RUNIC_PET`.
 - Full Survival clears, every special attack, exact Hypixel AI and multiplayer
   balance remain unverified. Testing used administrative activation and clears.
+
+## Damage and bow opener update, 2026-11-20
+
+- Raised all 20 mob base-damage values and explicit skill damage by 25%, preserving
+  health, boss configuration and the class setup. All four Lost Adventurers start
+  ranged, switch once within six blocks, and restore their current weapon after
+  eating. A focused Java 21 config regression passed; strict YAML parsing checked
+  duplicate keys, every local skill reference and unchanged health. Graph updated.
+- Downloaded live originals matched the repository. Each MythicMobs file was
+  backed up beside the original as `dungeoncrawlers_floor1.yml.before-combat-20261120`,
+  uploaded and downloaded again for byte comparison. No plugin JAR changed.
+- LidanTheGamer and Eyalc were online; active instances were zero and Kuudra was
+  not running. The 60-second update countdown completed, followed by MythicMobs
+  reload: 228 mobs, 347 skills and actual reload completion. DungeonCrawlers loaded
+  three floors and 26 rooms with starts enabled and no recovery blockers;
+  FishingAddon completed its content callback. Live config validation passed.
+- The reload logged Essentials AsyncPlayerSendCommandsEvent exceptions also seen
+  during previous global reloads. MythicMobs retained unrelated Jasper, platypus,
+  numeric-placeholder, MIR, RRT and STATE warnings; none named this Floor 1 pack.
+- Read-only comparison against live `plugins/MythicMobs/Mobs/dungeon_mobs.yml`:
+  CryptZombie, CryptSkeleton and CryptSpider each have 400,000 base damage. New
+  Zombie/Skeleton Grunts have 500,000 (+25%); Cellar Spider 750,000 (+87.5%). Tank
+  Zombie (375,000) and Lonely Spider (312,500) remain below the old baseline. The
+  original LostAdventurer and AngryArchaeologist have 1,000,000 damage; new normal
+  Adventurers and Archaeologist have 1,250,000, Superior has 1,500,000.
+- This update did not run a Survival combat test: actual arrows, the weapon
+  transition and resulting player damage need gameplay confirmation. Values above
+  compare config base damage before defence, dungeon scaling or class effects.

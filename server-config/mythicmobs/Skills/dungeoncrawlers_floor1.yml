@@ -16,7 +16,7 @@ DCF1_BoneHit:
   TargetConditions:
   - isPlayer true
   Skills:
-  - damage{a=900000}
+  - damage{a=1125000}
 DCF1_Skull:
   Conditions:
   - targetwithin{d=28} true
@@ -33,7 +33,7 @@ DCF1_SkullHit:
   TargetConditions:
   - isPlayer true
   Skills:
-  - damage{a=750000}
+  - damage{a=937500}
 DCF1_ScaredShot:
   Conditions:
   - targetwithin{d=28} true
@@ -41,7 +41,7 @@ DCF1_ScaredShot:
   - lineofsight true
   Skills:
   - sound{s=entity.skeleton.shoot;v=0.7;p=1} @self
-  - shoot{type=ARROW;damage=350000;velocity=1.2;accuracy=0.95;pickup=false;expiration=20}
+  - shoot{type=ARROW;damage=437500;velocity=1.2;accuracy=0.95;pickup=false;expiration=20}
 DCF1_GruntShot:
   Conditions:
   - targetwithin{d=28} true
@@ -49,7 +49,7 @@ DCF1_GruntShot:
   - lineofsight true
   Skills:
   - sound{s=entity.skeleton.shoot;v=0.7;p=1} @self
-  - shoot{type=ARROW;damage=400000;velocity=1.6;accuracy=0.95;pickup=false;expiration=20}
+  - shoot{type=ARROW;damage=500000;velocity=1.6;accuracy=0.95;pickup=false;expiration=20}
 DCF1_SoldierShot:
   Conditions:
   - targetwithin{d=28} true
@@ -57,7 +57,7 @@ DCF1_SoldierShot:
   - lineofsight true
   Skills:
   - sound{s=entity.skeleton.shoot;v=0.7;p=1} @self
-  - shoot{type=ARROW;damage=550000;velocity=1.8;accuracy=0.95;pickup=false;expiration=20}
+  - shoot{type=ARROW;damage=687500;velocity=1.8;accuracy=0.95;pickup=false;expiration=20}
 DCF1_SniperShot:
   Conditions:
   - targetwithin{d=48} true
@@ -65,7 +65,7 @@ DCF1_SniperShot:
   - lineofsight true
   Skills:
   - sound{s=entity.skeleton.shoot;v=0.7;p=1} @self
-  - shoot{type=ARROW;damage=950000;velocity=3;accuracy=0.95;pickup=false;expiration=20}
+  - shoot{type=ARROW;damage=1187500;velocity=3;accuracy=0.95;pickup=false;expiration=20}
 DCF1_UndeadBow:
   Conditions:
   - targetwithin{d=28} true
@@ -74,16 +74,19 @@ DCF1_UndeadBow:
   - lineofsight true
   Skills:
   - sound{s=entity.skeleton.shoot;v=0.7;p=1} @self
-  - shoot{type=ARROW;damage=650000;velocity=1.6;accuracy=0.95;pickup=false;expiration=20}
+  - shoot{type=ARROW;damage=812500;velocity=1.6;accuracy=0.95;pickup=false;expiration=20}
 DCF1_AdventurerBow:
+  Cooldown: 2
   Conditions:
+  - variableisset{var=caster.dcf1_melee} false
+  - hasaura{n=DCF1_EATING} false
   - targetwithin{d=28} true
-  - targetwithin{d=4} false
+  - targetwithin{d=6} false
   TargetConditions:
   - lineofsight true
   Skills:
   - sound{s=entity.skeleton.shoot;v=0.7;p=1} @self
-  - shoot{type=ARROW;damage=800000;velocity=1.8;accuracy=0.95;pickup=false;expiration=20}
+  - shoot{type=ARROW;damage=1000000;velocity=1.8;accuracy=0.95;pickup=false;expiration=20}
 DCF1_Flee:
   Conditions:
   - healthpercent{p=<0.3} true
@@ -110,7 +113,7 @@ DCF1_DragonBreath:
   - sound{s=entity.ender_dragon.growl;v=0.7;p=1.5} @self
   - particles{p=FLAME;a=20;hS=0.5;vS=0.5} @self
   - delay 20
-  - damage{a=1500000} @PlayersInRadius{r=4}
+  - damage{a=1875000} @PlayersInRadius{r=4}
   - throw{velocity=6;velocityY=2} @PlayersInRadius{r=4}
 DCF1_DragonBreathSuperior:
   Conditions:
@@ -119,7 +122,7 @@ DCF1_DragonBreathSuperior:
   - sound{s=entity.ender_dragon.growl;v=0.7;p=1.5} @self
   - particles{p=FLAME;a=20;hS=0.5;vS=0.5} @self
   - delay 20
-  - damage{a=2250000} @PlayersInRadius{r=4}
+  - damage{a=2812500} @PlayersInRadius{r=4}
   - throw{velocity=6;velocityY=2} @PlayersInRadius{r=4}
 DCF1_Apple:
   Cooldown: 12
@@ -127,6 +130,7 @@ DCF1_Apple:
   - healthpercent{p=<0.5} true
   - variableinrange{var=caster.dcf1_heals;value=0-3} true
   Skills:
+  - aura{n=DCF1_EATING;d=32} @self
   - variableadd{var=caster.dcf1_heals;amount=1} @self
   - equip{item=GOLDEN_APPLE HAND} @self
   - potion{type=SLOW;duration=30;level=3} @self
@@ -134,7 +138,8 @@ DCF1_Apple:
   - delay 30
   - healpercent{m=0.3} @self
   - particles{p=HEART;a=6;hS=0.5;vS=0.5} @self
-  - equip{item=DIAMOND_SWORD HAND} @self
+  - skill{s=DCF1_AdventurerRestoreBow} @self
+  - skill{s=DCF1_AdventurerRestoreSword} @self
 DCF1_HealingPotion:
   Cooldown: 12
   Conditions:
@@ -167,4 +172,27 @@ DCF1_UnstableLightning:
   - sound{s=entity.lightning_bolt.thunder;v=0.5;p=1.4} @self
   - particles{p=ELECTRIC_SPARK;a=20;hS=2;vS=0.5} @self
   - delay 20
-  - percentdamage{percent=0.1} @PlayersInRadius{r=4}
+  - percentdamage{percent=0.125} @PlayersInRadius{r=4}
+DCF1_AdventurerMelee:
+  Conditions:
+  - targetwithin{d=6} true
+  - variableisset{var=caster.dcf1_melee} false
+  - hasaura{n=DCF1_EATING} false
+  Skills:
+  - setvariable{var=caster.dcf1_melee;type=BOOLEAN;value=true} @self
+  - equip{item=DIAMOND_SWORD HAND} @self
+  - runaigoalselector{goal=clear} @self
+  - runaigoalselector{goal=float} @self
+  - runaigoalselector{goal=meleeattack} @self
+  - runaigoalselector{goal=movetowardstarget} @self
+  - runaigoalselector{goal=lookatplayers} @self
+DCF1_AdventurerRestoreBow:
+  Conditions:
+  - variableisset{var=caster.dcf1_melee} false
+  Skills:
+  - equip{item=BOW HAND} @self
+DCF1_AdventurerRestoreSword:
+  Conditions:
+  - variableisset{var=caster.dcf1_melee} true
+  Skills:
+  - equip{item=DIAMOND_SWORD HAND} @self
