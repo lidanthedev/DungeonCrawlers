@@ -13,6 +13,9 @@ Archaeologist. All five open with three arrows, firing half a second apart
 once they see a target within 28 blocks. After the third shot they draw swords
 and rush with four seconds of Speed II. They gain Resistance IV during their
 1.5-second golden apple or potion animation, then resume sword combat.
+After the opener, they draw their bows again if their target is visible and
+more than 12 blocks away, up to 28 blocks. At least five seconds must pass
+between volley starts. They finish healing before starting a volley.
 Lost Adventurers play three bite sounds while eating.
 Young gains speed above half health, Unstable has a nearby lightning pulse,
 Holy regenerates, and Superior has stronger breath. Archaeologist has stronger

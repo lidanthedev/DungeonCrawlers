@@ -75,15 +75,20 @@ DCF1_UndeadBow:
   Skills:
   - sound{s=entity.skeleton.shoot;v=0.7;p=1} @self
   - shoot{type=ARROW;damage=812500;velocity=1.6;accuracy=0.95;pickup=false;expiration=20}
-DCF1_MinibossOpener:
+DCF1_MinibossVolley:
+  Cooldown: 5
   Conditions:
-  - variableisset{var=caster.dcf1_melee} false
-  - variableisset{var=caster.dcf1_opener_started} false
+  - hasaura{n=DCF1_BUSY} false
   - targetwithin{d=28} true
+  - (variableisset{var=caster.dcf1_melee} false || targetwithin{d=12} false) true
   TargetConditions:
   - lineofsight true
   Skills:
-  - setvariable{var=caster.dcf1_opener_started;type=BOOLEAN;value=true} @self
+  - aura{n=DCF1_BUSY;d=22} @self
+  - equip{item=BOW HAND} @self
+  - runaigoalselector{goal=clear} @self
+  - runaigoalselector{goal=float} @self
+  - runaigoalselector{goal=lookatplayers} @self
   - skill{s=DCF1_MinibossArrow}
   - delay 10
   - skill{s=DCF1_MinibossArrow}
@@ -123,6 +128,7 @@ DCF1_SpiderLeap:
 DCF1_DragonBreath:
   Conditions:
   - variableisset{var=caster.dcf1_melee} true
+  - hasaura{n=DCF1_BUSY} false
   - targetwithin{d=5} true
   Skills:
   - sound{s=entity.ender_dragon.growl;v=0.7;p=1.5} @self
@@ -133,6 +139,7 @@ DCF1_DragonBreath:
 DCF1_DragonBreathSuperior:
   Conditions:
   - variableisset{var=caster.dcf1_melee} true
+  - hasaura{n=DCF1_BUSY} false
   - targetwithin{d=5} true
   Skills:
   - sound{s=entity.ender_dragon.growl;v=0.7;p=1.5} @self
@@ -144,9 +151,11 @@ DCF1_Apple:
   Cooldown: 12
   Conditions:
   - variableisset{var=caster.dcf1_melee} true
+  - hasaura{n=DCF1_BUSY} false
   - healthpercent{p=<0.5} true
   - variableinrange{var=caster.dcf1_heals;value=0-3} true
   Skills:
+  - aura{n=DCF1_BUSY;d=32} @self
   - variableadd{var=caster.dcf1_heals;amount=1} @self
   - equip{item=GOLDEN_APPLE HAND} @self
   - potion{type=SLOW;duration=30;level=3} @self
@@ -160,9 +169,11 @@ DCF1_HealingPotion:
   Cooldown: 12
   Conditions:
   - variableisset{var=caster.dcf1_melee} true
+  - hasaura{n=DCF1_BUSY} false
   - healthpercent{p=<0.5} true
   - variableinrange{var=caster.dcf1_heals;value=0-3} true
   Skills:
+  - aura{n=DCF1_BUSY;d=32} @self
   - variableadd{var=caster.dcf1_heals;amount=1} @self
   - equip{item=POTION HAND} @self
   - potion{type=SLOW;duration=30;level=3} @self
@@ -186,6 +197,7 @@ DCF1_HolyRegen:
 DCF1_UnstableLightning:
   Conditions:
   - variableisset{var=caster.dcf1_melee} true
+  - hasaura{n=DCF1_BUSY} false
   - targetwithin{d=4} true
   Skills:
   - sound{s=entity.lightning_bolt.thunder;v=0.5;p=1.4} @self

@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class FloorOneMobConfigTest {
     @Test
-    void minibossesFireThreeArrowsBeforeChargingAndHealWithResistance() throws Exception {
+    void minibossesRepeatTheirOpeningVolleyAtRangeWithoutInterruptingHeals() throws Exception {
         var mobs = YamlDocument.create(new File("server-config/mythicmobs/Mobs/dungeoncrawlers_floor1.yml"));
         var skills = YamlDocument.create(new File("server-config/mythicmobs/Skills/dungeoncrawlers_floor1.yml"));
         for (String id : List.of("DCF1_LostAdventurerYoung", "DCF1_LostAdventurerUnstable",
@@ -19,25 +19,31 @@ class FloorOneMobConfigTest {
             assertFalse(mobs.getStringList(id + ".AIGoalSelectors").stream()
                     .anyMatch(goal -> goal.contains("meleeattack")), id);
             assertTrue(mobs.getStringList(id + ".Skills")
-                    .contains("skill{s=DCF1_MinibossOpener} @target ~onTimer:20"), id);
+                    .contains("skill{s=DCF1_MinibossVolley} @target ~onTimer:20"), id);
         }
-        assertTrue(skills.getStringList("DCF1_MinibossOpener.Conditions")
-                .contains("variableisset{var=caster.dcf1_opener_started} false"));
-        var opener = skills.getStringList("DCF1_MinibossOpener.Skills");
+        String idle = "hasaura{n=DCF1_BUSY} false";
+        assertEquals(5, skills.getInt("DCF1_MinibossVolley.Cooldown"));
+        assertTrue(skills.getStringList("DCF1_MinibossVolley.Conditions").containsAll(List.of(
+                idle, "targetwithin{d=28} true",
+                "(variableisset{var=caster.dcf1_melee} false || targetwithin{d=12} false) true")));
+        assertTrue(skills.getStringList("DCF1_MinibossVolley.TargetConditions").contains("lineofsight true"));
+        var volley = skills.getStringList("DCF1_MinibossVolley.Skills");
+        assertEquals(List.of("aura{n=DCF1_BUSY;d=22} @self", "equip{item=BOW HAND} @self"), volley.subList(0, 2));
         String arrow = "skill{s=DCF1_MinibossArrow}";
-        assertEquals(List.of("setvariable{var=caster.dcf1_opener_started;type=BOOLEAN;value=true} @self",
-                arrow, "delay 10", arrow, "delay 10", arrow,
+        int firstShot = volley.indexOf(arrow);
+        assertEquals(List.of(arrow, "delay 10", arrow, "delay 10", arrow,
                 "setvariable{var=caster.dcf1_melee;type=BOOLEAN;value=true} @self",
-                "equip{item=DIAMOND_SWORD HAND} @self"), opener.subList(0, 8));
+                "equip{item=DIAMOND_SWORD HAND} @self"), volley.subList(firstShot, firstShot + 7));
         assertTrue(skills.getStringList("DCF1_MinibossArrow.Skills").stream()
                 .anyMatch(skill -> skill.startsWith("shoot{type=ARROW;")));
-        assertTrue(opener.contains("runaigoalselector{goal=meleeattack} @self"));
-        assertTrue(opener.contains("potion{type=SPEED;duration=80;level=1} @self"));
+        assertTrue(volley.subList(firstShot + 7, volley.size()).containsAll(List.of(
+                "runaigoalselector{goal=meleeattack} @self", "potion{type=SPEED;duration=80;level=1} @self")));
 
         for (String heal : List.of("DCF1_Apple", "DCF1_HealingPotion")) {
-            assertTrue(skills.getStringList(heal + ".Conditions")
-                    .contains("variableisset{var=caster.dcf1_melee} true"), heal);
+            assertTrue(skills.getStringList(heal + ".Conditions").containsAll(List.of(
+                    idle, "variableisset{var=caster.dcf1_melee} true")), heal);
             var animation = skills.getStringList(heal + ".Skills");
+            assertEquals("aura{n=DCF1_BUSY;d=32} @self", animation.getFirst(), heal);
             int resistance = animation.indexOf("potion{type=DAMAGE_RESISTANCE;duration=30;level=3} @self");
             assertTrue(resistance >= 0 && resistance < animation.indexOf("delay 30"), heal);
             assertEquals("equip{item=DIAMOND_SWORD HAND} @self", animation.getLast(), heal);

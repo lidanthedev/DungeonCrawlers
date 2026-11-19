@@ -528,7 +528,7 @@ DCF1_LostAdventurerYoung:
   Skills:
   - setvariable{var=caster.dcf1_heals;type=INTEGER;value=0} @self ~onSpawn
   - skill{s=DCF1_DragonBreath} @target ~onTimer:120
-  - skill{s=DCF1_MinibossOpener} @target ~onTimer:20
+  - skill{s=DCF1_MinibossVolley} @target ~onTimer:20
   - skill{s=DCF1_Apple} @target ~onTimer:20
   - skill{s=DCF1_YoungSpeed} @target ~onTimer:20
   DamageModifiers:
@@ -568,7 +568,7 @@ DCF1_LostAdventurerUnstable:
   Skills:
   - setvariable{var=caster.dcf1_heals;type=INTEGER;value=0} @self ~onSpawn
   - skill{s=DCF1_DragonBreath} @target ~onTimer:120
-  - skill{s=DCF1_MinibossOpener} @target ~onTimer:20
+  - skill{s=DCF1_MinibossVolley} @target ~onTimer:20
   - skill{s=DCF1_Apple} @target ~onTimer:20
   - skill{s=DCF1_UnstableLightning} @target ~onTimer:140
   DamageModifiers:
@@ -608,7 +608,7 @@ DCF1_LostAdventurerHoly:
   Skills:
   - setvariable{var=caster.dcf1_heals;type=INTEGER;value=0} @self ~onSpawn
   - skill{s=DCF1_DragonBreath} @target ~onTimer:120
-  - skill{s=DCF1_MinibossOpener} @target ~onTimer:20
+  - skill{s=DCF1_MinibossVolley} @target ~onTimer:20
   - skill{s=DCF1_Apple} @target ~onTimer:20
   - skill{s=DCF1_HolyRegen} @target ~onTimer:60
   DamageModifiers:
@@ -648,7 +648,7 @@ DCF1_LostAdventurerSuperior:
   Skills:
   - setvariable{var=caster.dcf1_heals;type=INTEGER;value=0} @self ~onSpawn
   - skill{s=DCF1_DragonBreathSuperior} @target ~onTimer:120
-  - skill{s=DCF1_MinibossOpener} @target ~onTimer:20
+  - skill{s=DCF1_MinibossVolley} @target ~onTimer:20
   - skill{s=DCF1_Apple} @target ~onTimer:20
   DamageModifiers:
   - ENTITY_ATTACK 0.5
@@ -688,7 +688,7 @@ DCF1_AngryArchaeologist:
   Skills:
   - setvariable{var=caster.dcf1_heals;type=INTEGER;value=0} @self ~onSpawn
   - potion{type=DAMAGE_RESISTANCE;duration=100;level=1} @self ~onSpawn
-  - skill{s=DCF1_MinibossOpener} @target ~onTimer:20
+  - skill{s=DCF1_MinibossVolley} @target ~onTimer:20
   - skill{s=DCF1_HealingPotion} @target ~onTimer:20
   DamageModifiers:
   - ENTITY_ATTACK 0.2
