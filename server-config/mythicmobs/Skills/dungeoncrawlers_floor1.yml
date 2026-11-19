@@ -100,7 +100,7 @@ DCF1_MinibossOpener:
 DCF1_MinibossArrow:
   Skills:
   - sound{s=entity.skeleton.shoot;v=0.7;p=1} @self
-  - shoot{type=ARROW;damage=1000000;velocity=3.2;accuracy=1;calculatefiringangle=true;pickup=false;expiration=20} @TargetLocation{y=1.1}
+  - shoot{type=ARROW;damage=1000000;velocity=10;accuracy=1;calculatefiringangle=true;pickup=false;expiration=20} @TargetLocation{y=1.1}
 DCF1_Flee:
   Conditions:
   - healthpercent{p=<0.3} true
