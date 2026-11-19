@@ -459,7 +459,7 @@ DCF1_Prince:
   - MAGIC 0.7
 DCF1_Admin:
   Type: ZOMBIE
-  Display: '&8[Floor 1] &7Admin'
+  Display: '&8[Floor 1] &7Crypt Guard'
   Health: 8000000
   Damage: 812500
   Faction: DC_FLOOR1

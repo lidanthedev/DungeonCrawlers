@@ -6,7 +6,7 @@ Roster reference: https://hypixelskyblock.minecraft.wiki/w/Catacombs_Mobs
 
 Normal enemies: Crypt Lurker, Crypt Undead, Crypt Dreadlord, Tank Zombie, Zombie
 Grunt, Undead Skeleton, Scared Skeleton, Skeleton Grunt, Skeleton Soldier, Sniper,
-Crypt Souleater, Lonely Spider, Cellar Spider, Prince and Admin.
+Crypt Souleater, Lonely Spider, Cellar Spider, Prince and Crypt Guard.
 
 Minibosses: Young, Unstable, Holy and Superior Lost Adventurers, plus Angry
 Archaeologist. Adventurers start holding bows, shoot every two seconds at targets
@@ -22,7 +22,7 @@ projectile, breath and lightning damage values also increased by 25%; health is
 unchanged.
 
 These are config adaptations using vanilla entities and MythicMobs mechanics.
-Crypt Undead, Prince and Admin spawn at room markers rather than exploded tombs.
+Crypt Undead, Prince and Crypt Guard spawn at room markers rather than exploded tombs.
 Skeleton merging, Hypixel loot, skins, secrets, puzzle NPCs and The Watcher are
 outside this room-enemy rollout.
 
