@@ -9,7 +9,7 @@ Grunt, Undead Skeleton, Scared Skeleton, Skeleton Grunt, Skeleton Soldier, Snipe
 Crypt Souleater, Lonely Spider, Cellar Spider, Prince and Crypt Guard.
 
 Minibosses are Young, Unstable, Holy and Superior Lost Adventurers, plus Angry
-Archaeologist. All five open with three arrows, firing one every four ticks
+Archaeologist. All five open with three arrows, firing half a second apart
 once they see a target within 28 blocks. After the third shot they draw swords
 and rush with four seconds of Speed II. They gain Resistance IV during their
 1.5-second golden apple or potion animation, then resume sword combat.

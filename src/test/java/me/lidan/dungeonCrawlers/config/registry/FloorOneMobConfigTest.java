@@ -22,12 +22,13 @@ class FloorOneMobConfigTest {
                     .contains("skill{s=DCF1_MinibossOpener} @target ~onTimer:20"), id);
         }
         assertTrue(skills.getStringList("DCF1_MinibossOpener.Conditions")
-                .contains("variableisset{var=caster.dcf1_melee} false"));
+                .contains("variableisset{var=caster.dcf1_opener_started} false"));
         var opener = skills.getStringList("DCF1_MinibossOpener.Skills");
         String arrow = "skill{s=DCF1_MinibossArrow}";
-        assertEquals(List.of(arrow, "delay 4", arrow, "delay 4", arrow,
+        assertEquals(List.of("setvariable{var=caster.dcf1_opener_started;type=BOOLEAN;value=true} @self",
+                arrow, "delay 10", arrow, "delay 10", arrow,
                 "setvariable{var=caster.dcf1_melee;type=BOOLEAN;value=true} @self",
-                "equip{item=DIAMOND_SWORD HAND} @self"), opener.subList(0, 7));
+                "equip{item=DIAMOND_SWORD HAND} @self"), opener.subList(0, 8));
         assertTrue(skills.getStringList("DCF1_MinibossArrow.Skills").stream()
                 .anyMatch(skill -> skill.startsWith("shoot{type=ARROW;")));
         assertTrue(opener.contains("runaigoalselector{goal=meleeattack} @self"));

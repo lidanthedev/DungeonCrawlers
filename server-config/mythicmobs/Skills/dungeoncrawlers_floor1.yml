@@ -78,14 +78,16 @@ DCF1_UndeadBow:
 DCF1_MinibossOpener:
   Conditions:
   - variableisset{var=caster.dcf1_melee} false
+  - variableisset{var=caster.dcf1_opener_started} false
   - targetwithin{d=28} true
   TargetConditions:
   - lineofsight true
   Skills:
+  - setvariable{var=caster.dcf1_opener_started;type=BOOLEAN;value=true} @self
   - skill{s=DCF1_MinibossArrow}
-  - delay 4
+  - delay 10
   - skill{s=DCF1_MinibossArrow}
-  - delay 4
+  - delay 10
   - skill{s=DCF1_MinibossArrow}
   - setvariable{var=caster.dcf1_melee;type=BOOLEAN;value=true} @self
   - equip{item=DIAMOND_SWORD HAND} @self
