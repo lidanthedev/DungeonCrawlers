@@ -81,7 +81,7 @@ DCF1_MinibossVolley:
   - hasaura{n=DCF1_BUSY} false
   TargetConditions:
   - distance{d=0to28} true
-  - (variableisset{var=caster.dcf1_melee} false || distance{d=>8} true) true
+  - (variableequals{var=caster.dcf1_melee;value=true} false || distance{d=>8} true) true
   - lineofsight true
   Skills:
   - aura{n=DCF1_BUSY;d=22} @self

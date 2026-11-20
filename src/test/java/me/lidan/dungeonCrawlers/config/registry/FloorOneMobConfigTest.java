@@ -28,7 +28,7 @@ class FloorOneMobConfigTest {
         assertTrue(skills.getStringList("DCF1_MinibossVolley.Conditions").contains(idle));
         assertTrue(skills.getStringList("DCF1_MinibossVolley.TargetConditions").containsAll(List.of(
                 "distance{d=0to28} true",
-                "(variableisset{var=caster.dcf1_melee} false || distance{d=>8} true) true",
+                "(variableequals{var=caster.dcf1_melee;value=true} false || distance{d=>8} true) true",
                 "lineofsight true")));
         var repeatRange = new RangedDouble(">8");
         var bowRange = new RangedDouble("0to28");
