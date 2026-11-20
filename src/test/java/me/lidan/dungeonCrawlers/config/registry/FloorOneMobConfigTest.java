@@ -1,5 +1,6 @@
 package me.lidan.dungeonCrawlers.config.registry;
 
+import io.lumine.mythic.bukkit.utils.numbers.RangedDouble;
 import me.lidan.cavecrawlers.boostedyaml.YamlDocument;
 import org.junit.jupiter.api.Test;
 
@@ -18,15 +19,23 @@ class FloorOneMobConfigTest {
             assertTrue(mobs.getStringList(id + ".Equipment").contains("BOW HAND"), id);
             assertFalse(mobs.getStringList(id + ".AIGoalSelectors").stream()
                     .anyMatch(goal -> goal.contains("meleeattack")), id);
+            assertTrue(mobs.getStringList(id + ".AIGoalSelectors").contains("2 movetowardstarget"), id);
             assertTrue(mobs.getStringList(id + ".Skills")
                     .contains("skill{s=DCF1_MinibossVolley} @target ~onTimer:20"), id);
         }
         String idle = "hasaura{n=DCF1_BUSY} false";
         assertEquals(5, skills.getInt("DCF1_MinibossVolley.Cooldown"));
-        assertTrue(skills.getStringList("DCF1_MinibossVolley.Conditions").containsAll(List.of(
-                idle, "targetwithin{d=28} true",
-                "(variableisset{var=caster.dcf1_melee} false || targetwithin{d=8} false) true")));
-        assertTrue(skills.getStringList("DCF1_MinibossVolley.TargetConditions").contains("lineofsight true"));
+        assertTrue(skills.getStringList("DCF1_MinibossVolley.Conditions").contains(idle));
+        assertTrue(skills.getStringList("DCF1_MinibossVolley.TargetConditions").containsAll(List.of(
+                "distance{d=0to28} true",
+                "(variableisset{var=caster.dcf1_melee} false || distance{d=>8} true) true",
+                "lineofsight true")));
+        var repeatRange = new RangedDouble(">8");
+        var bowRange = new RangedDouble("0to28");
+        assertFalse(repeatRange.equalsSquared(8.0 * 8.0));
+        assertTrue(repeatRange.equalsSquared(8.01 * 8.01));
+        assertTrue(bowRange.equalsSquared(28.0 * 28.0));
+        assertFalse(bowRange.equalsSquared(28.01 * 28.01));
         var volley = skills.getStringList("DCF1_MinibossVolley.Skills");
         assertEquals(List.of("aura{n=DCF1_BUSY;d=22} @self", "equip{item=BOW HAND} @self"), volley.subList(0, 2));
         String arrow = "skill{s=DCF1_MinibossArrow}";

@@ -82,7 +82,7 @@ addon. Confirm actual enable completion and `/dungeon config validate` success.
 - Full Survival clears, every special attack, exact Hypixel AI and multiplayer
   balance remain unverified. Testing used administrative activation and clears.
 
-## Damage and bow opener update, 2026-11-20
+## Initial damage and bow opener rollout, 2026-11-20
 
 - Raised all 20 mob base-damage values and explicit skill damage by 25%, preserving
   health, boss configuration and the class setup. All four Lost Adventurers start

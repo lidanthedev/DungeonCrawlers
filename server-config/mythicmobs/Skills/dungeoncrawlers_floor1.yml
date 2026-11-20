@@ -79,9 +79,9 @@ DCF1_MinibossVolley:
   Cooldown: 5
   Conditions:
   - hasaura{n=DCF1_BUSY} false
-  - targetwithin{d=28} true
-  - (variableisset{var=caster.dcf1_melee} false || targetwithin{d=8} false) true
   TargetConditions:
+  - distance{d=0to28} true
+  - (variableisset{var=caster.dcf1_melee} false || distance{d=>8} true) true
   - lineofsight true
   Skills:
   - aura{n=DCF1_BUSY;d=22} @self

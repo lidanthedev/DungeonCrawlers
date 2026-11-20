@@ -514,7 +514,8 @@ DCF1_LostAdventurerYoung:
   AIGoalSelectors:
   - 0 clear
   - 1 float
-  - 2 lookatplayers
+  - 2 movetowardstarget
+  - 3 lookatplayers
   AITargetSelectors:
   - 0 clear
   - 1 players
@@ -554,7 +555,8 @@ DCF1_LostAdventurerUnstable:
   AIGoalSelectors:
   - 0 clear
   - 1 float
-  - 2 lookatplayers
+  - 2 movetowardstarget
+  - 3 lookatplayers
   AITargetSelectors:
   - 0 clear
   - 1 players
@@ -594,7 +596,8 @@ DCF1_LostAdventurerHoly:
   AIGoalSelectors:
   - 0 clear
   - 1 float
-  - 2 lookatplayers
+  - 2 movetowardstarget
+  - 3 lookatplayers
   AITargetSelectors:
   - 0 clear
   - 1 players
@@ -634,7 +637,8 @@ DCF1_LostAdventurerSuperior:
   AIGoalSelectors:
   - 0 clear
   - 1 float
-  - 2 lookatplayers
+  - 2 movetowardstarget
+  - 3 lookatplayers
   AITargetSelectors:
   - 0 clear
   - 1 players
@@ -674,7 +678,8 @@ DCF1_AngryArchaeologist:
   AIGoalSelectors:
   - 0 clear
   - 1 float
-  - 2 lookatplayers
+  - 2 movetowardstarget
+  - 3 lookatplayers
   AITargetSelectors:
   - 0 clear
   - 1 players
