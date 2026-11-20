@@ -1,0 +1,701 @@
+# Floor I room roster, adapted to CaveCrawlers stats. No boss or Watcher changes.
+# Roster: https://hypixelskyblock.minecraft.wiki/w/Catacombs_Mobs
+# Crypt Undead, Prince and Crypt Guard use room markers in place of Hypixel tomb triggers.
+DCF1_CryptLurker:
+  Type: ZOMBIE
+  Display: '&8[Floor 1] &7Crypt Lurker'
+  Health: 4500000
+  Damage: 562500
+  Faction: DC_FLOOR1
+  Options:
+    AlwaysShowName: true
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    PreventSunburn: true
+    PreventTransformation: true
+    Despawn: false
+    FollowRange: 32
+    MovementSpeed: 0.25
+  AIGoalSelectors:
+  - 0 clear
+  - 1 float
+  - 2 meleeattack
+  - 3 movetowardstarget
+  - 4 lookatplayers
+  AITargetSelectors:
+  - 0 clear
+  - 1 players
+  Drops: []
+  Equipment:
+  - BONE HAND
+  Skills:
+  - skill{s=DCF1_BoneOnce} @target ~onTimer:20
+DCF1_CryptUndead:
+  Type: ZOMBIE
+  Display: '&8[Floor 1] &7Crypt Undead'
+  Health: 8000000
+  Damage: 812500
+  Faction: DC_FLOOR1
+  Options:
+    AlwaysShowName: true
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    PreventSunburn: true
+    PreventTransformation: true
+    Despawn: false
+    FollowRange: 32
+    MovementSpeed: 0.25
+  AIGoalSelectors:
+  - 0 clear
+  - 1 float
+  - 2 meleeattack
+  - 3 movetowardstarget
+  - 4 lookatplayers
+  AITargetSelectors:
+  - 0 clear
+  - 1 players
+  Drops: []
+  Equipment:
+  - CHAINMAIL_HELMET HEAD
+  - CHAINMAIL_CHESTPLATE CHEST
+  - CHAINMAIL_LEGGINGS LEGS
+  - CHAINMAIL_BOOTS FEET
+  - IRON_SWORD HAND
+  Skills:
+  - skill{s=DCF1_UndeadBow} @target ~onTimer:80
+  DamageModifiers:
+  - ENTITY_ATTACK 0.75
+  - PROJECTILE 0.75
+  - MAGIC 0.75
+DCF1_CryptDreadlord:
+  Type: ZOMBIE
+  Display: '&8[Floor 1] &7Crypt Dreadlord'
+  Health: 6500000
+  Damage: 625000
+  Faction: DC_FLOOR1
+  Options:
+    AlwaysShowName: true
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    PreventSunburn: true
+    PreventTransformation: true
+    Despawn: false
+    FollowRange: 32
+    MovementSpeed: 0.25
+  AIGoalSelectors:
+  - 0 clear
+  - 1 float
+  - 2 meleeattack
+  - 3 movetowardstarget
+  - 4 lookatplayers
+  AITargetSelectors:
+  - 0 clear
+  - 1 players
+  Drops: []
+  Equipment:
+  - CHAINMAIL_HELMET HEAD
+  - CHAINMAIL_CHESTPLATE CHEST
+  - CHAINMAIL_LEGGINGS LEGS
+  - CHAINMAIL_BOOTS FEET
+  - IRON_SWORD HAND
+  Skills:
+  - skill{s=DCF1_Skull} @target ~onTimer:90
+DCF1_TankZombie:
+  Type: ZOMBIE
+  Display: '&8[Floor 1] &7Tank Zombie'
+  Health: 1500000
+  Damage: 375000
+  Faction: DC_FLOOR1
+  Options:
+    AlwaysShowName: true
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    PreventSunburn: true
+    PreventTransformation: true
+    Despawn: false
+    FollowRange: 32
+    MovementSpeed: 0.18
+    KnockbackResistance: 1
+  AIGoalSelectors:
+  - 0 clear
+  - 1 float
+  - 2 meleeattack
+  - 3 movetowardstarget
+  - 4 lookatplayers
+  AITargetSelectors:
+  - 0 clear
+  - 1 players
+  Drops: []
+  Equipment:
+  - IRON_HELMET HEAD
+  - IRON_CHESTPLATE CHEST
+  - IRON_LEGGINGS LEGS
+  - IRON_BOOTS FEET
+  - IRON_SWORD HAND
+  DamageModifiers:
+  - ENTITY_ATTACK 0.12
+  - PROJECTILE 0.12
+  - MAGIC 0.12
+  Skills:
+  - throw{velocity=5;velocityY=2} @trigger ~onAttack
+DCF1_ZombieGrunt:
+  Type: ZOMBIE
+  Display: '&8[Floor 1] &7Zombie Grunt'
+  Health: 4000000
+  Damage: 500000
+  Faction: DC_FLOOR1
+  Options:
+    AlwaysShowName: true
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    PreventSunburn: true
+    PreventTransformation: true
+    Despawn: false
+    FollowRange: 32
+    MovementSpeed: 0.31
+  AIGoalSelectors:
+  - 0 clear
+  - 1 float
+  - 2 meleeattack
+  - 3 movetowardstarget
+  - 4 lookatplayers
+  AITargetSelectors:
+  - 0 clear
+  - 1 players
+  Drops: []
+  Equipment:
+  - LEATHER_HELMET HEAD
+  - LEATHER_CHESTPLATE CHEST
+  - LEATHER_LEGGINGS LEGS
+  - LEATHER_BOOTS FEET
+  - STONE_SWORD HAND
+DCF1_UndeadSkeleton:
+  Type: SKELETON
+  Display: '&8[Floor 1] &7Undead Skeleton'
+  Health: 9000000
+  Damage: 812500
+  Faction: DC_FLOOR1
+  Options:
+    AlwaysShowName: true
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    PreventSunburn: true
+    PreventTransformation: true
+    Despawn: false
+    FollowRange: 32
+    MovementSpeed: 0.25
+  AIGoalSelectors:
+  - 0 clear
+  - 1 float
+  - 2 meleeattack
+  - 3 movetowardstarget
+  - 4 lookatplayers
+  AITargetSelectors:
+  - 0 clear
+  - 1 players
+  Drops: []
+  Equipment:
+  - IRON_HELMET HEAD
+  - IRON_CHESTPLATE CHEST
+  - IRON_LEGGINGS LEGS
+  - IRON_BOOTS FEET
+  - IRON_SWORD HAND
+  Skills:
+  - skill{s=DCF1_UndeadBow} @target ~onTimer:60
+DCF1_ScaredSkeleton:
+  Type: SKELETON
+  Display: '&8[Floor 1] &7Scared Skeleton'
+  Health: 4500000
+  Damage: 437500
+  Faction: DC_FLOOR1
+  Options:
+    AlwaysShowName: true
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    PreventSunburn: true
+    PreventTransformation: true
+    Despawn: false
+    FollowRange: 32
+    MovementSpeed: 0.27
+  AIGoalSelectors:
+  - 0 clear
+  - 1 float
+  - 2 lookatplayers
+  - 3 movetowardstarget
+  AITargetSelectors:
+  - 0 clear
+  - 1 players
+  Drops: []
+  Equipment:
+  - BOW HAND
+  Skills:
+  - skill{s=DCF1_ScaredShot} @target ~onTimer:50
+  - skill{s=DCF1_Flee} @target ~onTimer:20
+DCF1_SkeletonGrunt:
+  Type: SKELETON
+  Display: '&8[Floor 1] &7Skeleton Grunt'
+  Health: 5000000
+  Damage: 500000
+  Faction: DC_FLOOR1
+  Options:
+    AlwaysShowName: true
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    PreventSunburn: true
+    PreventTransformation: true
+    Despawn: false
+    FollowRange: 32
+    MovementSpeed: 0.25
+  AIGoalSelectors:
+  - 0 clear
+  - 1 float
+  - 2 lookatplayers
+  - 3 movetowardstarget
+  AITargetSelectors:
+  - 0 clear
+  - 1 players
+  Drops: []
+  Equipment:
+  - LEATHER_HELMET HEAD
+  - LEATHER_CHESTPLATE CHEST
+  - LEATHER_LEGGINGS LEGS
+  - LEATHER_BOOTS FEET
+  - BOW HAND
+  Skills:
+  - skill{s=DCF1_GruntShot} @target ~onTimer:30
+DCF1_SkeletonSoldier:
+  Type: SKELETON
+  Display: '&8[Floor 1] &7Skeleton Soldier'
+  Health: 7500000
+  Damage: 687500
+  Faction: DC_FLOOR1
+  Options:
+    AlwaysShowName: true
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    PreventSunburn: true
+    PreventTransformation: true
+    Despawn: false
+    FollowRange: 32
+    MovementSpeed: 0.25
+  AIGoalSelectors:
+  - 0 clear
+  - 1 float
+  - 2 lookatplayers
+  - 3 movetowardstarget
+  AITargetSelectors:
+  - 0 clear
+  - 1 players
+  Drops: []
+  Equipment:
+  - CHAINMAIL_HELMET HEAD
+  - CHAINMAIL_CHESTPLATE CHEST
+  - CHAINMAIL_LEGGINGS LEGS
+  - CHAINMAIL_BOOTS FEET
+  - BOW HAND
+  Skills:
+  - skill{s=DCF1_SoldierShot} @target ~onTimer:40
+DCF1_Sniper:
+  Type: SKELETON
+  Display: '&8[Floor 1] &7Sniper'
+  Health: 3500000
+  Damage: 1187500
+  Faction: DC_FLOOR1
+  Options:
+    AlwaysShowName: true
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    PreventSunburn: true
+    PreventTransformation: true
+    Despawn: false
+    FollowRange: 48
+    MovementSpeed: 0
+  AIGoalSelectors:
+  - 0 clear
+  - 1 float
+  - 2 lookatplayers
+  AITargetSelectors:
+  - 0 clear
+  - 1 players
+  Drops: []
+  Equipment:
+  - LEATHER_HELMET HEAD
+  - BOW HAND
+  Skills:
+  - skill{s=DCF1_SniperShot} @target ~onTimer:100
+DCF1_CryptSouleater:
+  Type: SKELETON
+  Display: '&8[Floor 1] &7Crypt Souleater'
+  Health: 6000000
+  Damage: 625000
+  Faction: DC_FLOOR1
+  Options:
+    AlwaysShowName: true
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    PreventSunburn: true
+    PreventTransformation: true
+    Despawn: false
+    FollowRange: 32
+    MovementSpeed: 0.28
+  AIGoalSelectors:
+  - 0 clear
+  - 1 float
+  - 2 lookatplayers
+  - 3 movetowardstarget
+  AITargetSelectors:
+  - 0 clear
+  - 1 players
+  Drops: []
+  Equipment:
+  - WITHER_SKELETON_SKULL HEAD
+  - BOW HAND
+  Skills:
+  - skill{s=DCF1_Skull} @target ~onTimer:80
+DCF1_LonelySpider:
+  Type: CAVE_SPIDER
+  Display: '&8[Floor 1] &7Lonely Spider'
+  Health: 2000000
+  Damage: 312500
+  Faction: DC_FLOOR1
+  Options:
+    AlwaysShowName: true
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    PreventSunburn: true
+    PreventTransformation: true
+    Despawn: false
+    FollowRange: 32
+    MovementSpeed: 0.31
+  AIGoalSelectors:
+  - 0 clear
+  - 1 float
+  - 2 meleeattack
+  - 3 movetowardstarget
+  - 4 lookatplayers
+  AITargetSelectors:
+  - 0 clear
+  - 1 players
+  Drops: []
+  Skills:
+  - skill{s=DCF1_SpiderLeap} @target ~onTimer:100
+DCF1_CellarSpider:
+  Type: SPIDER
+  Display: '&8[Floor 1] &7Cellar Spider'
+  Health: 7000000
+  Damage: 750000
+  Faction: DC_FLOOR1
+  Options:
+    AlwaysShowName: true
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    PreventSunburn: true
+    PreventTransformation: true
+    Despawn: false
+    FollowRange: 32
+    MovementSpeed: 0.28
+  AIGoalSelectors:
+  - 0 clear
+  - 1 float
+  - 2 meleeattack
+  - 3 movetowardstarget
+  - 4 lookatplayers
+  AITargetSelectors:
+  - 0 clear
+  - 1 players
+  Drops: []
+  Skills:
+  - skill{s=DCF1_SpiderLeap} @target ~onTimer:80
+DCF1_Prince:
+  Type: ZOMBIE
+  Display: '&8[Floor 1] &7Prince'
+  Health: 10000000
+  Damage: 875000
+  Faction: DC_FLOOR1
+  Options:
+    AlwaysShowName: true
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    PreventSunburn: true
+    PreventTransformation: true
+    Despawn: false
+    FollowRange: 32
+    MovementSpeed: 0.27
+  AIGoalSelectors:
+  - 0 clear
+  - 1 float
+  - 2 meleeattack
+  - 3 movetowardstarget
+  - 4 lookatplayers
+  AITargetSelectors:
+  - 0 clear
+  - 1 players
+  Drops: []
+  Equipment:
+  - GOLDEN_HELMET HEAD
+  - CHAINMAIL_CHESTPLATE CHEST
+  - CHAINMAIL_LEGGINGS LEGS
+  - CHAINMAIL_BOOTS FEET
+  - IRON_SWORD HAND
+  Skills:
+  - skill{s=DCF1_UndeadBow} @target ~onTimer:70
+  DamageModifiers:
+  - ENTITY_ATTACK 0.7
+  - PROJECTILE 0.7
+  - MAGIC 0.7
+DCF1_Admin:
+  Type: ZOMBIE
+  Display: '&8[Floor 1] &7Crypt Guard'
+  Health: 8000000
+  Damage: 812500
+  Faction: DC_FLOOR1
+  Options:
+    AlwaysShowName: true
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    PreventSunburn: true
+    PreventTransformation: true
+    Despawn: false
+    FollowRange: 32
+    MovementSpeed: 0.27
+  AIGoalSelectors:
+  - 0 clear
+  - 1 float
+  - 2 meleeattack
+  - 3 movetowardstarget
+  - 4 lookatplayers
+  AITargetSelectors:
+  - 0 clear
+  - 1 players
+  Drops: []
+  Equipment:
+  - IRON_HELMET HEAD
+  - IRON_CHESTPLATE CHEST
+  - IRON_LEGGINGS LEGS
+  - IRON_BOOTS FEET
+  - IRON_SWORD HAND
+  Skills:
+  - skill{s=DCF1_UndeadBow} @target ~onTimer:80
+  DamageModifiers:
+  - ENTITY_ATTACK 0.75
+  - PROJECTILE 0.75
+  - MAGIC 0.75
+DCF1_LostAdventurerYoung:
+  Type: ZOMBIE
+  Display: '&8[Floor 1] &7Lost Adventurer (Young)'
+  Health: 20000000
+  Damage: 1250000
+  Faction: DC_FLOOR1
+  Options:
+    AlwaysShowName: true
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    PreventSunburn: true
+    PreventTransformation: true
+    Despawn: false
+    FollowRange: 32
+    MovementSpeed: 0.29
+  AIGoalSelectors:
+  - 0 clear
+  - 1 float
+  - 2 movetowardstarget
+  - 3 lookatplayers
+  AITargetSelectors:
+  - 0 clear
+  - 1 players
+  Drops: []
+  Equipment:
+  - LEATHER_HELMET{color=WHITE} HEAD
+  - LEATHER_CHESTPLATE{color=WHITE} CHEST
+  - LEATHER_LEGGINGS{color=WHITE} LEGS
+  - LEATHER_BOOTS{color=WHITE} FEET
+  - BOW HAND
+  Skills:
+  - setvariable{var=caster.dcf1_heals;type=INTEGER;value=0} @self ~onSpawn
+  - skill{s=DCF1_DragonBreath} @target ~onTimer:120
+  - skill{s=DCF1_MinibossVolley} @target ~onTimer:20
+  - skill{s=DCF1_Apple} @target ~onTimer:20
+  - skill{s=DCF1_YoungSpeed} @target ~onTimer:20
+  DamageModifiers:
+  - ENTITY_ATTACK 0.5
+  - PROJECTILE 0.5
+  - MAGIC 0.5
+DCF1_LostAdventurerUnstable:
+  Type: ZOMBIE
+  Display: '&8[Floor 1] &7Lost Adventurer (Unstable)'
+  Health: 20000000
+  Damage: 1250000
+  Faction: DC_FLOOR1
+  Options:
+    AlwaysShowName: true
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    PreventSunburn: true
+    PreventTransformation: true
+    Despawn: false
+    FollowRange: 32
+    MovementSpeed: 0.29
+  AIGoalSelectors:
+  - 0 clear
+  - 1 float
+  - 2 movetowardstarget
+  - 3 lookatplayers
+  AITargetSelectors:
+  - 0 clear
+  - 1 players
+  Drops: []
+  Equipment:
+  - LEATHER_HELMET{color=PURPLE} HEAD
+  - LEATHER_CHESTPLATE{color=PURPLE} CHEST
+  - LEATHER_LEGGINGS{color=PURPLE} LEGS
+  - LEATHER_BOOTS{color=PURPLE} FEET
+  - BOW HAND
+  Skills:
+  - setvariable{var=caster.dcf1_heals;type=INTEGER;value=0} @self ~onSpawn
+  - skill{s=DCF1_DragonBreath} @target ~onTimer:120
+  - skill{s=DCF1_MinibossVolley} @target ~onTimer:20
+  - skill{s=DCF1_Apple} @target ~onTimer:20
+  - skill{s=DCF1_UnstableLightning} @target ~onTimer:140
+  DamageModifiers:
+  - ENTITY_ATTACK 0.5
+  - PROJECTILE 0.5
+  - MAGIC 0.5
+DCF1_LostAdventurerHoly:
+  Type: ZOMBIE
+  Display: '&8[Floor 1] &7Lost Adventurer (Holy)'
+  Health: 20000000
+  Damage: 1250000
+  Faction: DC_FLOOR1
+  Options:
+    AlwaysShowName: true
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    PreventSunburn: true
+    PreventTransformation: true
+    Despawn: false
+    FollowRange: 32
+    MovementSpeed: 0.29
+  AIGoalSelectors:
+  - 0 clear
+  - 1 float
+  - 2 movetowardstarget
+  - 3 lookatplayers
+  AITargetSelectors:
+  - 0 clear
+  - 1 players
+  Drops: []
+  Equipment:
+  - LEATHER_HELMET{color=GREEN} HEAD
+  - LEATHER_CHESTPLATE{color=GREEN} CHEST
+  - LEATHER_LEGGINGS{color=GREEN} LEGS
+  - LEATHER_BOOTS{color=GREEN} FEET
+  - BOW HAND
+  Skills:
+  - setvariable{var=caster.dcf1_heals;type=INTEGER;value=0} @self ~onSpawn
+  - skill{s=DCF1_DragonBreath} @target ~onTimer:120
+  - skill{s=DCF1_MinibossVolley} @target ~onTimer:20
+  - skill{s=DCF1_Apple} @target ~onTimer:20
+  - skill{s=DCF1_HolyRegen} @target ~onTimer:60
+  DamageModifiers:
+  - ENTITY_ATTACK 0.5
+  - PROJECTILE 0.5
+  - MAGIC 0.5
+DCF1_LostAdventurerSuperior:
+  Type: ZOMBIE
+  Display: '&8[Floor 1] &7Lost Adventurer (Superior)'
+  Health: 24000000
+  Damage: 1500000
+  Faction: DC_FLOOR1
+  Options:
+    AlwaysShowName: true
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    PreventSunburn: true
+    PreventTransformation: true
+    Despawn: false
+    FollowRange: 32
+    MovementSpeed: 0.29
+  AIGoalSelectors:
+  - 0 clear
+  - 1 float
+  - 2 movetowardstarget
+  - 3 lookatplayers
+  AITargetSelectors:
+  - 0 clear
+  - 1 players
+  Drops: []
+  Equipment:
+  - LEATHER_HELMET{color=YELLOW} HEAD
+  - LEATHER_CHESTPLATE{color=YELLOW} CHEST
+  - LEATHER_LEGGINGS{color=YELLOW} LEGS
+  - LEATHER_BOOTS{color=YELLOW} FEET
+  - BOW HAND
+  Skills:
+  - setvariable{var=caster.dcf1_heals;type=INTEGER;value=0} @self ~onSpawn
+  - skill{s=DCF1_DragonBreathSuperior} @target ~onTimer:120
+  - skill{s=DCF1_MinibossVolley} @target ~onTimer:20
+  - skill{s=DCF1_Apple} @target ~onTimer:20
+  DamageModifiers:
+  - ENTITY_ATTACK 0.5
+  - PROJECTILE 0.5
+  - MAGIC 0.5
+DCF1_AngryArchaeologist:
+  Type: ZOMBIE
+  Display: '&8[Floor 1] &7Angry Archaeologist'
+  Health: 8000000
+  Damage: 1250000
+  Faction: DC_FLOOR1
+  Options:
+    AlwaysShowName: true
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    PreventSunburn: true
+    PreventTransformation: true
+    Despawn: false
+    FollowRange: 32
+    MovementSpeed: 0.25
+    KnockbackResistance: 0.75
+  AIGoalSelectors:
+  - 0 clear
+  - 1 float
+  - 2 movetowardstarget
+  - 3 lookatplayers
+  AITargetSelectors:
+  - 0 clear
+  - 1 players
+  Drops: []
+  Equipment:
+  - DIAMOND_HELMET HEAD
+  - DIAMOND_CHESTPLATE CHEST
+  - DIAMOND_LEGGINGS LEGS
+  - DIAMOND_BOOTS FEET
+  - BOW HAND
+  Skills:
+  - setvariable{var=caster.dcf1_heals;type=INTEGER;value=0} @self ~onSpawn
+  - potion{type=DAMAGE_RESISTANCE;duration=100;level=1} @self ~onSpawn
+  - skill{s=DCF1_MinibossVolley} @target ~onTimer:20
+  - skill{s=DCF1_HealingPotion} @target ~onTimer:20
+  DamageModifiers:
+  - ENTITY_ATTACK 0.2
+  - PROJECTILE 0.2
+  - MAGIC 0.2

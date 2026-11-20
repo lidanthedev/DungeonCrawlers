@@ -87,6 +87,51 @@ class BukkitRingmasterArenaTest {
         verify(boss).setAI(false);
     }
 
+    @Test
+    void playerPerchedAboveTheRingIsPulledTowardTheBossAfterThreeSeconds() throws Exception {
+        UUID instance = UUID.randomUUID(), bossId = UUID.randomUUID(), playerId = UUID.randomUUID();
+        EncounterContext context = mock(EncounterContext.class);
+        when(context.instanceId()).thenReturn(instance);
+        RunPreparationService runs = mock(RunPreparationService.class);
+        RunPreparationService.RunSnapshot run = mock(RunPreparationService.RunSnapshot.class);
+        when(run.participants()).thenReturn(List.of(playerId));
+        when(runs.info(instance)).thenReturn(Optional.of(run));
+        when(runs.instanceFor(playerId)).thenReturn(Optional.of(instance));
+        PlayerLifecycleService lifecycle = mock(PlayerLifecycleService.class);
+        PlayerLifecycleService.PlayerSnapshot state = mock(PlayerLifecycleService.PlayerSnapshot.class);
+        when(state.online()).thenReturn(true);
+        when(state.state()).thenReturn(PlayerLifecycleService.PlayerState.ALIVE);
+        when(lifecycle.player(instance, playerId)).thenReturn(Optional.of(state));
+        Plugin plugin = mock(Plugin.class);
+        org.bukkit.Server server = mock(org.bukkit.Server.class);
+        when(plugin.getServer()).thenReturn(server);
+        org.bukkit.World world = mock(org.bukkit.World.class);
+        org.bukkit.Location center = new org.bukkit.Location(world, 0, 64, 0);
+        Player player = mock(Player.class);
+        when(server.getPlayer(playerId)).thenReturn(player);
+        when(player.getUniqueId()).thenReturn(playerId);
+        when(player.isOnline()).thenReturn(true);
+        when(player.getWorld()).thenReturn(world);
+        when(player.getLocation()).thenAnswer(ignored -> center.clone().add(10, 8, 0));
+        when(player.getY()).thenReturn(72D);
+        Mob boss = mock(Mob.class);
+        when(server.getEntity(bossId)).thenReturn(boss);
+        when(boss.getLocation()).thenAnswer(ignored -> center.clone().add(20, 0, 0));
+        BukkitRingmasterArena arena = new BukkitRingmasterArena(context, plugin, runs, lifecycle,
+                mock(MythicMobGateway.class), mock(BukkitDifficultyService.class));
+        setField(arena, "boss", bossId);
+        setField(arena, "center", center);
+        Instant started = Instant.parse("2026-10-10T00:00:00Z");
+
+        arena.tick(started);
+        arena.tick(started.plusMillis(2999));
+        verify(player, never()).setVelocity(any());
+        arena.tick(started.plusSeconds(3));
+        var pull = org.mockito.ArgumentCaptor.forClass(org.bukkit.util.Vector.class);
+        verify(player).setVelocity(pull.capture());
+        assertTrue(pull.getValue().getX() > 0 && pull.getValue().getY() < 0);
+    }
+
     private static void setField(BukkitRingmasterArena arena, String name, Object value) throws Exception {
         var field = BukkitRingmasterArena.class.getDeclaredField(name);
         field.setAccessible(true);

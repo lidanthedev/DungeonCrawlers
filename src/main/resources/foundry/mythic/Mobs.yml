@@ -16,6 +16,7 @@ VeyraChainbound:
     KnockbackResistance: 1
     MovementSpeed: 0.25
     FollowRange: 48
+    MaxCombatDistance: 48
   AIGoalSelectors: [clear, meleeattack]
   AITargetSelectors: [clear]
   Drops: []

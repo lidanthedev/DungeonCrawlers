@@ -170,6 +170,20 @@ class DungeonPhaseElevenCommandTest {
     }
 
     @Test
+    void floorOneChestsSortFromWoodenThroughObsidianRegardlessOfMapOrder() {
+        var offers = List.of(
+                new RewardEntitlementService.RewardOffer(UUID.randomUUID(), "diamond", 25_000_000, 0, false, List.of()),
+                new RewardEntitlementService.RewardOffer(UUID.randomUUID(), "obsidian", 100_000_000, 270, true, List.of()),
+                new RewardEntitlementService.RewardOffer(UUID.randomUUID(), "gold", 10_000_000, 0, false, List.of()),
+                new RewardEntitlementService.RewardOffer(UUID.randomUUID(), "wooden", 0, 0, false, List.of()),
+                new RewardEntitlementService.RewardOffer(UUID.randomUUID(), "emerald", 50_000_000, 230, true, List.of()));
+
+        assertEquals(List.of("wooden", "gold", "diamond", "emerald", "obsidian"),
+                DungeonPhaseElevenCommand.sortedOffers(offers).stream()
+                        .map(RewardEntitlementService.RewardOffer::rewardId).toList());
+    }
+
+    @Test
     void overviewOffersSortByMinimumScoreThenRewardId() {
         RewardEntitlementService.RewardOffer high = new RewardEntitlementService.RewardOffer(
                 UUID.randomUUID(), "gold", 100, 200, false, List.of());

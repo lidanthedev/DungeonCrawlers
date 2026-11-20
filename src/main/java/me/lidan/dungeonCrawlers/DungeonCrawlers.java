@@ -102,6 +102,7 @@ import me.lidan.dungeonCrawlers.integration.ThrottledDungeonActionBar;
 import me.lidan.dungeonCrawlers.integration.cave.CaveActionBarAdapter;
 import me.lidan.dungeonCrawlers.integration.cave.CaveItemsAdapter;
 import me.lidan.dungeonCrawlers.integration.cave.DungeonSupportItems;
+import me.lidan.dungeonCrawlers.integration.cave.DungeonRewardItems;
 import me.lidan.dungeonCrawlers.integration.citizens.CitizensClassSelectorNpcService;
 import me.lidan.dungeonCrawlers.integration.mythic.MythicMobsAdapter;
 import me.lidan.dungeonCrawlers.integration.parties.PartyProviders;
@@ -655,6 +656,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         supportItems = new DungeonSupportItems(this,
                 classAbilities::activateSupport);
         supportItems.register();
+        DungeonRewardItems.register(this);
         registerEvent(new BukkitDungeonLifecycleListener(lifecycle, runPreparation, this, phaseClock(),
                 generationWorldName, phaseFiveCommand::recoverOnJoin, phaseFiveCommand::leaveFromDungeon));
         registerEvent(new BukkitCombatListener(combat, entityIdentity, generationWorldName, () -> disabling,

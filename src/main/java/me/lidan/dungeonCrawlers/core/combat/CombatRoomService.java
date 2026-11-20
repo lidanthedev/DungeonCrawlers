@@ -1,6 +1,7 @@
 package me.lidan.dungeonCrawlers.core.combat;
 
 import me.lidan.dungeonCrawlers.core.generation.GenerationService;
+import me.lidan.dungeonCrawlers.core.random.NamedRandomFactory;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Bounds;
 import me.lidan.dungeonCrawlers.core.template.TemplateModels.Point;
 
@@ -13,6 +14,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.SplittableRandom;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -66,7 +68,7 @@ public final class CombatRoomService {
         }
         List<MutableRoom> rooms = plan.rooms().stream()
                 .sorted(java.util.Comparator.comparingInt(GenerationService.CombatRoom::index))
-                .map(room -> new MutableRoom(room, plan.normalMobs(), plan.minibossMobs(), plan.respawnRetries()))
+                .map(room -> new MutableRoom(room, plan.normalMobs(), plan.minibossMobs(), plan.respawnRetries(), plan.seed()))
                 .toList();
         MutableInstance instance = new MutableInstance(plan, rooms);
         rooms.getFirst().state = RoomState.READY;
@@ -445,15 +447,14 @@ public final class CombatRoomService {
 
     private static List<MobRequirement> requirements(GenerationService.CombatRoom room,
                                                        List<String> normalMobs, List<String> minibossMobs,
-                                                       int respawnRetries) {
+                                                       int respawnRetries, long seed) {
         List<MobRequirement> result = new ArrayList<>();
-        int index = 0;
+        SplittableRandom random = new NamedRandomFactory(seed).stream("combat-room-" + room.index());
         for (Point point : room.normalMarkers()) {
-            result.add(new MobRequirement(normalMobs.get(index++ % normalMobs.size()), point, respawnRetries));
+            result.add(new MobRequirement(normalMobs.get(random.nextInt(normalMobs.size())), point, respawnRetries));
         }
-        index = 0;
         for (Point point : room.minibossMarkers()) {
-            result.add(new MobRequirement(minibossMobs.get(index++ % minibossMobs.size()), point, respawnRetries));
+            result.add(new MobRequirement(minibossMobs.get(random.nextInt(minibossMobs.size())), point, respawnRetries));
         }
         return result;
     }
@@ -479,10 +480,10 @@ public final class CombatRoomService {
         private String detail = "locked";
 
         private MutableRoom(GenerationService.CombatRoom room, List<String> normalMobs,
-                            List<String> minibossMobs, int retries) {
+                            List<String> minibossMobs, int retries, long seed) {
             this.room = room;
             this.retries = retries;
-            this.requirements = requirements(room, normalMobs, minibossMobs, retries);
+            this.requirements = requirements(room, normalMobs, minibossMobs, retries, seed);
         }
     }
 

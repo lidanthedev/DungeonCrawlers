@@ -181,7 +181,90 @@ class BoostedConfigMigrationTest {
     }
 
     @Test
-    void floorTwoMigratesToFourWithBackupAndPreservesCustomBossAndRewards() throws Exception {
+    void stockFloorFourReceivesRingmasterRewardsButCustomPoolsArePreserved() throws Exception {
+        Path floors = directory.resolve("floors");
+        Files.createDirectories(floors);
+        Path floor = floors.resolve("floor_1.yml");
+        String original = """
+                schema-version: 4
+                id: floor_1
+                number: 2
+                templates: { boss: custom_ringmaster_room }
+                rewards:
+                  wooden:
+                    enabled: true
+                    price: 0
+                    min-score: 0
+                    rolls: 1
+                    unique: false
+                    items:
+                      - { item: UNDEAD_ESSENCE, weight: 70, amount: "3-8" }
+                      - { item: CRYPT_FRAGMENT, weight: 30, magic-find-sensitive: true }
+                """;
+        Files.writeString(floor, original);
+        try (MockedStatic<JavaPlugin> ignored = providingPlugin()) {
+            var factory = new BoostedConfigFactory();
+            factory.migrateFloor(floor);
+            var migrated = factory.open(floor);
+            assertEquals(6, BoostedConfigFactory.schemaVersion(migrated));
+            assertEquals(100000000, migrated.getInt("rewards.obsidian.price"));
+            assertEquals("custom_ringmaster_room", migrated.getString("templates.boss"));
+            assertEquals(2, migrated.getInt("number"));
+            String once = Files.readString(floor);
+            factory.migrateFloor(floor);
+            assertEquals(once, Files.readString(floor));
+            assertEquals(original, Files.readString(directory.resolve("backups/floors-v4/floor_1.yml")));
+
+            Files.writeString(floor, original.replace("price: 0", "price: 123"));
+            factory.migrateFloor(floor);
+            assertEquals(123, factory.open(floor).getInt("rewards.wooden.price"));
+            assertFalse(factory.open(floor).contains("rewards.obsidian"));
+        }
+    }
+
+    @Test
+    void floorFivePricesMigrateOnceWithoutChangingCustomPricesOrOtherFloors() throws Exception {
+        Path floors = directory.resolve("floors");
+        Files.createDirectories(floors);
+        String original = """
+                schema-version: 5
+                id: floor_1
+                number: 2
+                templates: { boss: custom_ringmaster_room }
+                rewards:
+                  gold: { price: 200000, min-score: 0 }
+                  diamond: { price: 320000, min-score: 0 }
+                  emerald: { price: 640000, min-score: 230 }
+                  obsidian: { price: 1280000, min-score: 270 }
+                """;
+        Path floor = floors.resolve("floor_1.yml");
+        Files.writeString(floor, original);
+        try (MockedStatic<JavaPlugin> ignored = providingPlugin()) {
+            var factory = new BoostedConfigFactory();
+            factory.migrateFloor(floor);
+            var config = factory.open(floor);
+            assertEquals(10000000, config.getLong("rewards.gold.price"));
+            assertEquals(25000000, config.getLong("rewards.diamond.price"));
+            assertEquals(50000000, config.getLong("rewards.emerald.price"));
+            assertEquals(100000000, config.getLong("rewards.obsidian.price"));
+            assertEquals(270, config.getInt("rewards.obsidian.min-score"));
+            assertEquals("custom_ringmaster_room", config.getString("templates.boss"));
+            assertEquals(original, Files.readString(directory.resolve("backups/floors-v5/floor_1.yml")));
+            String once = Files.readString(floor);
+            factory.migrateFloor(floor);
+            assertEquals(once, Files.readString(floor));
+
+            Files.writeString(floor, original.replace("price: 200000", "price: 123"));
+            factory.migrateFloor(floor);
+            assertEquals(123, factory.open(floor).getLong("rewards.gold.price"));
+            Files.writeString(floor, original.replace("id: floor_1", "id: custom"));
+            factory.migrateFloor(floor);
+            assertEquals(200000, factory.open(floor).getLong("rewards.gold.price"));
+        }
+    }
+
+    @Test
+    void floorTwoMigratesToSixWithBackupAndPreservesCustomBossAndRewards() throws Exception {
         Path floors = directory.resolve("floors");
         Files.createDirectories(floors);
         Path floor = floors.resolve("floor_custom.yml");
@@ -193,7 +276,7 @@ class BoostedConfigMigrationTest {
             factory.migrateFloor(floor);
             factory.migrateFloor(floor);
             var config = factory.open(floor);
-            assertEquals(4, BoostedConfigFactory.schemaVersion(config));
+            assertEquals(6, BoostedConfigFactory.schemaVersion(config));
             assertTrue(config.getList("generation.room-pool").isEmpty());
             assertEquals("CustomBoss", config.getString("boss.mob"));
             assertEquals(12345, config.getInt("rewards.special.price"));

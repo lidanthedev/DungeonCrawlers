@@ -38,6 +38,7 @@ import org.bukkit.Particle;
 import org.bukkit.entity.Player;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
@@ -126,8 +127,8 @@ class BukkitClassAbilityServiceTest {
             stats.set(StatType.STRENGTH, 100);
             return stats;
         });
-        levels = mockStatic(DungeonClassScaling.class);
-        levels.when(() -> DungeonClassScaling.dungeonLevel(any())).thenReturn(20);
+        levels = mockStatic(DungeonClassScaling.class, invocation -> invocation.getMethod().getName().equals("dungeonLevel")
+                ? 20 : invocation.callRealMethod());
         nativeDamage = mockStatic(DamageManager.class);
         nativeDamage.when(DamageManager::getInstance).thenReturn(damageManager);
         nativeItems = mockStatic(ItemsManager.class);
@@ -289,12 +290,12 @@ class BukkitClassAbilityServiceTest {
         service.activateClass(dropEvent(source));
         verify(own).addPotionEffect(argThat(effect -> effect.getType().equals(PotionEffectType.GLOWING)
                 && effect.getDuration() == 200));
-        verify(own).damage(eq(80000D), argThat((DamageSource damage) -> damage.getDirectEntity() instanceof Arrow
+        verify(own).damage(eq(88000D), argThat((DamageSource damage) -> damage.getDirectEntity() instanceof Arrow
                 && damage.getCausingEntity().equals(source) && damage.getDamageType().equals(DamageType.ARROW)));
         verify(foreign, never()).damage(anyDouble(), any(DamageSource.class));
         verify(otherRoom, never()).damage(anyDouble(), any(DamageSource.class));
-        verify(boss).damage(eq(80000D), any(DamageSource.class));
-        verify(performer).damage(eq(80000D), any(DamageSource.class));
+        verify(boss).damage(eq(88000D), any(DamageSource.class));
+        verify(performer).damage(eq(88000D), any(DamageSource.class));
         verify(damageManager, times(1)).launchProjectile(eq(source), eq(Arrow.class), any(FinalDamageCalculation.class));
         verify(damageArrow).remove();
         // The native cooldown spent by the successful cast blocks an immediate recast.
@@ -321,7 +322,7 @@ class BukkitClassAbilityServiceTest {
         var incoming = new EntityDamageEvent(source, EntityDamageEvent.DamageCause.ENTITY_ATTACK, mock(DamageSource.class), 30);
         service.onIncoming(incoming);
         new BukkitDungeonLifecycleListener(lifecycle, runs, plugin, clock).onLethalDamage(incoming);
-        assertEquals(15, incoming.getFinalDamage());
+        assertEquals(14, incoming.getFinalDamage(), .001);
         assertFalse(incoming.isCancelled());
         verify(lifecycle, never()).lethal(any(), any(), any());
 
@@ -371,10 +372,10 @@ class BukkitClassAbilityServiceTest {
         nativeStats.verify(() -> StatsManager.healPlayerPercent(distant, 100));
         clock.advance(1);
         service.tick();
-        nativeStats.verify(() -> StatsManager.healPlayerPercent(distant, 8));
+        nativeStats.verify(() -> StatsManager.healPlayerPercent(distant, 3));
         clock.advance(9);
         service.tick();
-        nativeStats.verify(() -> StatsManager.healPlayerPercent(distant, 8), times(1));
+        nativeStats.verify(() -> StatsManager.healPlayerPercent(distant, 3), times(1));
     }
 
     @Test
@@ -390,9 +391,9 @@ class BukkitClassAbilityServiceTest {
         nativeStats.verify(() -> StatsManager.healPlayerPercent(source, 7));
         service.activateClass(dropEvent(source));
         nativeStats.verify(() -> StatsManager.healPlayerPercent(source, 100));
-        clock.advance(1);
+        clock.advance(9);
         service.tick();
-        nativeStats.verify(() -> StatsManager.healPlayerPercent(eq(source), doubleThat(value -> Math.abs(value - 11.2) < .001)));
+        nativeStats.verify(() -> StatsManager.healPlayerPercent(eq(source), doubleThat(value -> Math.abs(value - 4.2) < .001)));
     }
 
     @Test
@@ -413,7 +414,7 @@ class BukkitClassAbilityServiceTest {
         service.onArrowHit(hit);
         verify(hit).setCancelled(true);
         verify(arrow).remove();
-        verify(own).damage(eq(80_000D), argThat((DamageSource damage) -> damage.getDirectEntity() instanceof Arrow
+        verify(own).damage(eq(88_000D), argThat((DamageSource damage) -> damage.getDirectEntity() instanceof Arrow
                 && damage.getCausingEntity().equals(source) && damage.getDamageType().equals(DamageType.ARROW)));
         verify(foreign, never()).damage(anyDouble(), any(DamageSource.class));
         verify(outsideSphere, never()).damage(anyDouble(), any(DamageSource.class));
@@ -635,6 +636,225 @@ class BukkitClassAbilityServiceTest {
         verify(displays.get(1)).close();
     }
 
+    @Test
+    void berserkerHealingRequiresOwnedKillAndRespectsCooldownGhostAndFirstLifeGuards() {
+        Mob own = mob(1, 64, 0, true);
+        when(own.getKiller()).thenReturn(source);
+        var death = mock(EntityDeathEvent.class);
+        when(death.getEntity()).thenReturn(own);
+        service.onKill(death);
+        service.onKill(death);
+        clock.advance(1);
+        state(source, PlayerLifecycleService.PlayerState.GHOST);
+        service.onKill(death);
+        state(source, PlayerLifecycleService.PlayerState.ALIVE);
+        when(own.getPersistentDataContainer().get(any(NamespacedKey.class), eq(PersistentDataType.BYTE))).thenReturn((byte) 1);
+        service.onKill(death);
+        when(own.getPersistentDataContainer().get(any(NamespacedKey.class), eq(PersistentDataType.BYTE))).thenReturn(null);
+        when(identity.belongsTo(own, instance)).thenReturn(false);
+        service.onKill(death);
+        nativeStats.verify(() -> StatsManager.healPlayerPercent(source, 3), times(1));
+        when(identity.belongsTo(own, instance)).thenReturn(true);
+        levels.when(() -> DungeonClassScaling.dungeonLevel(source)).thenReturn(60);
+        service.onKill(death);
+        nativeStats.verify(() -> StatsManager.healPlayerPercent(source, 5));
+    }
+
+    @Test
+    void mageRegenScalesCapsAtMaximumAndStopsForGhostsAndCompletedRuns() {
+        select("mage", RunPreparationService.RunState.RUNNING, List.of(source));
+        Stats stats = new Stats();
+        stats.set(StatType.INTELLIGENCE, 100);
+        stats.set(StatType.MANA, 50);
+        when(statsManager.getStats(source)).thenReturn(stats);
+        service.tick();
+        assertEquals(51, stats.get(StatType.MANA).getValue(), .001);
+        levels.when(() -> DungeonClassScaling.dungeonLevel(source)).thenReturn(60);
+        service.tick();
+        assertEquals(53, stats.get(StatType.MANA).getValue(), .001);
+        stats.set(StatType.MANA, 99.5);
+        service.tick();
+        assertEquals(100, stats.get(StatType.MANA).getValue(), .001);
+        stats.set(StatType.MANA, 50);
+        state(source, PlayerLifecycleService.PlayerState.GHOST);
+        service.tick();
+        assertEquals(50, stats.get(StatType.MANA).getValue(), .001);
+        state(source, PlayerLifecycleService.PlayerState.ALIVE);
+        select("mage", RunPreparationService.RunState.COMPLETED, List.of(source));
+        service.tick();
+        assertEquals(50, stats.get(StatType.MANA).getValue(), .001);
+    }
+
+    @Test
+    void healerAuraUsesStrongestNearbyEligibleHealerWithoutStacking() {
+        Player healer = player(0, 64, 0, instance, PlayerLifecycleService.PlayerState.ALIVE);
+        Player near = player(12, 64, 0, instance, PlayerLifecycleService.PlayerState.ALIVE);
+        Player far = player(12.1, 64, 0, instance, PlayerLifecycleService.PlayerState.ALIVE);
+        Player ghost = player(2, 64, 0, instance, PlayerLifecycleService.PlayerState.GHOST);
+        Player foreign = player(2, 64, 0, UUID.randomUUID(), PlayerLifecycleService.PlayerState.ALIVE);
+        select(Map.of(source.getUniqueId(), "healer", healer.getUniqueId(), "healer"),
+                RunPreparationService.RunState.RUNNING, List.of(source, healer, near, far, ghost, foreign));
+        levels.when(() -> DungeonClassScaling.dungeonLevel(healer)).thenReturn(60);
+        service.tick();
+        nativeStats.verify(() -> StatsManager.healPlayer(near, 11.5));
+        for (Player excluded : List.of(far, ghost, foreign))
+            nativeStats.verify(() -> StatsManager.healPlayer(eq(excluded), anyDouble()), never());
+        state(healer, PlayerLifecycleService.PlayerState.GHOST);
+        service.tick();
+        nativeStats.verify(() -> StatsManager.healPlayer(near, 5.75));
+        when(source.getGameMode()).thenReturn(GameMode.SPECTATOR);
+        service.tick();
+        nativeStats.verify(() -> StatsManager.healPlayer(near, 5.75), times(1));
+    }
+
+    @Test
+    void archerAttackSpeedRequiresBowAndRunningClassAndRespectsNativeCap() {
+        select("archer", RunPreparationService.RunState.RUNNING, List.of(source));
+        when(source.getInventory().getItemInMainHand()).thenReturn(new ItemStack(Material.BOW));
+        Stats stats = new Stats();
+        stats.set(StatType.ATTACK_SPEED, 90);
+        service.onStats(new StatsCalculateEvent(source, stats));
+        assertEquals(100, stats.get(StatType.ATTACK_SPEED).getValue());
+        stats.set(StatType.ATTACK_SPEED, 0);
+        service.onStats(new StatsCalculateEvent(source, stats));
+        assertEquals(25, stats.get(StatType.ATTACK_SPEED).getValue());
+        when(source.getInventory().getItemInMainHand()).thenReturn(new ItemStack(Material.IRON_SWORD));
+        stats.set(StatType.ATTACK_SPEED, 0);
+        service.onStats(new StatsCalculateEvent(source, stats));
+        assertEquals(0, stats.get(StatType.ATTACK_SPEED).getValue());
+        when(source.getInventory().getItemInMainHand()).thenReturn(new ItemStack(Material.BOW));
+        select("archer", RunPreparationService.RunState.PREPARING, List.of(source));
+        service.onStats(new StatsCalculateEvent(source, stats));
+        assertEquals(0, stats.get(StatType.ATTACK_SPEED).getValue());
+    }
+
+    @Test
+    void nearestTankSharesDamageBeforeLethalCheckWithNoChainsAndFiftyPercentHitCap() {
+        Player tank = player(4, 64, 0, instance, PlayerLifecycleService.PlayerState.ALIVE);
+        Player other = player(6, 64, 0, instance, PlayerLifecycleService.PlayerState.ALIVE);
+        when(tank.getHealth()).thenReturn(1000D);
+        select(Map.of(source.getUniqueId(), "mage", tank.getUniqueId(), "tank", other.getUniqueId(), "tank"),
+                RunPreparationService.RunState.RUNNING, List.of(source, tank, other));
+        List<EntityDamageEvent> redirected = new ArrayList<>();
+        doAnswer(call -> {
+            var hit = incoming(tank, call.getArgument(0));
+            service.onIncoming(hit);
+            new BukkitDungeonLifecycleListener(lifecycle, runs, plugin, clock).onLethalDamage(hit);
+            redirected.add(hit);
+            return null;
+        }).when(tank).damage(anyDouble());
+        var hit = incoming(source, 800);
+        service.onIncoming(hit);
+        new BukkitDungeonLifecycleListener(lifecycle, runs, plugin, clock).onLethalDamage(hit);
+        verify(tank).damage(640);
+        verify(other, never()).damage(anyDouble());
+        assertEquals(160, hit.getFinalDamage(), .001);
+        assertEquals(500, redirected.getFirst().getFinalDamage(), .001);
+        assertFalse(hit.isCancelled());
+        assertFalse(redirected.getFirst().isCancelled());
+        verify(lifecycle, never()).lethal(any(), any(), any());
+        var direct = incoming(tank, 5000);
+        service.onIncoming(direct);
+        assertEquals(500, direct.getFinalDamage(), .001);
+        verify(other, never()).damage(anyDouble());
+    }
+
+    @Test
+    void cancelledTransfersAndIneligibleTanksCannotEraseAllyDamage() {
+        Player tank = player(4, 64, 0, instance, PlayerLifecycleService.PlayerState.ALIVE);
+        select(Map.of(source.getUniqueId(), "mage", tank.getUniqueId(), "tank"),
+                RunPreparationService.RunState.RUNNING, List.of(source, tank));
+        doAnswer(call -> {
+            var hit = incoming(tank, call.getArgument(0));
+            service.onIncoming(hit);
+            hit.setCancelled(true);
+            return null;
+        }).when(tank).damage(anyDouble());
+        var hit = incoming(source, 100);
+        service.onIncoming(hit);
+        assertEquals(100, hit.getFinalDamage());
+        verify(tank).damage(80);
+        state(tank, PlayerLifecycleService.PlayerState.GHOST);
+        service.onIncoming(hit);
+        state(tank, PlayerLifecycleService.PlayerState.ALIVE);
+        when(tank.isInvulnerable()).thenReturn(true);
+        service.onIncoming(hit);
+        when(tank.isInvulnerable()).thenReturn(false);
+        hit.setCancelled(true);
+        service.onIncoming(hit);
+        verify(tank, times(1)).damage(anyDouble());
+    }
+
+    @Test
+    void killAndVoidDamageBypassTankCapAndSharing() {
+        Player tank = player(4, 64, 0, instance, PlayerLifecycleService.PlayerState.ALIVE);
+        select(Map.of(source.getUniqueId(), "mage", tank.getUniqueId(), "tank"),
+                RunPreparationService.RunState.RUNNING, List.of(source, tank));
+        for (var cause : List.of(EntityDamageEvent.DamageCause.KILL, EntityDamageEvent.DamageCause.VOID)) {
+            var ally = new EntityDamageEvent(source, cause, mock(DamageSource.class), 800);
+            service.onIncoming(ally);
+            assertEquals(800, ally.getFinalDamage(), .001);
+            var direct = new EntityDamageEvent(tank, cause, mock(DamageSource.class), 5000);
+            service.onIncoming(direct);
+            assertEquals(5000, direct.getFinalDamage(), .001);
+        }
+        verify(tank, never()).damage(anyDouble());
+    }
+
+    private static EntityDamageEvent incoming(Player player, double damage) {
+        return new EntityDamageEvent(player, EntityDamageEvent.DamageCause.CUSTOM, mock(DamageSource.class), damage);
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    void damageSharingPreservesArmorAndAbsorptionAndUsesTankLevelRange() {
+        Player tank = player(12, 64, 0, instance, PlayerLifecycleService.PlayerState.ALIVE);
+        select(Map.of(source.getUniqueId(), "mage", tank.getUniqueId(), "tank"),
+                RunPreparationService.RunState.RUNNING, List.of(source, tank));
+        doAnswer(call -> { service.onIncoming(incoming(tank, call.getArgument(0))); return null; }).when(tank).damage(anyDouble());
+        var outOfRange = incoming(source, 100);
+        service.onIncoming(outOfRange);
+        assertEquals(100, outOfRange.getFinalDamage());
+        verify(tank, never()).damage(anyDouble());
+        levels.when(() -> DungeonClassScaling.dungeonLevel(tank)).thenReturn(60);
+        var modifiers = new java.util.EnumMap<EntityDamageEvent.DamageModifier, Double>(EntityDamageEvent.DamageModifier.class);
+        modifiers.put(EntityDamageEvent.DamageModifier.BASE, 100D);
+        modifiers.put(EntityDamageEvent.DamageModifier.ARMOR, -20D);
+        modifiers.put(EntityDamageEvent.DamageModifier.ABSORPTION, -10D);
+        var functions = new java.util.EnumMap<EntityDamageEvent.DamageModifier, com.google.common.base.Function<Double, Double>>(
+                EntityDamageEvent.DamageModifier.class);
+        functions.put(EntityDamageEvent.DamageModifier.BASE, value -> 0D);
+        functions.put(EntityDamageEvent.DamageModifier.ARMOR, value -> -value * .2);
+        functions.put(EntityDamageEvent.DamageModifier.ABSORPTION, value -> -Math.min(value, 10));
+        var hit = new EntityDamageEvent(source, EntityDamageEvent.DamageCause.CUSTOM, mock(DamageSource.class), modifiers, functions);
+        service.onIncoming(hit);
+        assertEquals(14, hit.getFinalDamage(), .001);
+        assertEquals(-10, hit.getDamage(EntityDamageEvent.DamageModifier.ABSORPTION));
+        verify(tank).damage(56);
+    }
+
+    @Test
+    void fatalSharedDamageStillProtectsAllyWhileTankBecomesGhost() {
+        Player tank = player(4, 64, 0, instance, PlayerLifecycleService.PlayerState.ALIVE);
+        select(Map.of(source.getUniqueId(), "mage", tank.getUniqueId(), "tank"),
+                RunPreparationService.RunState.RUNNING, List.of(source, tank));
+        when(tank.getHealth()).thenReturn(100D);
+        UUID tankId = tank.getUniqueId();
+        doAnswer(call -> { state(tank, PlayerLifecycleService.PlayerState.GHOST); return null; })
+                .when(lifecycle).lethal(eq(instance), eq(tankId), any());
+        doAnswer(call -> {
+            var hit = incoming(tank, call.getArgument(0));
+            service.onIncoming(hit);
+            new BukkitDungeonLifecycleListener(lifecycle, runs, plugin, clock).onLethalDamage(hit);
+            assertTrue(hit.isCancelled());
+            return null;
+        }).when(tank).damage(anyDouble());
+        var hit = incoming(source, 200);
+        service.onIncoming(hit);
+        assertEquals(40, hit.getFinalDamage(), .001);
+        assertEquals(PlayerLifecycleService.PlayerState.GHOST, lifecycle.player(instance, tank.getUniqueId()).orElseThrow().state());
+    }
+
     private Player player(double x, double y, double z, UUID instanceId, PlayerLifecycleService.PlayerState state) {
         Player player = mock(Player.class);
         UUID id = UUID.randomUUID();
@@ -642,6 +862,7 @@ class BukkitClassAbilityServiceTest {
         when(player.isOnline()).thenReturn(true);
         when(player.getHealth()).thenReturn(500D);
         when(player.isValid()).thenReturn(true);
+        when(player.getGameMode()).thenReturn(GameMode.SURVIVAL);
         when(player.getWorld()).thenReturn(world);
         when(player.getLocation()).thenAnswer(ignored -> new Location(world, x, y, z));
         when(player.getEyeLocation()).thenAnswer(ignored -> new Location(world, x, y + 1.6, z));
@@ -672,13 +893,18 @@ class BukkitClassAbilityServiceTest {
     }
 
     private void select(String classId, RunPreparationService.RunState state, List<Player> party) {
+        select(Map.of(source.getUniqueId(), classId), state, party);
+    }
+
+    private void select(Map<UUID, String> selected, RunPreparationService.RunState state, List<Player> party) {
         var run = mock(RunPreparationService.RunSnapshot.class);
-        Map<UUID, String> selected = Map.of(source.getUniqueId(), classId);
+        when(run.instanceId()).thenReturn(instance);
         List<UUID> participants = party.stream().map(Player::getUniqueId).toList();
         when(run.state()).thenReturn(state);
         when(run.selectedClasses()).thenReturn(selected);
         when(run.participants()).thenReturn(participants);
         when(runs.info(instance)).thenReturn(Optional.of(run));
+        when(runs.snapshots()).thenReturn(List.of(run));
     }
 
     private void room() {
@@ -693,6 +919,7 @@ class BukkitClassAbilityServiceTest {
         Mob mob = mock(Mob.class);
         when(mob.getUniqueId()).thenReturn(UUID.randomUUID());
         when(mob.isValid()).thenReturn(true);
+        when(mob.getPersistentDataContainer()).thenReturn(mock(PersistentDataContainer.class));
         when(mob.getWorld()).thenReturn(world);
         when(mob.getLocation()).thenAnswer(ignored -> new Location(world, x, y, z));
         when(server.getEntity(mob.getUniqueId())).thenReturn(mob);

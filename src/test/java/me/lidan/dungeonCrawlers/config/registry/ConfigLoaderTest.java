@@ -1,6 +1,9 @@
 package me.lidan.dungeonCrawlers.config.registry;
 
 import me.lidan.dungeonCrawlers.config.registry.ConfigModels.RoomType;
+import me.lidan.cavecrawlers.utils.BoostedCustomConfig;
+import org.bukkit.plugin.java.JavaPlugin;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -14,9 +17,20 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 
 class ConfigLoaderTest {
     @TempDir Path directory;
+
+    @BeforeAll
+    static void initializeNativeConfigWithoutDependingOnTestOrder() throws Exception {
+        try (var nativePlugin = mockStatic(JavaPlugin.class)) {
+            nativePlugin.when(() -> JavaPlugin.getProvidingPlugin(BoostedCustomConfig.class))
+                    .thenReturn(mock(JavaPlugin.class));
+            Class.forName(BoostedCustomConfig.class.getName());
+        }
+    }
 
     @Test
     void builtInPackLoadsWithDefaultsAndStableHash() throws Exception {
@@ -34,6 +48,42 @@ class ConfigLoaderTest {
         assertEquals(2.0, first.snapshot().classes().get("berserker").statPercentPerLevel()
                 .get(me.lidan.cavecrawlers.stats.StatType.STRENGTH));
         assertEquals(2.0, first.snapshot().classes().get("healer").healingPercentPerLevel());
+    }
+
+    @Test
+    void floorOnePoolsUseServerPricesAndHypixelFloorOneScoreGates() throws Exception {
+        copyDefaults();
+        var loaded = loader().load(directory);
+        assertTrue(loaded.successful(), loaded.errors().toString());
+        var definitions = org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(
+                new java.io.InputStreamReader(getClass().getResourceAsStream("/reward-items.yml"),
+                        java.nio.charset.StandardCharsets.UTF_8));
+        var rewards = loaded.snapshot().floors().get("floor_1").rewards();
+        assertEquals(java.util.Set.of("wooden", "gold", "diamond", "emerald", "obsidian"), rewards.keySet());
+        var prices = java.util.Map.of("wooden", 0L, "gold", 10000000L, "diamond", 25000000L,
+                "emerald", 50000000L, "obsidian", 100000000L);
+        prices.forEach((id, price) -> assertEquals(price.longValue(), rewards.get(id).price()));
+        assertEquals(0, rewards.get("wooden").minScore());
+        assertEquals(0, rewards.get("gold").minScore());
+        assertEquals(0, rewards.get("diamond").minScore());
+        assertEquals(230, rewards.get("emerald").minScore());
+        assertEquals(270, rewards.get("obsidian").minScore());
+        for (var reward : rewards.values()) {
+            double weight = reward.items().stream().mapToDouble(item -> item.weight()).sum();
+            double expectedSell = 0;
+            assertEquals(100, weight);
+            assertEquals(1, reward.rolls());
+            for (var item : reward.items()) {
+                assertTrue(definitions.contains(item.itemId()), item.itemId());
+                assertEquals(1, item.maximumAmount());
+                expectedSell += item.weight() / weight * definitions.getDouble(item.itemId() + ".sell-price");
+            }
+            assertTrue(reward.minScore() <= 270);
+            if (reward.price() > 0) {
+                long discounted = me.lidan.dungeonCrawlers.core.difficulty.Difficulty.IMPOSSIBLE.chestPrice(reward.price(), true);
+                assertTrue(expectedSell < discounted, "Expected sell profit: " + reward);
+            }
+        }
     }
 
     @Test
@@ -146,16 +196,16 @@ class ConfigLoaderTest {
         ConfigLoadResult uppercase = loader().load(directory);
 
         assertTrue(uppercase.successful(), uppercase.errors().toString());
-        assertEquals("UNDEAD_ESSENCE", uppercase.snapshot().floors().get("floor_1")
+        assertEquals("DC_JESTER_CAP", uppercase.snapshot().floors().get("floor_1")
                 .rewards().get("wooden").items().getFirst().itemId());
 
-        Files.writeString(floor, Files.readString(floor).replace("item: UNDEAD_ESSENCE", "item: undead_essence"));
+        Files.writeString(floor, Files.readString(floor).replace("item: DC_JESTER_CAP", "item: dc_jester_cap"));
         ConfigLoadResult legacy = loader().load(directory);
         assertTrue(legacy.successful(), legacy.errors().toString());
-        assertEquals("UNDEAD_ESSENCE", legacy.snapshot().floors().get("floor_1")
+        assertEquals("DC_JESTER_CAP", legacy.snapshot().floors().get("floor_1")
                 .rewards().get("wooden").items().getFirst().itemId());
 
-        Files.writeString(floor, Files.readString(floor).replace("item: undead_essence", "item: invalid item"));
+        Files.writeString(floor, Files.readString(floor).replace("item: dc_jester_cap", "item: invalid item"));
         ConfigLoadResult malformed = loader().load(directory);
 
         assertFalse(malformed.successful());
@@ -198,8 +248,8 @@ class ConfigLoaderTest {
     void overflowingAmountRangeReturnsValidationError() throws Exception {
         copyDefaults();
         Path floor = directory.resolve("floors/floor_1.yml");
-        Files.writeString(floor, Files.readString(floor).replace("amount: \"3-8\"",
-                "amount: \"99999999999999999999-999999999999999999999\""));
+        Files.writeString(floor, Files.readString(floor).replace("weight: 20",
+                "weight: 20\n      amount: \"99999999999999999999-999999999999999999999\""));
 
         ConfigLoadResult result = loader().load(directory);
 
@@ -231,7 +281,7 @@ class ConfigLoaderTest {
     @Test void difficultyConfigAndCustomFloorMigrationAreValidated() throws Exception {
         copyDefaults();
         Path floor = directory.resolve("floors/floor_1.yml");
-        String old = Files.readString(floor).replace("schema-version: 3", "schema-version: 1")
+        String old = Files.readString(floor).replace("schema-version: 6", "schema-version: 1")
                 .replace("number: 1", "number: 3").replaceAll("(?m)^dungeon-xp:\n(?:  .*\n)*", "");
         Files.writeString(floor, old);
         var loaded = loader().load(directory);

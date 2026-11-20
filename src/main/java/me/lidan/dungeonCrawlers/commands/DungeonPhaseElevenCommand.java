@@ -484,6 +484,7 @@ public final class DungeonPhaseElevenCommand {
         Objects.requireNonNull(offers, "offers");
         return offers.stream()
                 .sorted(Comparator.comparingInt(RewardEntitlementService.RewardOffer::minScore)
+                        .thenComparingLong(RewardEntitlementService.RewardOffer::price)
                         .thenComparing(RewardEntitlementService.RewardOffer::rewardId))
                 .toList();
     }

@@ -113,7 +113,8 @@ class LayoutPlannerTest {
         var differentPlan = planner.plan(different).plan().orElseThrow();
 
         assertEquals(firstPlan, samePlan);
-        assertNotEquals(firstPlan.trace().get(1), differentPlan.trace().get(1));
+        assertNotEquals(firstPlan.trace().subList(1, firstPlan.trace().size()),
+                differentPlan.trace().subList(1, differentPlan.trace().size()));
     }
 
     @Test
@@ -127,6 +128,45 @@ class LayoutPlannerTest {
             assertNotEquals(combat.get(index - 1).templateId(), combat.get(index).templateId());
         }
         assertEquals(combat.size(), combat.stream().map(placement -> placement.secrets().getFirst()).distinct().count());
+    }
+
+    @Test
+    void neverRepeatsTemplateWhenOnlyOneRoomCanHostMinibosses() {
+        var catalog = catalog();
+        var a = catalog.get("normal_a").template();
+        catalog.remove("normal_b");
+        catalog.remove("miniboss");
+        catalog.put("den", entry(template("den", RoomType.NORMAL,
+                Set.of(EncounterCapability.NORMAL, EncounterCapability.MINIBOSS), a.bounds(),
+                a.entrance().orElseThrow(), a.exit().orElseThrow()), 6));
+        FloorDefinition floor = floor(8, 1, true, new Vector3i(0, 0, 300));
+        for (long seed = 0; seed < 1_000; seed++) {
+            var result = planner.plan(request(seed, floor, catalog, SLOT));
+            assertTrue(result.successful(), "seed=" + seed + " " + result.errors());
+            List<String> rooms = result.plan().orElseThrow().placements().stream()
+                    .filter(placement -> placement.type() == RoomType.NORMAL)
+                    .map(LayoutPlanner.Placement::templateId).toList();
+            for (int index = 1; index < rooms.size(); index++) {
+                assertNotEquals(rooms.get(index - 1), rooms.get(index), "seed=" + seed + " rooms=" + rooms);
+            }
+        }
+    }
+
+    @Test
+    void interleavesMinibossOnlyRoomWithSingleNormalRoom() {
+        var catalog = catalog();
+        catalog.remove("normal_b");
+        FloorDefinition floor = floor(4, 2, false, new Vector3i(0, 0, 300));
+        for (long seed = 0; seed < 200; seed++) {
+            var result = planner.plan(request(seed, floor, catalog, SLOT));
+            assertTrue(result.successful(), "seed=" + seed + " " + result.errors());
+            List<String> rooms = result.plan().orElseThrow().placements().stream()
+                    .filter(placement -> placement.type() == RoomType.NORMAL)
+                    .map(LayoutPlanner.Placement::templateId).toList();
+            for (int index = 1; index < rooms.size(); index++) {
+                assertNotEquals(rooms.get(index - 1), rooms.get(index), "seed=" + seed + " rooms=" + rooms);
+            }
+        }
     }
 
     @Test
