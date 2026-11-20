@@ -104,6 +104,18 @@ class BukkitChainboundArenaTest {
         when(player.isOnline()).thenReturn(false); sample(arena, 4200);
         verify(player, never()).damage(anyDouble(), any(Entity.class));
     }
+    @Test void perchingAboveTheFloorPullsThePlayerTowardVeyraAfterThreeSeconds() throws Exception {
+        var arena = arena(Stage.RIVEN); position.setY(72);
+        try (var ignored = mockStatic(MythicBukkit.class)) {
+            ignored.when(MythicBukkit::inst).thenReturn(mock(MythicBukkit.class, RETURNS_DEEP_STUBS));
+            arena.tick(START); arena.tick(START.plusMillis(2500));
+            verify(player, never()).setVelocity(any());
+            arena.tick(START.plusSeconds(3));
+        }
+        var pull = org.mockito.ArgumentCaptor.forClass(org.bukkit.util.Vector.class);
+        verify(player).setVelocity(pull.capture());
+        org.junit.jupiter.api.Assertions.assertTrue(pull.getValue().getX() < 0 && pull.getValue().getY() < 0);
+    }
     @Test void lethalFirstFormDamageIsAllowedButCinematicDamageIsCancelled() throws Exception {
         var arena = arena(Stage.FIRST);
         when(boss.getUniqueId()).thenReturn((UUID) get(arena, "bossId"));
