@@ -113,7 +113,7 @@ class LayoutPlannerTest {
         var differentPlan = planner.plan(different).plan().orElseThrow();
 
         assertEquals(firstPlan, samePlan);
-        assertNotEquals(firstPlan.trace().get(1), differentPlan.trace().get(1));
+        assertNotEquals(firstPlan.trace(), differentPlan.trace());
     }
 
     @Test
@@ -140,6 +140,23 @@ class LayoutPlannerTest {
                 a.entrance().orElseThrow(), a.exit().orElseThrow()), 6));
         FloorDefinition floor = floor(8, 1, true, new Vector3i(0, 0, 300));
         for (long seed = 0; seed < 1_000; seed++) {
+            var result = planner.plan(request(seed, floor, catalog, SLOT));
+            assertTrue(result.successful(), "seed=" + seed + " " + result.errors());
+            List<String> rooms = result.plan().orElseThrow().placements().stream()
+                    .filter(placement -> placement.type() == RoomType.NORMAL)
+                    .map(LayoutPlanner.Placement::templateId).toList();
+            for (int index = 1; index < rooms.size(); index++) {
+                assertNotEquals(rooms.get(index - 1), rooms.get(index), "seed=" + seed + " rooms=" + rooms);
+            }
+        }
+    }
+
+    @Test
+    void interleavesMinibossOnlyRoomWithSingleNormalRoom() {
+        var catalog = catalog();
+        catalog.remove("normal_b");
+        FloorDefinition floor = floor(4, 2, false, new Vector3i(0, 0, 300));
+        for (long seed = 0; seed < 200; seed++) {
             var result = planner.plan(request(seed, floor, catalog, SLOT));
             assertTrue(result.successful(), "seed=" + seed + " " + result.errors());
             List<String> rooms = result.plan().orElseThrow().placements().stream()

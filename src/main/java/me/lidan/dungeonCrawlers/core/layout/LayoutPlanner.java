@@ -199,9 +199,7 @@ public final class LayoutPlanner {
         for (int index : positions) {
             if (minibosses.size() == minibossCount) break;
             minibosses.add(index);
-            if (repeatFreeOptions(request, composition(floor, minibosses)).getFirst().isEmpty()) {
-                minibosses.remove(index);
-            }
+            if (!repeatFreePossible(request, minibosses, minibossCount - minibosses.size())) minibosses.remove(index);
         }
         for (int index : positions) {
             if (minibosses.size() == minibossCount) break;
@@ -218,6 +216,41 @@ public final class LayoutPlanner {
         }
         if (floor.generation().finalMiniboss()) result.add(EncounterCapability.MINIBOSS);
         return List.copyOf(result);
+    }
+
+    /** Whether fixed miniboss slots plus {@code remaining} more can still avoid back-to-back rooms. */
+    private static boolean repeatFreePossible(PlanRequest request, Set<Integer> minibosses, int remaining) {
+        List<EncounterCapability> slots = new ArrayList<>();
+        for (int index = 0; index < request.floor().generation().rooms(); index++) {
+            slots.add(minibosses.contains(index) ? EncounterCapability.MINIBOSS : null);
+        }
+        if (request.floor().generation().finalMiniboss()) slots.add(EncounterCapability.MINIBOSS);
+        return repeatFreePossible(request, slots, 0, null, remaining, new HashMap<>());
+    }
+
+    private static boolean repeatFreePossible(PlanRequest request, List<EncounterCapability> slots, int position,
+                                              String previous, int remaining, Map<String, Boolean> memo) {
+        if (position == slots.size()) return remaining == 0;
+        String key = position + ":" + previous + ":" + remaining;
+        Boolean known = memo.get(key);
+        if (known != null) return known;
+        EncounterCapability fixed = slots.get(position);
+        boolean possible = false;
+        for (EncounterCapability capability : fixed != null ? List.of(fixed)
+                : List.of(EncounterCapability.NORMAL, EncounterCapability.MINIBOSS)) {
+            int left = fixed == null && capability == EncounterCapability.MINIBOSS ? remaining - 1 : remaining;
+            if (left < 0) continue;
+            for (CatalogEntry entry : candidates(request, capability, null)) {
+                String id = entry.template().id();
+                if (!id.equals(previous) && repeatFreePossible(request, slots, position + 1, id, left, memo)) {
+                    possible = true;
+                    break;
+                }
+            }
+            if (possible) break;
+        }
+        memo.put(key, possible);
+        return possible;
     }
 
     /** Per position, the template ids that can still be followed by a sequence with no back-to-back repeat. */
