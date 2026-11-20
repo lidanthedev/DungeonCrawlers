@@ -113,7 +113,8 @@ class LayoutPlannerTest {
         var differentPlan = planner.plan(different).plan().orElseThrow();
 
         assertEquals(firstPlan, samePlan);
-        assertNotEquals(firstPlan.trace(), differentPlan.trace());
+        assertNotEquals(firstPlan.trace().subList(1, firstPlan.trace().size()),
+                differentPlan.trace().subList(1, differentPlan.trace().size()));
     }
 
     @Test
