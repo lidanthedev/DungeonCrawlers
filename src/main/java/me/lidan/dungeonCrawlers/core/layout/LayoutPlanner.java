@@ -35,7 +35,7 @@ import java.util.SplittableRandom;
 import java.util.UUID;
 
 public final class LayoutPlanner {
-    public static final String ALGORITHM_VERSION = "phase2-v1";
+    public static final String ALGORITHM_VERSION = "phase2-v2";
 
     public PlanResult plan(PlanRequest request) {
         Objects.requireNonNull(request, "request");
@@ -47,7 +47,8 @@ public final class LayoutPlanner {
         NamedRandomFactory randomFactory = new NamedRandomFactory(request.seed());
         SplittableRandom layoutRandom = randomFactory.stream("layout");
         SplittableRandom choiceRandom = randomFactory.stream("room-choice");
-        List<EncounterCapability> composition = composition(request.floor(), layoutRandom);
+        List<EncounterCapability> composition = composition(request, layoutRandom);
+        List<Set<String>> repeatFree = repeatFreeOptions(request, composition);
         trace.add("version=" + ALGORITHM_VERSION + " seed=" + request.seed() + " config=" + request.configHash()
                 + " content=" + contentHash(request.catalog()));
         trace.add("composition=" + composition);
@@ -70,6 +71,9 @@ public final class LayoutPlanner {
         for (int position = 0; position < composition.size(); position++) {
             EncounterCapability capability = composition.get(position);
             List<CatalogEntry> candidates = candidates(request, capability, previousCombatId);
+            Set<String> allowed = repeatFree.get(position);
+            List<CatalogEntry> safe = candidates.stream().filter(entry -> allowed.contains(entry.template().id())).toList();
+            if (!safe.isEmpty()) candidates = safe;
             if (!request.floor().generation().roomPool().isEmpty()) {
                 Set<String> used = placements.stream().map(Placement::templateId).collect(java.util.stream.Collectors.toSet());
                 List<CatalogEntry> fresh = candidates.stream().filter(entry -> !used.contains(entry.template().id())).toList();
@@ -178,7 +182,8 @@ public final class LayoutPlanner {
         else if (entry.template().type() != type) errors.add(label + " template " + id + " must be " + type);
     }
 
-    private static List<EncounterCapability> composition(FloorDefinition floor, SplittableRandom random) {
+    private static List<EncounterCapability> composition(PlanRequest request, SplittableRandom random) {
+        FloorDefinition floor = request.floor();
         int roomCount = floor.generation().rooms();
         List<Integer> positions = new ArrayList<>(roomCount);
         for (int index = 0; index < roomCount; index++) positions.add(index);
@@ -188,13 +193,47 @@ public final class LayoutPlanner {
             positions.set(index, positions.get(selected));
             positions.set(selected, value);
         }
-        Set<Integer> minibosses = Set.copyOf(positions.subList(0, floor.generation().minibosses()));
+        // Prefer miniboss slots that still allow a sequence without back-to-back rooms.
+        int minibossCount = floor.generation().minibosses();
+        Set<Integer> minibosses = new HashSet<>();
+        for (int index : positions) {
+            if (minibosses.size() == minibossCount) break;
+            minibosses.add(index);
+            if (repeatFreeOptions(request, composition(floor, minibosses)).getFirst().isEmpty()) {
+                minibosses.remove(index);
+            }
+        }
+        for (int index : positions) {
+            if (minibosses.size() == minibossCount) break;
+            minibosses.add(index);
+        }
+        return composition(floor, minibosses);
+    }
+
+    private static List<EncounterCapability> composition(FloorDefinition floor, Set<Integer> minibosses) {
+        int roomCount = floor.generation().rooms();
         List<EncounterCapability> result = new ArrayList<>(roomCount + (floor.generation().finalMiniboss() ? 1 : 0));
         for (int index = 0; index < roomCount; index++) {
             result.add(minibosses.contains(index) ? EncounterCapability.MINIBOSS : EncounterCapability.NORMAL);
         }
         if (floor.generation().finalMiniboss()) result.add(EncounterCapability.MINIBOSS);
         return List.copyOf(result);
+    }
+
+    /** Per position, the template ids that can still be followed by a sequence with no back-to-back repeat. */
+    private static List<Set<String>> repeatFreeOptions(PlanRequest request, List<EncounterCapability> composition) {
+        List<Set<String>> options = new ArrayList<>(java.util.Collections.nCopies(composition.size(), Set.of()));
+        Set<String> next = null;
+        for (int position = composition.size() - 1; position >= 0; position--) {
+            Set<String> here = new HashSet<>();
+            for (CatalogEntry entry : candidates(request, composition.get(position), null)) {
+                String id = entry.template().id();
+                if (next == null || next.stream().anyMatch(other -> !other.equals(id))) here.add(id);
+            }
+            options.set(position, here);
+            next = here;
+        }
+        return options;
     }
 
     private static List<CatalogEntry> candidates(PlanRequest request, EncounterCapability capability,
@@ -206,10 +245,12 @@ public final class LayoutPlanner {
                 .filter(entry -> request.floor().generation().roomPool().isEmpty()
                         || request.floor().generation().roomPool().contains(entry.template().id()))
                 .sorted(Comparator.comparing(entry -> entry.template().id())).toList();
-        if (all.size() < 2 || previousId == null) return all;
-        List<CatalogEntry> withoutRepeat = all.stream()
-                .filter(entry -> !entry.template().id().equals(previousId)).toList();
-        return withoutRepeat.isEmpty() ? all : withoutRepeat;
+        return previousId == null ? all : without(all, previousId);
+    }
+
+    private static List<CatalogEntry> without(List<CatalogEntry> candidates, String id) {
+        List<CatalogEntry> filtered = candidates.stream().filter(entry -> !entry.template().id().equals(id)).toList();
+        return filtered.isEmpty() ? candidates : filtered;
     }
 
     private static boolean supportsFloor(RoomDefinition definition, int floor) {

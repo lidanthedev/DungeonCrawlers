@@ -130,6 +130,28 @@ class LayoutPlannerTest {
     }
 
     @Test
+    void neverRepeatsTemplateWhenOnlyOneRoomCanHostMinibosses() {
+        var catalog = catalog();
+        var a = catalog.get("normal_a").template();
+        catalog.remove("normal_b");
+        catalog.remove("miniboss");
+        catalog.put("den", entry(template("den", RoomType.NORMAL,
+                Set.of(EncounterCapability.NORMAL, EncounterCapability.MINIBOSS), a.bounds(),
+                a.entrance().orElseThrow(), a.exit().orElseThrow()), 6));
+        FloorDefinition floor = floor(8, 1, true, new Vector3i(0, 0, 300));
+        for (long seed = 0; seed < 1_000; seed++) {
+            var result = planner.plan(request(seed, floor, catalog, SLOT));
+            assertTrue(result.successful(), "seed=" + seed + " " + result.errors());
+            List<String> rooms = result.plan().orElseThrow().placements().stream()
+                    .filter(placement -> placement.type() == RoomType.NORMAL)
+                    .map(LayoutPlanner.Placement::templateId).toList();
+            for (int index = 1; index < rooms.size(); index++) {
+                assertNotEquals(rooms.get(index - 1), rooms.get(index), "seed=" + seed + " rooms=" + rooms);
+            }
+        }
+    }
+
+    @Test
     void workedConnectionExampleProducesExactOrigin() {
         Map<String, CatalogEntry> catalog = catalog();
         Template start = template("start", RoomType.START, Set.of(),
