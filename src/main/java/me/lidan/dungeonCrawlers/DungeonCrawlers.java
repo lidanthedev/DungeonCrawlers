@@ -235,6 +235,7 @@ public final class DungeonCrawlers extends JavaPlugin {
         timings = configuredTimings();
         scoreService = new ScoreService(timings.scoreFreeTime(), timings.scorePenaltyInterval());
         debugSettings = new DebugSettings(configuredBoolean("debug", false));
+        DungeonMessages.setPrefix(mainConfig.getString("messages.prefix", DungeonMessages.DEFAULT_PREFIX));
         try {
             migrateVersionedDataConfigs();
         } catch (IOException exception) {

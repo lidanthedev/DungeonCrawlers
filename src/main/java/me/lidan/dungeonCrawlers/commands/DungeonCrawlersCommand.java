@@ -309,9 +309,13 @@ public final class DungeonCrawlersCommand {
             try {
                 mainConfig.reload();
                 boolean updatedDebug = configuredDebug();
+                String updatedPrefix = mainConfig.getString("messages.prefix", DungeonMessages.DEFAULT_PREFIX);
                 ConfigRegistryService.ReloadResult result = reservations.withAdmissionPaused(configRegistry::reload);
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
-                    if (result.swapped()) debugUpdate.accept(updatedDebug);
+                    if (result.swapped()) {
+                        debugUpdate.accept(updatedDebug);
+                        DungeonMessages.setPrefix(updatedPrefix);
+                    }
                     reportReload(sender, result);
                     if (completion != null) completion.run();
                 });

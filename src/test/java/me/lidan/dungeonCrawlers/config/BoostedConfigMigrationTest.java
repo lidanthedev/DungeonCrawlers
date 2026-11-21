@@ -54,6 +54,8 @@ class BoostedConfigMigrationTest {
                 () -> assertEquals(10, reopened.getInt("backups.retention-count"), reopened.dump()),
                 () -> assertEquals("replace", reopened.getString("authoring.emerald-marker-policy"), reopened.dump()),
                 () -> assertEquals("", reopened.getString("class-selector.npc.skin"), reopened.dump()),
+                () -> assertEquals(me.lidan.dungeonCrawlers.integration.DungeonMessages.DEFAULT_PREFIX,
+                        reopened.getString("messages.prefix"), reopened.dump()),
                 () -> assertEquals(60, reopened.getInt("timings.preparation-warning-seconds"), reopened.dump()),
                 () -> assertEquals(3_600, reopened.getInt("timings.run-timeout-seconds"), reopened.dump()),
                 () -> assertEquals(10, reopened.getInt("timings.failed-reading-period-seconds"), reopened.dump()),

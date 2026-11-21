@@ -6,17 +6,22 @@ import org.bukkit.command.CommandSender;
 
 /** Shared player-facing message formatting for DungeonCrawlers. */
 public final class DungeonMessages {
-    private static final Component PREFIX = MiniMessageUtils.miniMessage(
-            "<dark_gray>[<aqua><bold>DungeonCrawlers</bold></aqua>]</dark_gray> ");
+    public static final String DEFAULT_PREFIX = "<dark_gray>[<aqua><bold>DungeonCrawlers</bold></aqua>]</dark_gray> ";
+    private static volatile Component prefix = MiniMessageUtils.miniMessage(DEFAULT_PREFIX);
 
     private DungeonMessages() { }
+
+    /** Sets the MiniMessage prefix from config.yml messages.prefix. */
+    public static void setPrefix(String miniMessage) {
+        prefix = MiniMessageUtils.miniMessage(miniMessage);
+    }
 
     public static Component parse(String miniMessage) {
         return prefix(MiniMessageUtils.miniMessage(miniMessage));
     }
 
     public static Component prefix(Component message) {
-        return PREFIX.append(message);
+        return prefix.append(message);
     }
 
     public static void send(CommandSender sender, String miniMessage) {

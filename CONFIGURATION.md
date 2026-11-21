@@ -55,6 +55,15 @@ death penalties. Offline ghosts revive on reconnect during the reward period. Du
 accept main-hand left/right clicks even when an item ability cancels the click; ghosts cannot
 open doors.
 
+## Message prefix
+
+`config.yml` `messages.prefix` is the MiniMessage text shown before every DungeonCrawlers chat message. `/dc reload` applies it.
+
+```yaml
+messages:
+  prefix: "<dark_gray>[<aqua><bold>Dungeons</bold></aqua>]</dark_gray> "
+```
+
 ## Class selection
 
 `floors/<floor>.yml` controls the classes available in a run:

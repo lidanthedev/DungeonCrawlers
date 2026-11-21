@@ -1,4 +1,8 @@
-schema-version: 6
+schema-version: 7
+
+# MiniMessage prefix shown before every DungeonCrawlers chat message. Applied on /dc reload.
+messages:
+  prefix: "<dark_gray>[<aqua><bold>DungeonCrawlers</bold></aqua>]</dark_gray> "
 
 # Enables implementation diagnostics and debug-only commands. Keep disabled on production servers.
 debug: false
